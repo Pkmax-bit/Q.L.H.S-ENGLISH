@@ -1,27 +1,29 @@
-databases:
-  - name: education-center-db
-    plan: free
-    databaseName: education_center
-    user: edu_admin
-    region: singapore
+# Render Blueprint - Education Center Management System
+# Deploy cả backend API và frontend
 
 services:
-  # Backend API
+  # Backend API Service (Node.js + Express)
   - type: web
     name: education-center-api
     runtime: node
     region: singapore
     plan: free
     buildCommand: cd backend && npm install && node src/migrations/run.js && node src/migrations/seed.js
-    startCommand: cd backend && npm start
+    startCommand: cd backend && node server.js
     healthCheckPath: /api/health
+    autoDeploy: true
+    branch: main
     envVars:
+      - key: NODE_VERSION
+        value: 20
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: education-center-db
-          property: connectionString
+        sync: false  # Nhập trong Render Dashboard
+      - key: SUPABASE_URL
+        sync: false  # Nhập trong Render Dashboard
+      - key: SUPABASE_KEY
+        sync: false  # Nhập trong Render Dashboard
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -29,11 +31,13 @@ services:
       - key: BCRYPT_SALT_ROUNDS
         value: "12"
       - key: CORS_ORIGIN
-        value: https://education-center-web.onrender.com
+        sync: false  # Nhập URL frontend sau khi deploy
       - key: UPLOAD_DIR
         value: uploads
+      - key: PORT
+        value: "3001"
 
-  # Frontend Static Site
+  # Frontend Static Site (React + Vite)
   - type: web
     name: education-center-web
     runtime: static
@@ -41,11 +45,13 @@ services:
     plan: free
     buildCommand: cd frontend && npm install --include=dev && npm run build
     staticPublishPath: frontend/dist
+    autoDeploy: true
+    branch: main
     envVars:
       - key: VITE_API_URL
-        value: https://education-center-api.onrender.com/api
+        sync: false  # Nhập URL backend sau khi deploy, vd: https://education-center-api.onrender.com/api
       - key: VITE_SOCKET_URL
-        value: https://education-center-api.onrender.com
+        sync: false  # Nhập URL backend, vd: https://education-center-api.onrender.com
     headers:
       - path: /*
         name: Cache-Control

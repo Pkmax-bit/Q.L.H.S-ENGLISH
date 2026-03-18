@@ -1,8 +1,13 @@
 const { Pool } = require('pg');
 
+// SSL config for production (Supabase/Render)
+const sslConfig = process.env.NODE_ENV === 'production'
+  ? { rejectUnauthorized: false }
+  : false;
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : { rejectUnauthorized: false },
+  ssl: sslConfig,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
