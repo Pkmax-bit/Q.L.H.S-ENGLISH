@@ -1,15 +1,27 @@
+databases:
+  - name: education-center-db
+    plan: free
+    databaseName: education_center
+    user: edu_admin
+    region: singapore
+
 services:
+  # Backend API
   - type: web
     name: education-center-api
     runtime: node
     region: singapore
-    buildCommand: cd backend && npm install
+    plan: free
+    buildCommand: cd backend && npm install && node src/migrations/run.js && node src/migrations/seed.js
     startCommand: cd backend && npm start
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: education-center-db
+          property: connectionString
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
@@ -17,13 +29,23 @@ services:
       - key: BCRYPT_SALT_ROUNDS
         value: "12"
       - key: CORS_ORIGIN
-        sync: false
+        value: https://education-center-web.onrender.com
+      - key: UPLOAD_DIR
+        value: uploads
 
+  # Frontend Static Site
   - type: web
     name: education-center-web
     runtime: static
+    region: singapore
+    plan: free
     buildCommand: cd frontend && npm install --include=dev && npm run build
     staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://education-center-api.onrender.com/api
+      - key: VITE_SOCKET_URL
+        value: https://education-center-api.onrender.com
     headers:
       - path: /*
         name: Cache-Control
