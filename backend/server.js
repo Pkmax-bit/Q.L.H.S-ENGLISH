@@ -28,9 +28,9 @@ const shutdown = async (signal) => {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
-// Start server
-server.listen(PORT, () => {
-  console.log(`Education Center API running on port ${PORT}`);
+// Start server — bind to 0.0.0.0 for Render
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Education Center API running on 0.0.0.0:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
