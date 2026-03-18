@@ -16,9 +16,4 @@ router.get('/:id/students', auth, classesController.getStudents);
 router.post('/:id/students', auth, authorize('admin', 'teacher'), classesController.addStudent);
 router.delete('/:id/students/:studentId', auth, authorize('admin', 'teacher'), classesController.removeStudent);
 
-// Manage teachers in class
-router.get('/:id/teachers', auth, classesController.getTeachers);
-router.post('/:id/teachers', auth, authorize('admin'), classesController.addTeacher);
-router.delete('/:id/teachers/:teacherId', auth, authorize('admin'), classesController.removeTeacher);
-
 module.exports = router;

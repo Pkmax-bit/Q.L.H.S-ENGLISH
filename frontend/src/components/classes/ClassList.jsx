@@ -28,10 +28,9 @@ export default function ClassList() {
 
   const columns = [
     { key: 'name', label: 'Tên lớp' },
-    { key: 'subject', label: 'Môn học', accessor: (row) => row.subject?.name || row.subjectName || '—' },
-    { key: 'teacher', label: 'Giáo viên', accessor: (row) => row.teacher?.name || row.teacherName || '—' },
-    { key: 'studentCount', label: 'Sĩ số', accessor: (row) => row.studentCount ?? row.students?.length ?? 0 },
-    { key: 'startDate', label: 'Ngày bắt đầu', accessor: (row) => formatDate(row.startDate) },
+    { key: 'teacher', label: 'Giáo viên', accessor: (row) => row.teacher?.full_name || '—' },
+    { key: 'student_count', label: 'Sĩ số', accessor: (row) => row.student_count ?? row.students?.length ?? 0 },
+    { key: 'start_date', label: 'Ngày bắt đầu', accessor: (row) => formatDate(row.start_date) },
     {
       key: 'status',
       label: 'Trạng thái',
@@ -46,7 +45,7 @@ export default function ClassList() {
   const confirmDelete = async () => {
     setDeleting(true)
     try {
-      await classesService.delete(selected._id || selected.id)
+      await classesService.delete(selected.id)
       success('Xóa lớp học thành công')
       reload()
     } catch (err) {
@@ -61,9 +60,8 @@ export default function ClassList() {
   const handleExport = () => {
     const exportCols = [
       { key: 'name', header: 'Tên lớp' },
-      { key: 'subject', header: 'Môn học', accessor: (r) => r.subject?.name || '' },
-      { key: 'teacher', header: 'Giáo viên', accessor: (r) => r.teacher?.name || '' },
-      { key: 'studentCount', header: 'Sĩ số', accessor: (r) => r.studentCount ?? 0 },
+      { key: 'teacher', header: 'Giáo viên', accessor: (r) => r.teacher?.full_name || '' },
+      { key: 'student_count', header: 'Sĩ số', accessor: (r) => r.student_count ?? 0 },
       { key: 'status', header: 'Trạng thái' },
     ]
     exportToExcel(classList, exportCols, 'danh-sach-lop-hoc')

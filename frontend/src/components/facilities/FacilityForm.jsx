@@ -1,18 +1,22 @@
 import { useState, useEffect, useContext } from 'react'
 import Modal from '../common/Modal'
 import Input from '../common/Input'
+import Select from '../common/Select'
 import Button from '../common/Button'
 import { ToastContext } from '../../context/ToastContext'
 import facilitiesService from '../../services/facilities.service'
-import { validateForm, required, phone } from '../../utils/validators'
+import { validateForm, required, positiveNumber } from '../../utils/validators'
 
 const initialForm = {
   name: '',
-  address: '',
-  phone: '',
+  type: 'building',
+  parent_id: '',
+  capacity: '',
+  equipment: '',
+  status: 'active',
 }
 
-export default function FacilityForm({ isOpen, onClose, facility, onSuccess }) {
+export default function FacilityForm({ isOpen, onClose, facility, parentId, onSuccess }) {
   const [form, setForm] = useState(initialForm)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
@@ -23,14 +27,21 @@ export default function FacilityForm({ isOpen, onClose, facility, onSuccess }) {
     if (facility) {
       setForm({
         name: facility.name || '',
-        address: facility.address || '',
-        phone: facility.phone || '',
+        type: facility.type || 'building',
+        parent_id: facility.parent_id || '',
+        capacity: facility.capacity ?? '',
+        equipment: facility.equipment || '',
+        status: facility.status || 'active',
       })
     } else {
-      setForm(initialForm)
+      setForm({
+        ...initialForm,
+        parent_id: parentId || '',
+        type: parentId ? 'classroom' : 'building',
+      })
     }
     setErrors({})
-  }, [facility, isOpen])
+  }, [facility, parentId, isOpen])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -40,8 +51,8 @@ export default function FacilityForm({ isOpen, onClose, facility, onSuccess }) {
 
   const validate = () => {
     return validateForm({
-      name: [() => required(form.name, 'Tên cơ sở')],
-      phone: [() => phone(form.phone)],
+      name: [() => required(form.name, 'Tên')],
+      capacity: [() => positiveNumber(form.capacity, 'Sức chứa')],
     })
   }
 
@@ -53,12 +64,17 @@ export default function FacilityForm({ isOpen, onClose, facility, onSuccess }) {
 
     setLoading(true)
     try {
+      const payload = {
+        ...form,
+        capacity: form.capacity !== '' ? Number(form.capacity) : undefined,
+        parent_id: form.parent_id || undefined,
+      }
       if (isEdit) {
-        await facilitiesService.update(facility._id || facility.id, form)
-        success('Cập nhật cơ sở thành công')
+        await facilitiesService.update(facility.id, payload)
+        success('Cập nhật thành công')
       } else {
-        await facilitiesService.create(form)
-        success('Thêm cơ sở thành công')
+        await facilitiesService.create(payload)
+        success('Thêm mới thành công')
       }
       onSuccess()
     } catch (err) {
@@ -72,7 +88,7 @@ export default function FacilityForm({ isOpen, onClose, facility, onSuccess }) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={isEdit ? 'Chỉnh sửa cơ sở' : 'Thêm cơ sở mới'}
+      title={isEdit ? 'Chỉnh sửa cơ sở' : (parentId ? 'Thêm phòng mới' : 'Thêm cơ sở mới')}
       size="md"
       footer={
         <>
@@ -87,28 +103,50 @@ export default function FacilityForm({ isOpen, onClose, facility, onSuccess }) {
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input
-          label="Tên cơ sở"
+          label="Tên"
           name="name"
           value={form.name}
           onChange={handleChange}
           error={errors.name}
-          placeholder="Cơ sở 1"
+          placeholder={parentId ? 'Phòng 101' : 'Cơ sở 1'}
           required
         />
-        <Input
-          label="Địa chỉ"
-          name="address"
-          value={form.address}
+        <Select
+          label="Loại"
+          name="type"
+          value={form.type}
           onChange={handleChange}
-          placeholder="123 Đường ABC, Quận XYZ"
+          options={[
+            { value: 'building', label: 'Tòa nhà' },
+            { value: 'classroom', label: 'Phòng học' },
+            { value: 'lab', label: 'Phòng thí nghiệm' },
+          ]}
         />
         <Input
-          label="Số điện thoại"
-          name="phone"
-          value={form.phone}
+          label="Sức chứa"
+          name="capacity"
+          type="number"
+          value={form.capacity}
           onChange={handleChange}
-          error={errors.phone}
-          placeholder="0901234567"
+          error={errors.capacity}
+          placeholder="30"
+        />
+        <Input
+          label="Trang thiết bị"
+          name="equipment"
+          value={form.equipment}
+          onChange={handleChange}
+          placeholder="Máy chiếu, bảng trắng..."
+        />
+        <Select
+          label="Trạng thái"
+          name="status"
+          value={form.status}
+          onChange={handleChange}
+          options={[
+            { value: 'active', label: 'Hoạt động' },
+            { value: 'inactive', label: 'Ngừng sử dụng' },
+          ]}
         />
       </form>
     </Modal>

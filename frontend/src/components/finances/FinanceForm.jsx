@@ -10,33 +10,33 @@ import { toInputDate } from '../../utils/formatDate'
 
 const initialForm = {
   type: 'income',
-  categoryId: '',
+  category: '',
   amount: '',
   description: '',
   payment_date: '',
   payment_method: 'cash',
+  status: 'pending',
   reference_type: '',
   reference_id: '',
 }
 
-export default function FinanceForm({ isOpen, onClose, finance, categories = [], onSuccess }) {
+export default function FinanceForm({ isOpen, onClose, finance, onSuccess }) {
   const [form, setForm] = useState(initialForm)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
   const isEdit = !!finance
 
-  const categoryOptions = categories.map((c) => ({ value: c._id || c.id, label: c.name }))
-
   useEffect(() => {
     if (finance) {
       setForm({
         type: finance.type || 'income',
-        categoryId: finance.categoryId || finance.category?._id || finance.category?.id || '',
+        category: finance.category || '',
         amount: finance.amount ?? '',
         description: finance.description || '',
         payment_date: toInputDate(finance.payment_date || finance.paymentDate) || '',
         payment_method: finance.payment_method || finance.paymentMethod || 'cash',
+        status: finance.status || 'pending',
         reference_type: finance.reference_type || finance.referenceType || '',
         reference_id: finance.reference_id || finance.referenceId || '',
       })
@@ -78,7 +78,7 @@ export default function FinanceForm({ isOpen, onClose, finance, categories = [],
         amount: Number(form.amount),
       }
       if (isEdit) {
-        await financesService.update(finance._id || finance.id, payload)
+        await financesService.update(finance.id, payload)
         success('Cập nhật giao dịch thành công')
       } else {
         await financesService.create(payload)
@@ -121,13 +121,12 @@ export default function FinanceForm({ isOpen, onClose, finance, categories = [],
               { value: 'expense', label: 'Chi' },
             ]}
           />
-          <Select
+          <Input
             label="Danh mục"
-            name="categoryId"
-            value={form.categoryId}
+            name="category"
+            value={form.category}
             onChange={handleChange}
-            options={categoryOptions}
-            placeholder="Chọn danh mục"
+            placeholder="Học phí, Lương, Vật tư..."
           />
           <Input
             label="Số tiền"
@@ -158,6 +157,17 @@ export default function FinanceForm({ isOpen, onClose, finance, categories = [],
               { value: 'bank_transfer', label: 'Chuyển khoản' },
               { value: 'card', label: 'Thẻ' },
               { value: 'other', label: 'Khác' },
+            ]}
+          />
+          <Select
+            label="Trạng thái"
+            name="status"
+            value={form.status}
+            onChange={handleChange}
+            options={[
+              { value: 'pending', label: 'Chờ xử lý' },
+              { value: 'completed', label: 'Hoàn thành' },
+              { value: 'cancelled', label: 'Đã hủy' },
             ]}
           />
           <Input

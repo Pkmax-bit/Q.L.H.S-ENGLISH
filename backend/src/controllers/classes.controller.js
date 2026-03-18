@@ -98,44 +98,7 @@ const removeStudent = async (req, res, next) => {
   }
 };
 
-const getTeachers = async (req, res, next) => {
-  try {
-    const teachers = await classesService.getTeachers(req.params.id);
-    return response.success(res, teachers, 'Class teachers retrieved');
-  } catch (error) {
-    next(error);
-  }
-};
-
-const addTeacher = async (req, res, next) => {
-  try {
-    const { teacher_id, role } = req.body;
-    if (!teacher_id) {
-      return response.badRequest(res, 'teacher_id is required');
-    }
-    const result = await classesService.addTeacher(req.params.id, teacher_id, role);
-    emitNotification('class:teacher_added', { class_id: req.params.id, teacher_id });
-    return response.created(res, result, 'Teacher added to class');
-  } catch (error) {
-    next(error);
-  }
-};
-
-const removeTeacher = async (req, res, next) => {
-  try {
-    const result = await classesService.removeTeacher(req.params.id, req.params.teacherId);
-    if (!result) {
-      return response.notFound(res, 'Teacher not found in class');
-    }
-    emitNotification('class:teacher_removed', { class_id: req.params.id, teacher_id: req.params.teacherId });
-    return response.success(res, null, 'Teacher removed from class');
-  } catch (error) {
-    next(error);
-  }
-};
-
 module.exports = {
   getAll, getById, create, update, remove,
   getStudents, addStudent, removeStudent,
-  getTeachers, addTeacher, removeTeacher,
 };

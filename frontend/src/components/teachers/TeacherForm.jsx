@@ -1,20 +1,17 @@
 import { useState, useEffect, useContext } from 'react'
 import Modal from '../common/Modal'
 import Input from '../common/Input'
-import Select from '../common/Select'
 import Button from '../common/Button'
 import { ToastContext } from '../../context/ToastContext'
 import teachersService from '../../services/teachers.service'
 import { validateForm, required, email, phone } from '../../utils/validators'
 
 const initialForm = {
-  name: '',
+  full_name: '',
   email: '',
   phone: '',
-  specialization: '',
-  address: '',
-  status: 'active',
-  notes: '',
+  avatar_url: '',
+  is_active: true,
 }
 
 export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
@@ -27,13 +24,11 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
   useEffect(() => {
     if (teacher) {
       setForm({
-        name: teacher.name || '',
+        full_name: teacher.full_name || '',
         email: teacher.email || '',
         phone: teacher.phone || '',
-        specialization: teacher.specialization || '',
-        address: teacher.address || '',
-        status: teacher.status || 'active',
-        notes: teacher.notes || '',
+        avatar_url: teacher.avatar_url || '',
+        is_active: teacher.is_active !== undefined ? teacher.is_active : true,
       })
     } else {
       setForm(initialForm)
@@ -42,14 +37,14 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
   }, [teacher, isOpen])
 
   const handleChange = (e) => {
-    const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
+    const { name, value, type, checked } = e.target
+    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }))
   }
 
   const validate = () => {
     return validateForm({
-      name: [() => required(form.name, 'Họ tên')],
+      full_name: [() => required(form.full_name, 'Họ tên')],
       email: [() => required(form.email, 'Email'), () => email(form.email)],
       phone: [() => phone(form.phone)],
     })
@@ -64,7 +59,7 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
     setLoading(true)
     try {
       if (isEdit) {
-        await teachersService.update(teacher._id || teacher.id, form)
+        await teachersService.update(teacher.id, form)
         success('Cập nhật giáo viên thành công')
       } else {
         await teachersService.create(form)
@@ -99,10 +94,10 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Họ tên"
-            name="name"
-            value={form.name}
+            name="full_name"
+            value={form.full_name}
             onChange={handleChange}
-            error={errors.name}
+            error={errors.full_name}
             placeholder="Nguyễn Văn A"
             required
           />
@@ -125,39 +120,26 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
             placeholder="0901234567"
           />
           <Input
-            label="Chuyên môn"
-            name="specialization"
-            value={form.specialization}
+            label="Ảnh đại diện (URL)"
+            name="avatar_url"
+            value={form.avatar_url}
             onChange={handleChange}
-            placeholder="Toán, Lý, Hóa..."
-          />
-          <Select
-            label="Trạng thái"
-            name="status"
-            value={form.status}
-            onChange={handleChange}
-            options={[
-              { value: 'active', label: 'Hoạt động' },
-              { value: 'inactive', label: 'Ngừng hoạt động' },
-            ]}
-          />
-          <Input
-            label="Địa chỉ"
-            name="address"
-            value={form.address}
-            onChange={handleChange}
-            placeholder="Địa chỉ..."
+            placeholder="https://example.com/avatar.jpg"
           />
         </div>
-        <Input
-          label="Ghi chú"
-          name="notes"
-          type="textarea"
-          value={form.notes}
-          onChange={handleChange}
-          placeholder="Ghi chú thêm..."
-          rows={3}
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="is_active"
+            name="is_active"
+            checked={form.is_active}
+            onChange={handleChange}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <label htmlFor="is_active" className="text-sm text-gray-700">
+            Đang hoạt động
+          </label>
+        </div>
       </form>
     </Modal>
   )

@@ -23,14 +23,14 @@ export default function ClassStudentManager({ classId, students = [], loading, o
   const { data: allStudentsData } = useFetch(fetchAllStudents)
   const allStudents = Array.isArray(allStudentsData) ? allStudentsData : allStudentsData?.students || []
 
-  const studentIds = students.map((s) => s._id || s.id)
+  const studentIds = students.map((s) => s.id)
   const filteredAvailable = allStudents.filter((s) => {
-    const id = s._id || s.id
+    const id = s.id
     if (studentIds.includes(id)) return false
     if (!debouncedSearch) return true
     const q = debouncedSearch.toLowerCase()
     return (
-      s.name?.toLowerCase().includes(q) ||
+      s.full_name?.toLowerCase().includes(q) ||
       s.email?.toLowerCase().includes(q) ||
       s.phone?.includes(q)
     )
@@ -39,8 +39,8 @@ export default function ClassStudentManager({ classId, students = [], loading, o
   const handleAdd = async (student) => {
     setAdding(true)
     try {
-      await classesService.addStudent(classId, student._id || student.id)
-      success(`Đã thêm học sinh "${student.name}" vào lớp`)
+      await classesService.addStudent(classId, student.id)
+      success(`Đã thêm học sinh "${student.full_name}" vào lớp`)
       onReload()
     } catch (err) {
       showError(err.response?.data?.message || 'Thêm học sinh thất bại')
@@ -57,8 +57,8 @@ export default function ClassStudentManager({ classId, students = [], loading, o
   const confirmRemove = async () => {
     setRemoving(true)
     try {
-      await classesService.removeStudent(classId, selectedStudent._id || selectedStudent.id)
-      success(`Đã xóa học sinh "${selectedStudent.name}" khỏi lớp`)
+      await classesService.removeStudent(classId, selectedStudent.id)
+      success(`Đã xóa học sinh "${selectedStudent.full_name}" khỏi lớp`)
       onReload()
     } catch (err) {
       showError(err.response?.data?.message || 'Xóa học sinh thất bại')
@@ -107,11 +107,11 @@ export default function ClassStudentManager({ classId, students = [], loading, o
             ) : (
               filteredAvailable.slice(0, 20).map((student) => (
                 <div
-                  key={student._id || student.id}
+                  key={student.id}
                   className="flex items-center justify-between p-2 rounded-lg hover:bg-white"
                 >
                   <div>
-                    <p className="text-sm font-medium text-gray-700">{student.name}</p>
+                    <p className="text-sm font-medium text-gray-700">{student.full_name}</p>
                     <p className="text-xs text-gray-500">{student.email || student.phone || ''}</p>
                   </div>
                   <Button
@@ -137,7 +137,7 @@ export default function ClassStudentManager({ classId, students = [], loading, o
         <div className="space-y-1">
           {students.map((student, idx) => (
             <div
-              key={student._id || student.id || idx}
+              key={student.id || idx}
               className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
             >
               <div className="flex items-center gap-3">
@@ -145,7 +145,7 @@ export default function ClassStudentManager({ classId, students = [], loading, o
                   {idx + 1}
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-700">{student.name}</p>
+                  <p className="text-sm font-medium text-gray-700">{student.full_name}</p>
                   <p className="text-xs text-gray-500">{student.email || student.phone || ''}</p>
                 </div>
               </div>
@@ -167,7 +167,7 @@ export default function ClassStudentManager({ classId, students = [], loading, o
         onConfirm={confirmRemove}
         loading={removing}
         title="Xóa học sinh khỏi lớp"
-        message={`Bạn có chắc chắn muốn xóa học sinh "${selectedStudent?.name}" khỏi lớp?`}
+        message={`Bạn có chắc chắn muốn xóa học sinh "${selectedStudent?.full_name}" khỏi lớp?`}
       />
     </div>
   )

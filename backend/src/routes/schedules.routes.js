@@ -11,9 +11,4 @@ router.post('/', auth, authorize('admin'), schedulesController.create);
 router.put('/:id', auth, authorize('admin'), schedulesController.update);
 router.delete('/:id', auth, authorize('admin'), schedulesController.remove);
 
-// Slots
-router.post('/:id/slots', auth, authorize('admin'), schedulesController.addSlot);
-router.put('/:id/slots/:slotId', auth, authorize('admin'), schedulesController.updateSlot);
-router.delete('/:id/slots/:slotId', auth, authorize('admin'), schedulesController.removeSlot);
-
 module.exports = router;

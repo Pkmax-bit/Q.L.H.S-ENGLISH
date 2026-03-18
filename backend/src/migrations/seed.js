@@ -10,7 +10,7 @@ const supabase = createClient(
 async function seed() {
   // Check if admin exists
   const { data: existing } = await supabase
-    .from('users')
+    .from('profiles')
     .select('id')
     .eq('email', 'admin@edu.com')
     .single();
@@ -22,7 +22,7 @@ async function seed() {
 
   const passwordHash = await bcrypt.hash('admin123', 12);
 
-  const { error: userError } = await supabase.from('users').insert({
+  const { error: userError } = await supabase.from('profiles').insert({
     email: 'admin@edu.com',
     password_hash: passwordHash,
     role: 'admin',
@@ -33,21 +33,6 @@ async function seed() {
     console.error('Failed to create admin:', userError.message);
     return;
   }
-
-  // Seed finance categories
-  const categories = [
-    { name: 'Học phí', type: 'income' },
-    { name: 'Phí tài liệu', type: 'income' },
-    { name: 'Phí khác', type: 'income' },
-    { name: 'Lương giáo viên', type: 'expense' },
-    { name: 'Thuê mặt bằng', type: 'expense' },
-    { name: 'Điện nước', type: 'expense' },
-    { name: 'Vật tư văn phòng', type: 'expense' },
-    { name: 'Chi phí khác', type: 'expense' },
-  ];
-
-  const { error: catError } = await supabase.from('finance_categories').insert(categories);
-  if (catError) console.error('Category seed error:', catError.message);
 
   console.log('🌱 Seed completed!');
   console.log('Admin: admin@edu.com / admin123');

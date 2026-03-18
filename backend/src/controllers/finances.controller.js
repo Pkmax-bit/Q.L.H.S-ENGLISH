@@ -61,48 +61,6 @@ const remove = async (req, res, next) => {
   }
 };
 
-const getCategories = async (req, res, next) => {
-  try {
-    const categories = await financesService.getCategories(req.query.type);
-    return response.success(res, categories, 'Finance categories retrieved');
-  } catch (error) {
-    next(error);
-  }
-};
-
-const createCategory = async (req, res, next) => {
-  try {
-    const category = await financesService.createCategory(req.body);
-    return response.created(res, category, 'Finance category created successfully');
-  } catch (error) {
-    next(error);
-  }
-};
-
-const updateCategory = async (req, res, next) => {
-  try {
-    const category = await financesService.updateCategory(req.params.id, req.body);
-    if (!category) {
-      return response.notFound(res, 'Finance category not found');
-    }
-    return response.success(res, category, 'Finance category updated successfully');
-  } catch (error) {
-    next(error);
-  }
-};
-
-const removeCategory = async (req, res, next) => {
-  try {
-    const result = await financesService.removeCategory(req.params.id);
-    if (!result) {
-      return response.notFound(res, 'Finance category not found');
-    }
-    return response.success(res, null, 'Finance category deleted successfully');
-  } catch (error) {
-    next(error);
-  }
-};
-
 const getSummary = async (req, res, next) => {
   try {
     const { start_date, end_date } = req.query;
@@ -123,6 +81,7 @@ const exportExcel = async (req, res, next) => {
       { key: 'description', header: 'Description', width: 30 },
       { key: 'payment_date', header: 'Payment Date', width: 15 },
       { key: 'payment_method', header: 'Payment Method', width: 15 },
+      { key: 'status', header: 'Status', width: 12 },
     ];
     const buffer = exportToExcel(data, 'Finances', columns);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -135,6 +94,5 @@ const exportExcel = async (req, res, next) => {
 
 module.exports = {
   getAll, getById, create, update, remove,
-  getCategories, createCategory, updateCategory, removeCategory,
   getSummary, exportExcel,
 };

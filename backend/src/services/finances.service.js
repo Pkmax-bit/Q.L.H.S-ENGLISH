@@ -3,23 +3,27 @@ const { parsePagination, buildPaginationResponse } = require('../utils/paginatio
 
 const getAll = async (queryParams) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
-  const allowedSort = ['amount', 'payment_date', 'type', 'created_at'];
+  const allowedSort = ['amount', 'payment_date', 'type', 'category', 'created_at'];
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
   const typeFilter = queryParams.type || null;
-  const categoryId = queryParams.category_id || null;
+  const categoryFilter = queryParams.category || null;
   const startDate = queryParams.start_date || null;
   const endDate = queryParams.end_date || null;
+  const statusFilter = queryParams.status || null;
 
   // Count query
   let countQuery = supabase.from('finances').select('id', { count: 'exact', head: true });
   if (search) {
-    countQuery = countQuery.ilike('description', `%${search}%`);
+    countQuery = countQuery.or(`description.ilike.%${search}%,category.ilike.%${search}%`);
   }
   if (typeFilter) {
     countQuery = countQuery.eq('type', typeFilter);
   }
-  if (categoryId) {
-    countQuery = countQuery.eq('category_id', categoryId);
+  if (categoryFilter) {
+    countQuery = countQuery.eq('category', categoryFilter);
+  }
+  if (statusFilter) {
+    countQuery = countQuery.eq('status', statusFilter);
   }
   if (startDate) {
     countQuery = countQuery.gte('payment_date', startDate);
@@ -35,18 +39,20 @@ const getAll = async (queryParams) => {
     .from('finances')
     .select(`
       *,
-      finance_categories(name, type),
-      users!finances_created_by_fkey(full_name)
+      profiles!finances_created_by_fkey(full_name)
     `);
 
   if (search) {
-    dataQuery = dataQuery.ilike('description', `%${search}%`);
+    dataQuery = dataQuery.or(`description.ilike.%${search}%,category.ilike.%${search}%`);
   }
   if (typeFilter) {
     dataQuery = dataQuery.eq('type', typeFilter);
   }
-  if (categoryId) {
-    dataQuery = dataQuery.eq('category_id', categoryId);
+  if (categoryFilter) {
+    dataQuery = dataQuery.eq('category', categoryFilter);
+  }
+  if (statusFilter) {
+    dataQuery = dataQuery.eq('status', statusFilter);
   }
   if (startDate) {
     dataQuery = dataQuery.gte('payment_date', startDate);
@@ -63,12 +69,10 @@ const getAll = async (queryParams) => {
   if (error) throw error;
 
   const rows = (data || []).map(row => {
-    const { finance_categories, users, ...rest } = row;
+    const { profiles, ...rest } = row;
     return {
       ...rest,
-      category_name: finance_categories?.name || null,
-      category_type: finance_categories?.type || null,
-      created_by_name: users?.full_name || null,
+      created_by_name: profiles?.full_name || null,
     };
   });
 
@@ -83,8 +87,7 @@ const getById = async (id) => {
     .from('finances')
     .select(`
       *,
-      finance_categories(name),
-      users!finances_created_by_fkey(full_name)
+      profiles!finances_created_by_fkey(full_name)
     `)
     .eq('id', id)
     .single();
@@ -94,28 +97,27 @@ const getById = async (id) => {
     throw error;
   }
 
-  const { finance_categories, users, ...rest } = data;
+  const { profiles, ...rest } = data;
   return {
     ...rest,
-    category_name: finance_categories?.name || null,
-    created_by_name: users?.full_name || null,
+    created_by_name: profiles?.full_name || null,
   };
 };
 
 const create = async (data) => {
-  const { type, category_id, amount, description, reference_type, reference_id, payment_date, payment_method, receipt_url, created_by } = data;
+  const { type, category, amount, description, reference_type, reference_id, payment_date, payment_method, status, created_by } = data;
   const { data: row, error } = await supabase
     .from('finances')
     .insert({
       type,
-      category_id,
+      category,
       amount,
       description,
       reference_type,
       reference_id,
       payment_date,
       payment_method,
-      receipt_url,
+      status: status || 'completed',
       created_by,
     })
     .select()
@@ -126,18 +128,18 @@ const create = async (data) => {
 };
 
 const update = async (id, data) => {
-  const { type, category_id, amount, description, reference_type, reference_id, payment_date, payment_method, receipt_url } = data;
+  const { type, category, amount, description, reference_type, reference_id, payment_date, payment_method, status } = data;
 
   const updateObj = {};
   if (type !== undefined) updateObj.type = type;
-  if (category_id !== undefined) updateObj.category_id = category_id;
+  if (category !== undefined) updateObj.category = category;
   if (amount !== undefined) updateObj.amount = amount;
   if (description !== undefined) updateObj.description = description;
   if (reference_type !== undefined) updateObj.reference_type = reference_type;
   if (reference_id !== undefined) updateObj.reference_id = reference_id;
   if (payment_date !== undefined) updateObj.payment_date = payment_date;
   if (payment_method !== undefined) updateObj.payment_method = payment_method;
-  if (receipt_url !== undefined) updateObj.receipt_url = receipt_url;
+  if (status !== undefined) updateObj.status = status;
   updateObj.updated_at = new Date().toISOString();
 
   const { data: row, error } = await supabase
@@ -169,82 +171,10 @@ const remove = async (id) => {
   return data;
 };
 
-const getCategories = async (typeFilter) => {
-  let query = supabase
-    .from('finance_categories')
-    .select('*')
-    .eq('is_active', true)
-    .order('name', { ascending: true });
-
-  if (typeFilter) {
-    query = query.eq('type', typeFilter);
-  }
-
-  const { data, error } = await query;
-  if (error) throw error;
-  return data || [];
-};
-
-const createCategory = async (data) => {
-  const { name, type, description, is_active } = data;
-  const { data: row, error } = await supabase
-    .from('finance_categories')
-    .insert({
-      name,
-      type,
-      description,
-      is_active: is_active !== undefined ? is_active : true,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return row;
-};
-
-const updateCategory = async (id, data) => {
-  const { name, type, description, is_active } = data;
-
-  const updateObj = {};
-  if (name !== undefined) updateObj.name = name;
-  if (type !== undefined) updateObj.type = type;
-  if (description !== undefined) updateObj.description = description;
-  if (is_active !== undefined) updateObj.is_active = is_active;
-
-  const { data: row, error } = await supabase
-    .from('finance_categories')
-    .update(updateObj)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null;
-    throw error;
-  }
-  return row;
-};
-
-const removeCategory = async (id) => {
-  const { data, error } = await supabase
-    .from('finance_categories')
-    .delete()
-    .eq('id', id)
-    .select('id')
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null;
-    throw error;
-  }
-  return data;
-};
-
 const getSummary = async (startDate, endDate) => {
-  // Get all finances within date range for aggregation
   let query = supabase
     .from('finances')
-    .select('type, amount, category_id, finance_categories(name, type)');
+    .select('type, amount, category');
 
   if (startDate) {
     query = query.gte('payment_date', startDate);
@@ -271,17 +201,15 @@ const getSummary = async (startDate, endDate) => {
       totalExpense += amount;
     }
 
-    if (row.finance_categories) {
-      const catKey = `${row.finance_categories.name}|${row.finance_categories.type}`;
-      if (!categoryTotals[catKey]) {
-        categoryTotals[catKey] = {
-          name: row.finance_categories.name,
-          type: row.finance_categories.type,
-          total: 0,
-        };
-      }
-      categoryTotals[catKey].total += amount;
+    const catKey = `${row.category || 'Uncategorized'}|${row.type}`;
+    if (!categoryTotals[catKey]) {
+      categoryTotals[catKey] = {
+        name: row.category || 'Uncategorized',
+        type: row.type,
+        total: 0,
+      };
     }
+    categoryTotals[catKey].total += amount;
   }
 
   const byCategory = Object.values(categoryTotals).sort((a, b) => b.total - a.total);
@@ -303,14 +231,11 @@ const getAllForExport = async (queryParams) => {
 
   let query = supabase
     .from('finances')
-    .select(`
-      type, amount, description, payment_date, payment_method,
-      finance_categories(name)
-    `)
+    .select('type, category, amount, description, payment_date, payment_method, status')
     .order('payment_date', { ascending: false });
 
   if (search) {
-    query = query.ilike('description', `%${search}%`);
+    query = query.or(`description.ilike.%${search}%,category.ilike.%${search}%`);
   }
   if (typeFilter) {
     query = query.eq('type', typeFilter);
@@ -324,18 +249,10 @@ const getAllForExport = async (queryParams) => {
 
   const { data, error } = await query;
   if (error) throw error;
-
-  return (data || []).map(row => {
-    const { finance_categories, ...rest } = row;
-    return {
-      ...rest,
-      category: finance_categories?.name || null,
-    };
-  });
+  return data || [];
 };
 
 module.exports = {
   getAll, getById, create, update, remove,
-  getCategories, createCategory, updateCategory, removeCategory,
   getSummary, getAllForExport,
 };

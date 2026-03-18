@@ -1,6 +1,7 @@
 import Modal from '../common/Modal'
+import StatusBadge from '../common/StatusBadge'
 import { formatDate } from '../../utils/formatDate'
-import { BookOpen, Calendar, Hash, Youtube, HardDrive, Check, X } from 'lucide-react'
+import { BookOpen, Calendar, Hash, Clock, Check, X } from 'lucide-react'
 
 const typeLabelMap = {
   essay: 'Tự luận',
@@ -8,88 +9,58 @@ const typeLabelMap = {
   mixed: 'Hỗn hợp',
 }
 
-function getYouTubeId(url) {
-  if (!url) return null
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?\s]+)/)
-  return match ? match[1] : null
-}
-
 export default function AssignmentDetail({ isOpen, onClose, assignment }) {
   if (!assignment) return null
 
   const questions = assignment.questions || []
-  const videoId = getYouTubeId(assignment.youtube_url || assignment.youtubeUrl)
-  const driveUrl = assignment.drive_url || assignment.driveUrl
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Chi tiết bài tập" size="xl">
       <div className="space-y-5">
         {/* Title */}
-        <h3 className="text-xl font-bold text-gray-900">{assignment.title}</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xl font-bold text-gray-900">{assignment.title}</h3>
+          <StatusBadge
+            status={assignment.is_published ? 'active' : 'inactive'}
+            label={assignment.is_published ? 'Đã xuất bản' : 'Nháp'}
+          />
+        </div>
 
         {/* Meta */}
         <div className="flex flex-wrap gap-4 text-sm text-gray-600">
           <div className="flex items-center gap-1.5">
             <BookOpen className="h-4 w-4 text-gray-400" />
-            <span>{assignment.subject?.name || assignment.subjectName || '—'}</span>
+            <span>Lớp: {assignment.class?.name || '—'}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Hash className="h-4 w-4 text-gray-400" />
-            <span>Loại: {typeLabelMap[assignment.type] || assignment.type}</span>
+            <span>Loại: {typeLabelMap[assignment.assignment_type] || assignment.assignment_type}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="font-medium text-blue-600">
-              {assignment.total_points ?? assignment.totalPoints ?? '—'} điểm
+              {assignment.total_points ?? '—'} điểm
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Calendar className="h-4 w-4 text-gray-400" />
-            <span>{formatDate(assignment.createdAt)}</span>
-          </div>
+          {assignment.due_date && (
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-4 w-4 text-gray-400" />
+              <span>Hạn nộp: {formatDate(assignment.due_date)}</span>
+            </div>
+          )}
+          {assignment.time_limit_minutes && (
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-gray-400" />
+              <span>{assignment.time_limit_minutes} phút</span>
+            </div>
+          )}
         </div>
 
-        {/* Content */}
-        {assignment.content && (
+        {/* Lesson reference */}
+        {assignment.lesson && (
           <div className="pt-3 border-t border-gray-100">
-            <p className="text-sm font-medium text-gray-600 mb-2">Nội dung / Hướng dẫn</p>
-            <div className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 rounded-lg p-4">
-              {assignment.content}
-            </div>
-          </div>
-        )}
-
-        {/* YouTube */}
-        {videoId && (
-          <div className="pt-3 border-t border-gray-100">
-            <div className="flex items-center gap-2 mb-2">
-              <Youtube className="h-4 w-4 text-red-500" />
-              <p className="text-sm font-medium text-gray-600">Video</p>
-            </div>
-            <div className="relative w-full pb-[56.25%] rounded-lg overflow-hidden bg-black">
-              <iframe
-                src={`https://www.youtube.com/embed/${videoId}`}
-                title="Video"
-                allowFullScreen
-                className="absolute inset-0 w-full h-full"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Drive link */}
-        {driveUrl && (
-          <div className="pt-3 border-t border-gray-100">
-            <div className="flex items-center gap-2">
-              <HardDrive className="h-4 w-4 text-blue-500" />
-              <a
-                href={driveUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-blue-600 hover:underline"
-              >
-                Xem tài liệu trên Google Drive
-              </a>
-            </div>
+            <p className="text-sm text-gray-600">
+              <span className="font-medium">Bài học:</span> {assignment.lesson.title || '—'}
+            </p>
           </div>
         )}
 
@@ -111,10 +82,10 @@ export default function AssignmentDetail({ isOpen, onClose, assignment }) {
                     </span>
                   </div>
                   <p className="text-xs text-gray-500 mb-2">
-                    {q.type === 'multiple_choice' ? 'Trắc nghiệm' : 'Tự luận'}
+                    {q.question_type === 'multiple_choice' ? 'Trắc nghiệm' : 'Tự luận'}
                   </p>
 
-                  {q.type === 'multiple_choice' && q.options && q.options.length > 0 && (
+                  {q.question_type === 'multiple_choice' && q.options && q.options.length > 0 && (
                     <div className="space-y-1.5 mt-2">
                       {q.options.map((opt, optIdx) => (
                         <div
@@ -133,6 +104,28 @@ export default function AssignmentDetail({ isOpen, onClose, assignment }) {
                           </span>
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {q.correct_answer && (
+                    <div className="mt-2 text-sm text-green-700 bg-green-50 p-2 rounded-lg">
+                      <span className="font-medium">Đáp án:</span> {q.correct_answer}
+                    </div>
+                  )}
+
+                  {q.file_url && (
+                    <div className="mt-2">
+                      <a href={q.file_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                        Tệp đính kèm
+                      </a>
+                    </div>
+                  )}
+
+                  {q.youtube_url && (
+                    <div className="mt-2">
+                      <a href={q.youtube_url} target="_blank" rel="noopener noreferrer" className="text-xs text-red-600 hover:underline">
+                        Video YouTube
+                      </a>
                     </div>
                   )}
                 </div>

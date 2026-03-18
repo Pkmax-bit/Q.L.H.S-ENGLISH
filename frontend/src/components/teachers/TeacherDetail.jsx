@@ -1,7 +1,7 @@
 import Modal from '../common/Modal'
 import StatusBadge from '../common/StatusBadge'
 import { formatDate } from '../../utils/formatDate'
-import { Mail, Phone, MapPin, BookOpen, Calendar } from 'lucide-react'
+import { Mail, Phone, Calendar, Image } from 'lucide-react'
 
 export default function TeacherDetail({ isOpen, onClose, teacher }) {
   if (!teacher) return null
@@ -11,8 +11,21 @@ export default function TeacherDetail({ isOpen, onClose, teacher }) {
       <div className="space-y-4">
         {/* Name and status */}
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold text-gray-900">{teacher.name}</h3>
-          <StatusBadge status={teacher.status || 'active'} />
+          <div className="flex items-center gap-3">
+            {teacher.avatar_url ? (
+              <img
+                src={teacher.avatar_url}
+                alt={teacher.full_name}
+                className="w-12 h-12 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-lg">
+                {teacher.full_name?.charAt(0) || '?'}
+              </div>
+            )}
+            <h3 className="text-xl font-bold text-gray-900">{teacher.full_name}</h3>
+          </div>
+          <StatusBadge status={teacher.is_active === false ? 'inactive' : 'active'} />
         </div>
 
         {/* Info rows */}
@@ -26,26 +39,10 @@ export default function TeacherDetail({ isOpen, onClose, teacher }) {
             <span className="text-gray-700">{teacher.phone || '—'}</span>
           </div>
           <div className="flex items-center gap-3 text-sm">
-            <BookOpen className="h-4 w-4 text-gray-400" />
-            <span className="text-gray-700">{teacher.specialization || '—'}</span>
-          </div>
-          <div className="flex items-center gap-3 text-sm">
-            <MapPin className="h-4 w-4 text-gray-400" />
-            <span className="text-gray-700">{teacher.address || '—'}</span>
-          </div>
-          <div className="flex items-center gap-3 text-sm">
             <Calendar className="h-4 w-4 text-gray-400" />
-            <span className="text-gray-700">Ngày tạo: {formatDate(teacher.createdAt)}</span>
+            <span className="text-gray-700">Ngày tạo: {formatDate(teacher.created_at)}</span>
           </div>
         </div>
-
-        {/* Notes */}
-        {teacher.notes && (
-          <div className="pt-3 border-t border-gray-100">
-            <p className="text-sm font-medium text-gray-600 mb-1">Ghi chú</p>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">{teacher.notes}</p>
-          </div>
-        )}
       </div>
     </Modal>
   )

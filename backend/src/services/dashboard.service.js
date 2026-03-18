@@ -7,15 +7,13 @@ const getStats = async () => {
     classesResult,
     subjectsResult,
     facilitiesResult,
-    roomsResult,
     financesResult,
   ] = await Promise.all([
-    supabase.from('students').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-    supabase.from('teachers').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+    supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'student').eq('is_active', true),
+    supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'teacher').eq('is_active', true),
     supabase.from('classes').select('id', { count: 'exact', head: true }).eq('status', 'active'),
     supabase.from('subjects').select('id', { count: 'exact', head: true }).eq('is_active', true),
-    supabase.from('facilities').select('id', { count: 'exact', head: true }).eq('is_active', true),
-    supabase.from('rooms').select('id', { count: 'exact', head: true }),
+    supabase.from('facilities').select('id', { count: 'exact', head: true }),
     // Get current month finances
     (async () => {
       const now = new Date();
@@ -50,15 +48,13 @@ const getStats = async () => {
   if (classesResult.error) throw classesResult.error;
   if (subjectsResult.error) throw subjectsResult.error;
   if (facilitiesResult.error) throw facilitiesResult.error;
-  if (roomsResult.error) throw roomsResult.error;
 
   return {
     active_students: studentsResult.count || 0,
     active_teachers: teachersResult.count || 0,
     active_classes: classesResult.count || 0,
     active_subjects: subjectsResult.count || 0,
-    active_facilities: facilitiesResult.count || 0,
-    total_rooms: roomsResult.count || 0,
+    total_facilities: facilitiesResult.count || 0,
     monthly_income: financesResult.totalIncome,
     monthly_expense: financesResult.totalExpense,
     monthly_net: financesResult.totalIncome - financesResult.totalExpense,
@@ -66,12 +62,13 @@ const getStats = async () => {
 };
 
 const getRecentActivity = async (limitCount = 20) => {
-  const perTable = Math.ceil(limitCount / 4);
+  const perTable = Math.ceil(limitCount / 3);
 
-  const [studentsRes, classesRes, financesRes, teachersRes] = await Promise.all([
+  const [studentsRes, classesRes, financesRes] = await Promise.all([
     supabase
-      .from('students')
-      .select('full_name, created_at')
+      .from('profiles')
+      .select('full_name, role, created_at')
+      .in('role', ['student', 'teacher'])
       .order('created_at', { ascending: false })
       .limit(perTable),
     supabase
@@ -84,23 +81,17 @@ const getRecentActivity = async (limitCount = 20) => {
       .select('type, description, created_at')
       .order('created_at', { ascending: false })
       .limit(perTable),
-    supabase
-      .from('teachers')
-      .select('full_name, created_at')
-      .order('created_at', { ascending: false })
-      .limit(perTable),
   ]);
 
   if (studentsRes.error) throw studentsRes.error;
   if (classesRes.error) throw classesRes.error;
   if (financesRes.error) throw financesRes.error;
-  if (teachersRes.error) throw teachersRes.error;
 
   const activities = [];
 
   for (const row of (studentsRes.data || [])) {
     activities.push({
-      type: 'student_enrolled',
+      type: row.role === 'teacher' ? 'teacher_added' : 'student_enrolled',
       title: row.full_name,
       created_at: row.created_at,
     });
@@ -118,14 +109,6 @@ const getRecentActivity = async (limitCount = 20) => {
     activities.push({
       type: `finance_${row.type}`,
       title: row.description,
-      created_at: row.created_at,
-    });
-  }
-
-  for (const row of (teachersRes.data || [])) {
-    activities.push({
-      type: 'teacher_added',
-      title: row.full_name,
       created_at: row.created_at,
     });
   }

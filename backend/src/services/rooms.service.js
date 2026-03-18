@@ -1,20 +1,24 @@
 const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
+// Rooms are facilities with type = 'classroom' (or 'lab').
+// This service proxies to the facilities table for backward compatibility.
+
 const getAll = async (queryParams) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
   const allowedSort = ['name', 'capacity', 'status', 'created_at'];
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
-  const facilityId = queryParams.facility_id || null;
   const statusFilter = queryParams.status || null;
+  const parentId = queryParams.facility_id || queryParams.parent_id || null;
 
-  // Count query
-  let countQuery = supabase.from('rooms').select('id', { count: 'exact', head: true });
+  // Count query — filter to classroom/lab types
+  let countQuery = supabase.from('facilities').select('id', { count: 'exact', head: true })
+    .in('type', ['classroom', 'lab']);
   if (search) {
     countQuery = countQuery.or(`name.ilike.%${search}%,equipment.ilike.%${search}%`);
   }
-  if (facilityId) {
-    countQuery = countQuery.eq('facility_id', facilityId);
+  if (parentId) {
+    countQuery = countQuery.eq('parent_id', parentId);
   }
   if (statusFilter) {
     countQuery = countQuery.eq('status', statusFilter);
@@ -24,17 +28,15 @@ const getAll = async (queryParams) => {
 
   // Data query
   let dataQuery = supabase
-    .from('rooms')
-    .select(`
-      *,
-      facilities(name)
-    `);
+    .from('facilities')
+    .select('*')
+    .in('type', ['classroom', 'lab']);
 
   if (search) {
     dataQuery = dataQuery.or(`name.ilike.%${search}%,equipment.ilike.%${search}%`);
   }
-  if (facilityId) {
-    dataQuery = dataQuery.eq('facility_id', facilityId);
+  if (parentId) {
+    dataQuery = dataQuery.eq('parent_id', parentId);
   }
   if (statusFilter) {
     dataQuery = dataQuery.eq('status', statusFilter);
@@ -47,13 +49,24 @@ const getAll = async (queryParams) => {
   const { data, error } = await dataQuery;
   if (error) throw error;
 
-  const rows = (data || []).map(row => {
-    const { facilities, ...rest } = row;
-    return {
-      ...rest,
-      facility_name: facilities?.name || null,
-    };
-  });
+  // Get parent facility names
+  const parentIds = [...new Set((data || []).filter(r => r.parent_id).map(r => r.parent_id))];
+  let parentMap = {};
+  if (parentIds.length > 0) {
+    const { data: parents, error: pError } = await supabase
+      .from('facilities')
+      .select('id, name')
+      .in('id', parentIds);
+    if (pError) throw pError;
+    for (const p of (parents || [])) {
+      parentMap[p.id] = p.name;
+    }
+  }
+
+  const rows = (data || []).map(row => ({
+    ...row,
+    facility_name: row.parent_id ? (parentMap[row.parent_id] || null) : null,
+  }));
 
   return {
     data: rows,
@@ -63,12 +76,10 @@ const getAll = async (queryParams) => {
 
 const getById = async (id) => {
   const { data, error } = await supabase
-    .from('rooms')
-    .select(`
-      *,
-      facilities(name)
-    `)
+    .from('facilities')
+    .select('*')
     .eq('id', id)
+    .in('type', ['classroom', 'lab'])
     .single();
 
   if (error) {
@@ -76,20 +87,28 @@ const getById = async (id) => {
     throw error;
   }
 
-  const { facilities, ...rest } = data;
-  return {
-    ...rest,
-    facility_name: facilities?.name || null,
-  };
+  // Get parent name
+  let facility_name = null;
+  if (data.parent_id) {
+    const { data: parent } = await supabase
+      .from('facilities')
+      .select('name')
+      .eq('id', data.parent_id)
+      .single();
+    facility_name = parent?.name || null;
+  }
+
+  return { ...data, facility_name };
 };
 
 const create = async (data) => {
-  const { facility_id, name, capacity, equipment, status } = data;
+  const { name, capacity, equipment, status, parent_id, type } = data;
   const { data: row, error } = await supabase
-    .from('rooms')
+    .from('facilities')
     .insert({
-      facility_id,
       name,
+      type: type || 'classroom',
+      parent_id,
       capacity,
       equipment,
       status: status || 'available',
@@ -102,18 +121,19 @@ const create = async (data) => {
 };
 
 const update = async (id, data) => {
-  const { facility_id, name, capacity, equipment, status } = data;
+  const { name, capacity, equipment, status, parent_id, type } = data;
 
   const updateObj = {};
-  if (facility_id !== undefined) updateObj.facility_id = facility_id;
   if (name !== undefined) updateObj.name = name;
+  if (type !== undefined) updateObj.type = type;
+  if (parent_id !== undefined) updateObj.parent_id = parent_id;
   if (capacity !== undefined) updateObj.capacity = capacity;
   if (equipment !== undefined) updateObj.equipment = equipment;
   if (status !== undefined) updateObj.status = status;
   updateObj.updated_at = new Date().toISOString();
 
   const { data: row, error } = await supabase
-    .from('rooms')
+    .from('facilities')
     .update(updateObj)
     .eq('id', id)
     .select()
@@ -128,7 +148,7 @@ const update = async (id, data) => {
 
 const remove = async (id) => {
   const { data, error } = await supabase
-    .from('rooms')
+    .from('facilities')
     .delete()
     .eq('id', id)
     .select('id')

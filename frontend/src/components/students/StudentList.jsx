@@ -27,15 +27,18 @@ export default function StudentList() {
   const studentList = Array.isArray(students) ? students : students?.students || []
 
   const columns = [
-    { key: 'name', label: 'Họ tên' },
+    { key: 'full_name', label: 'Họ tên' },
     { key: 'email', label: 'Email' },
     { key: 'phone', label: 'Số điện thoại' },
-    { key: 'dateOfBirth', label: 'Ngày sinh', accessor: (row) => formatDate(row.dateOfBirth) },
-    { key: 'parentName', label: 'Phụ huynh' },
     {
-      key: 'status',
+      key: 'is_active',
       label: 'Trạng thái',
-      render: (row) => <StatusBadge status={row.status || 'active'} />,
+      render: (row) => <StatusBadge status={row.is_active === false ? 'inactive' : 'active'} />,
+    },
+    {
+      key: 'created_at',
+      label: 'Ngày tạo',
+      accessor: (row) => formatDate(row.created_at),
     },
   ]
 
@@ -46,7 +49,7 @@ export default function StudentList() {
   const confirmDelete = async () => {
     setDeleting(true)
     try {
-      await studentsService.delete(selected._id || selected.id)
+      await studentsService.delete(selected.id)
       success('Xóa học sinh thành công')
       reload()
     } catch (err) {
@@ -60,12 +63,10 @@ export default function StudentList() {
 
   const handleExport = () => {
     const exportCols = [
-      { key: 'name', header: 'Họ tên' },
+      { key: 'full_name', header: 'Họ tên' },
       { key: 'email', header: 'Email' },
       { key: 'phone', header: 'Số điện thoại' },
-      { key: 'dateOfBirth', header: 'Ngày sinh', accessor: (r) => formatDate(r.dateOfBirth) },
-      { key: 'parentName', header: 'Phụ huynh' },
-      { key: 'status', header: 'Trạng thái' },
+      { key: 'is_active', header: 'Trạng thái', accessor: (r) => r.is_active === false ? 'Ngừng' : 'Hoạt động' },
     ]
     exportToExcel(studentList, exportCols, 'danh-sach-hoc-sinh')
   }
@@ -113,7 +114,7 @@ export default function StudentList() {
         onConfirm={confirmDelete}
         loading={deleting}
         title="Xóa học sinh"
-        message={`Bạn có chắc chắn muốn xóa học sinh "${selected?.name}"?`}
+        message={`Bạn có chắc chắn muốn xóa học sinh "${selected?.full_name}"?`}
       />
     </div>
   )

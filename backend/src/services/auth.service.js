@@ -1,6 +1,5 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
 const { supabase } = require('../config/database');
 const jwtConfig = require('../config/jwt');
 
@@ -12,13 +11,17 @@ const generateAccessToken = (user) => {
   );
 };
 
-const generateRefreshToken = () => {
-  return crypto.randomBytes(40).toString('hex');
+const generateRefreshToken = (user) => {
+  return jwt.sign(
+    { id: user.id, email: user.email, role: user.role, type: 'refresh' },
+    jwtConfig.refresh.secret,
+    { expiresIn: jwtConfig.refresh.expiresIn }
+  );
 };
 
-const login = async (email, password, deviceInfo, ipAddress) => {
+const login = async (email, password) => {
   const { data: user, error } = await supabase
-    .from('users')
+    .from('profiles')
     .select('id, email, password_hash, role, full_name, phone, avatar_url, is_active')
     .eq('email', email)
     .single();
@@ -37,25 +40,14 @@ const login = async (email, password, deviceInfo, ipAddress) => {
   }
 
   const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken();
+  const refreshToken = generateRefreshToken(user);
   const expiresAt = new Date(Date.now() + jwtConfig.refresh.expiresInMs);
 
-  const { error: insertError } = await supabase
-    .from('refresh_tokens')
-    .insert({
-      user_id: user.id,
-      token: refreshToken,
-      device_info: deviceInfo,
-      ip_address: ipAddress,
-      expires_at: expiresAt.toISOString(),
-    });
-  if (insertError) throw insertError;
-
-  const { error: updateError } = await supabase
-    .from('users')
-    .update({ last_login_at: new Date().toISOString() })
+  // Update updated_at as a "last login" indicator
+  await supabase
+    .from('profiles')
+    .update({ updated_at: new Date().toISOString() })
     .eq('id', user.id);
-  if (updateError) throw updateError;
 
   const { password_hash, ...userData } = user;
 
@@ -67,25 +59,24 @@ const login = async (email, password, deviceInfo, ipAddress) => {
   };
 };
 
-const refresh = async (refreshToken, deviceInfo, ipAddress) => {
-  // Get the refresh token with user data
-  const { data: tokenData, error: tokenError } = await supabase
-    .from('refresh_tokens')
-    .select('*')
-    .eq('token', refreshToken)
-    .eq('is_revoked', false)
-    .gt('expires_at', new Date().toISOString())
-    .single();
-
-  if (tokenError || !tokenData) {
+const refresh = async (refreshToken) => {
+  // Stateless refresh: just verify the JWT signature
+  let decoded;
+  try {
+    decoded = jwt.verify(refreshToken, jwtConfig.refresh.secret);
+  } catch (err) {
     throw { statusCode: 401, message: 'Invalid or expired refresh token' };
   }
 
-  // Get user data
+  if (decoded.type !== 'refresh') {
+    throw { statusCode: 401, message: 'Invalid token type' };
+  }
+
+  // Verify user still exists and is active
   const { data: user, error: userError } = await supabase
-    .from('users')
+    .from('profiles')
     .select('id, email, role, full_name, is_active')
-    .eq('id', tokenData.user_id)
+    .eq('id', decoded.id)
     .single();
 
   if (userError || !user) {
@@ -96,27 +87,9 @@ const refresh = async (refreshToken, deviceInfo, ipAddress) => {
     throw { statusCode: 403, message: 'Account is deactivated' };
   }
 
-  // Revoke old token
-  const { error: revokeError } = await supabase
-    .from('refresh_tokens')
-    .update({ is_revoked: true, revoked_at: new Date().toISOString() })
-    .eq('id', tokenData.id);
-  if (revokeError) throw revokeError;
-
   const newAccessToken = generateAccessToken(user);
-  const newRefreshToken = generateRefreshToken();
+  const newRefreshToken = generateRefreshToken(user);
   const expiresAt = new Date(Date.now() + jwtConfig.refresh.expiresInMs);
-
-  const { error: insertError } = await supabase
-    .from('refresh_tokens')
-    .insert({
-      user_id: user.id,
-      token: newRefreshToken,
-      device_info: deviceInfo,
-      ip_address: ipAddress,
-      expires_at: expiresAt.toISOString(),
-    });
-  if (insertError) throw insertError;
 
   return {
     accessToken: newAccessToken,
@@ -125,31 +98,21 @@ const refresh = async (refreshToken, deviceInfo, ipAddress) => {
   };
 };
 
-const logout = async (refreshToken) => {
-  const { data, error } = await supabase
-    .from('refresh_tokens')
-    .update({ is_revoked: true, revoked_at: new Date().toISOString() })
-    .eq('token', refreshToken)
-    .eq('is_revoked', false)
-    .select('id');
-
-  if (error) throw error;
-  return data && data.length > 0;
+const logout = async () => {
+  // Stateless JWT — logout is handled client-side by discarding tokens
+  return true;
 };
 
-const logoutAll = async (userId) => {
-  const { error } = await supabase
-    .from('refresh_tokens')
-    .update({ is_revoked: true, revoked_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('is_revoked', false);
-  if (error) throw error;
+const logoutAll = async () => {
+  // Stateless JWT — no server-side token store to invalidate
+  // Client should discard tokens
+  return true;
 };
 
 const getMe = async (userId) => {
   const { data, error } = await supabase
-    .from('users')
-    .select('id, email, role, full_name, phone, avatar_url, is_active, last_login_at, created_at')
+    .from('profiles')
+    .select('id, email, role, full_name, phone, avatar_url, is_active, created_at, updated_at')
     .eq('id', userId)
     .single();
 
@@ -162,7 +125,7 @@ const getMe = async (userId) => {
 
 const changePassword = async (userId, currentPassword, newPassword) => {
   const { data: user, error } = await supabase
-    .from('users')
+    .from('profiles')
     .select('password_hash')
     .eq('id', userId)
     .single();
@@ -180,26 +143,18 @@ const changePassword = async (userId, currentPassword, newPassword) => {
   const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
   const { error: updateError } = await supabase
-    .from('users')
+    .from('profiles')
     .update({ password_hash: hashedPassword, updated_at: new Date().toISOString() })
     .eq('id', userId);
   if (updateError) throw updateError;
-
-  // Revoke all refresh tokens
-  const { error: revokeError } = await supabase
-    .from('refresh_tokens')
-    .update({ is_revoked: true, revoked_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .eq('is_revoked', false);
-  if (revokeError) throw revokeError;
 };
 
 const register = async (userData) => {
-  const { email, password, role, fullName, phone, createTeacher } = userData;
+  const { email, password, role, fullName, phone } = userData;
 
   // Check if email exists
   const { data: existing } = await supabase
-    .from('users')
+    .from('profiles')
     .select('id')
     .eq('email', email)
     .single();
@@ -212,7 +167,7 @@ const register = async (userData) => {
   const hashedPassword = await bcrypt.hash(password, saltRounds);
 
   const { data: user, error } = await supabase
-    .from('users')
+    .from('profiles')
     .insert({
       email,
       password_hash: hashedPassword,
@@ -224,20 +179,6 @@ const register = async (userData) => {
     .single();
 
   if (error) throw error;
-
-  if (createTeacher && role === 'teacher') {
-    const { error: teacherError } = await supabase
-      .from('teachers')
-      .insert({
-        user_id: user.id,
-        full_name: fullName,
-        phone,
-        email,
-        status: 'active',
-        hire_date: new Date().toISOString().split('T')[0],
-      });
-    if (teacherError) throw teacherError;
-  }
 
   return user;
 };

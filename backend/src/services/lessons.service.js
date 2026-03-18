@@ -5,15 +5,19 @@ const getAll = async (queryParams) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
   const allowedSort = ['title', 'order_index', 'created_at'];
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
-  const subjectId = queryParams.subject_id || null;
+  const classId = queryParams.class_id || null;
+  const isPublished = queryParams.is_published;
 
   // Count query
   let countQuery = supabase.from('lessons').select('id', { count: 'exact', head: true });
   if (search) {
     countQuery = countQuery.or(`title.ilike.%${search}%,content.ilike.%${search}%`);
   }
-  if (subjectId) {
-    countQuery = countQuery.eq('subject_id', subjectId);
+  if (classId) {
+    countQuery = countQuery.eq('class_id', classId);
+  }
+  if (isPublished !== undefined) {
+    countQuery = countQuery.eq('is_published', isPublished === 'true');
   }
   const { count: total, error: countError } = await countQuery;
   if (countError) throw countError;
@@ -23,15 +27,18 @@ const getAll = async (queryParams) => {
     .from('lessons')
     .select(`
       *,
-      subjects(name),
-      users!lessons_created_by_fkey(full_name)
+      classes(name),
+      profiles!lessons_created_by_fkey(full_name)
     `);
 
   if (search) {
     dataQuery = dataQuery.or(`title.ilike.%${search}%,content.ilike.%${search}%`);
   }
-  if (subjectId) {
-    dataQuery = dataQuery.eq('subject_id', subjectId);
+  if (classId) {
+    dataQuery = dataQuery.eq('class_id', classId);
+  }
+  if (isPublished !== undefined) {
+    dataQuery = dataQuery.eq('is_published', isPublished === 'true');
   }
 
   dataQuery = dataQuery
@@ -42,11 +49,11 @@ const getAll = async (queryParams) => {
   if (error) throw error;
 
   const rows = (data || []).map(row => {
-    const { subjects, users, ...rest } = row;
+    const { classes, profiles, ...rest } = row;
     return {
       ...rest,
-      subject_name: subjects?.name || null,
-      created_by_name: users?.full_name || null,
+      class_name: classes?.name || null,
+      created_by_name: profiles?.full_name || null,
     };
   });
 
@@ -61,8 +68,8 @@ const getById = async (id) => {
     .from('lessons')
     .select(`
       *,
-      subjects(name),
-      users!lessons_created_by_fkey(full_name)
+      classes(name),
+      profiles!lessons_created_by_fkey(full_name)
     `)
     .eq('id', id)
     .single();
@@ -72,37 +79,29 @@ const getById = async (id) => {
     throw error;
   }
 
-  const { subjects, users, ...rest } = data;
-  const lesson = {
+  const { classes, profiles, ...rest } = data;
+  return {
     ...rest,
-    subject_name: subjects?.name || null,
-    created_by_name: users?.full_name || null,
+    class_name: classes?.name || null,
+    created_by_name: profiles?.full_name || null,
   };
-
-  // Get attachments
-  const { data: attachments, error: attError } = await supabase
-    .from('lesson_attachments')
-    .select('*')
-    .eq('lesson_id', id)
-    .order('uploaded_at', { ascending: false });
-
-  if (attError) throw attError;
-  lesson.attachments = attachments || [];
-
-  return lesson;
 };
 
 const create = async (data) => {
-  const { title, subject_id, content, youtube_url, drive_url, order_index, created_by } = data;
+  const { title, class_id, content, content_type, file_url, youtube_url, drive_url, order_index, is_published, is_template, created_by } = data;
   const { data: row, error } = await supabase
     .from('lessons')
     .insert({
       title,
-      subject_id,
+      class_id,
       content,
+      content_type: content_type || 'text',
+      file_url,
       youtube_url,
       drive_url,
-      order_index,
+      order_index: order_index || 0,
+      is_published: is_published || false,
+      is_template: is_template || false,
       created_by,
     })
     .select()
@@ -113,15 +112,19 @@ const create = async (data) => {
 };
 
 const update = async (id, data) => {
-  const { title, subject_id, content, youtube_url, drive_url, order_index } = data;
+  const { title, class_id, content, content_type, file_url, youtube_url, drive_url, order_index, is_published, is_template } = data;
 
   const updateObj = {};
   if (title !== undefined) updateObj.title = title;
-  if (subject_id !== undefined) updateObj.subject_id = subject_id;
+  if (class_id !== undefined) updateObj.class_id = class_id;
   if (content !== undefined) updateObj.content = content;
+  if (content_type !== undefined) updateObj.content_type = content_type;
+  if (file_url !== undefined) updateObj.file_url = file_url;
   if (youtube_url !== undefined) updateObj.youtube_url = youtube_url;
   if (drive_url !== undefined) updateObj.drive_url = drive_url;
   if (order_index !== undefined) updateObj.order_index = order_index;
+  if (is_published !== undefined) updateObj.is_published = is_published;
+  if (is_template !== undefined) updateObj.is_template = is_template;
   updateObj.updated_at = new Date().toISOString();
 
   const { data: row, error } = await supabase
@@ -153,37 +156,4 @@ const remove = async (id) => {
   return data;
 };
 
-const addAttachment = async (lessonId, fileData) => {
-  const { file_name, file_url, file_type, file_size } = fileData;
-  const { data, error } = await supabase
-    .from('lesson_attachments')
-    .insert({
-      lesson_id: lessonId,
-      file_name,
-      file_url,
-      file_type,
-      file_size,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-};
-
-const removeAttachment = async (attachmentId) => {
-  const { data, error } = await supabase
-    .from('lesson_attachments')
-    .delete()
-    .eq('id', attachmentId)
-    .select()
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null;
-    throw error;
-  }
-  return data;
-};
-
-module.exports = { getAll, getById, create, update, remove, addAttachment, removeAttachment };
+module.exports = { getAll, getById, create, update, remove };

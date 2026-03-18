@@ -44,24 +44,34 @@ export default function AssignmentList() {
   const columns = [
     { key: 'title', label: 'Tiêu đề' },
     {
-      key: 'subject',
-      label: 'Môn học',
-      accessor: (row) => row.subject?.name || row.subjectName || '—',
+      key: 'class',
+      label: 'Lớp học',
+      accessor: (row) => row.class?.name || '—',
     },
     {
-      key: 'type',
+      key: 'assignment_type',
       label: 'Loại',
-      render: (row) => <TypeBadge type={row.type} />,
+      render: (row) => <TypeBadge type={row.assignment_type} />,
     },
     {
       key: 'total_points',
       label: 'Tổng điểm',
-      accessor: (row) => row.total_points ?? row.totalPoints ?? '—',
+      accessor: (row) => row.total_points ?? '—',
     },
     {
-      key: 'createdAt',
-      label: 'Ngày tạo',
-      accessor: (row) => formatDate(row.createdAt),
+      key: 'due_date',
+      label: 'Hạn nộp',
+      accessor: (row) => formatDate(row.due_date) || '—',
+    },
+    {
+      key: 'is_published',
+      label: 'Xuất bản',
+      render: (row) => (
+        <StatusBadge
+          status={row.is_published ? 'active' : 'inactive'}
+          label={row.is_published ? 'Đã xuất bản' : 'Nháp'}
+        />
+      ),
     },
   ]
 
@@ -72,7 +82,7 @@ export default function AssignmentList() {
   const confirmDelete = async () => {
     setDeleting(true)
     try {
-      await assignmentsService.delete(selected._id || selected.id)
+      await assignmentsService.delete(selected.id)
       success('Xóa bài tập thành công')
       reload()
     } catch (err) {
@@ -87,9 +97,10 @@ export default function AssignmentList() {
   const handleExport = () => {
     const exportCols = [
       { key: 'title', header: 'Tiêu đề' },
-      { key: 'subject', header: 'Môn học', accessor: (r) => r.subject?.name || '' },
-      { key: 'type', header: 'Loại' },
+      { key: 'class', header: 'Lớp học', accessor: (r) => r.class?.name || '' },
+      { key: 'assignment_type', header: 'Loại' },
       { key: 'total_points', header: 'Tổng điểm' },
+      { key: 'due_date', header: 'Hạn nộp', accessor: (r) => formatDate(r.due_date) || '' },
     ]
     exportToExcel(assignmentList, exportCols, 'danh-sach-bai-tap')
   }

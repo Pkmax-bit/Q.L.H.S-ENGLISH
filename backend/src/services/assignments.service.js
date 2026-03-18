@@ -3,21 +3,25 @@ const { parsePagination, buildPaginationResponse } = require('../utils/paginatio
 
 const getAll = async (queryParams) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
-  const allowedSort = ['title', 'type', 'total_points', 'created_at'];
+  const allowedSort = ['title', 'assignment_type', 'total_points', 'due_date', 'created_at'];
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
-  const subjectId = queryParams.subject_id || null;
-  const typeFilter = queryParams.type || null;
+  const classId = queryParams.class_id || null;
+  const typeFilter = queryParams.assignment_type || null;
+  const isPublished = queryParams.is_published;
 
   // Count query
   let countQuery = supabase.from('assignments').select('id', { count: 'exact', head: true });
   if (search) {
-    countQuery = countQuery.or(`title.ilike.%${search}%,content.ilike.%${search}%`);
+    countQuery = countQuery.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
   }
-  if (subjectId) {
-    countQuery = countQuery.eq('subject_id', subjectId);
+  if (classId) {
+    countQuery = countQuery.eq('class_id', classId);
   }
   if (typeFilter) {
-    countQuery = countQuery.eq('type', typeFilter);
+    countQuery = countQuery.eq('assignment_type', typeFilter);
+  }
+  if (isPublished !== undefined) {
+    countQuery = countQuery.eq('is_published', isPublished === 'true');
   }
   const { count: total, error: countError } = await countQuery;
   if (countError) throw countError;
@@ -27,18 +31,22 @@ const getAll = async (queryParams) => {
     .from('assignments')
     .select(`
       *,
-      subjects(name),
-      users!assignments_created_by_fkey(full_name)
+      classes(name),
+      lessons(title),
+      profiles!assignments_created_by_fkey(full_name)
     `);
 
   if (search) {
-    dataQuery = dataQuery.or(`title.ilike.%${search}%,content.ilike.%${search}%`);
+    dataQuery = dataQuery.or(`title.ilike.%${search}%,description.ilike.%${search}%`);
   }
-  if (subjectId) {
-    dataQuery = dataQuery.eq('subject_id', subjectId);
+  if (classId) {
+    dataQuery = dataQuery.eq('class_id', classId);
   }
   if (typeFilter) {
-    dataQuery = dataQuery.eq('type', typeFilter);
+    dataQuery = dataQuery.eq('assignment_type', typeFilter);
+  }
+  if (isPublished !== undefined) {
+    dataQuery = dataQuery.eq('is_published', isPublished === 'true');
   }
 
   dataQuery = dataQuery
@@ -64,11 +72,12 @@ const getAll = async (queryParams) => {
   }
 
   const rows = (data || []).map(row => {
-    const { subjects, users, ...rest } = row;
+    const { classes, lessons, profiles, ...rest } = row;
     return {
       ...rest,
-      subject_name: subjects?.name || null,
-      created_by_name: users?.full_name || null,
+      class_name: classes?.name || null,
+      lesson_title: lessons?.title || null,
+      created_by_name: profiles?.full_name || null,
       question_count: questionCounts[row.id] || 0,
     };
   });
@@ -84,8 +93,9 @@ const getById = async (id) => {
     .from('assignments')
     .select(`
       *,
-      subjects(name),
-      users!assignments_created_by_fkey(full_name)
+      classes(name),
+      lessons(title),
+      profiles!assignments_created_by_fkey(full_name)
     `)
     .eq('id', id)
     .single();
@@ -95,14 +105,15 @@ const getById = async (id) => {
     throw error;
   }
 
-  const { subjects, users, ...rest } = data;
+  const { classes, lessons, profiles, ...rest } = data;
   const assignment = {
     ...rest,
-    subject_name: subjects?.name || null,
-    created_by_name: users?.full_name || null,
+    class_name: classes?.name || null,
+    lesson_title: lessons?.title || null,
+    created_by_name: profiles?.full_name || null,
   };
 
-  // Get questions
+  // Get questions — options are stored as JSONB in assignment_questions.options
   const { data: questions, error: qError } = await supabase
     .from('assignment_questions')
     .select('*')
@@ -110,54 +121,26 @@ const getById = async (id) => {
     .order('order_index', { ascending: true });
   if (qError) throw qError;
 
-  // Get options for each question
-  const questionIds = (questions || []).map(q => q.id);
-  let optionsByQuestion = {};
-  if (questionIds.length > 0) {
-    const { data: options, error: oError } = await supabase
-      .from('question_options')
-      .select('*')
-      .in('question_id', questionIds)
-      .order('order_index', { ascending: true });
-    if (oError) throw oError;
-
-    for (const opt of (options || [])) {
-      if (!optionsByQuestion[opt.question_id]) {
-        optionsByQuestion[opt.question_id] = [];
-      }
-      optionsByQuestion[opt.question_id].push(opt);
-    }
-  }
-
-  assignment.questions = (questions || []).map(q => ({
-    ...q,
-    options: optionsByQuestion[q.id] || [],
-  }));
-
-  // Get attachments
-  const { data: attachments, error: attError } = await supabase
-    .from('assignment_attachments')
-    .select('*')
-    .eq('assignment_id', id)
-    .order('uploaded_at', { ascending: false });
-  if (attError) throw attError;
-  assignment.attachments = attachments || [];
+  assignment.questions = questions || [];
 
   return assignment;
 };
 
 const create = async (data) => {
-  const { title, subject_id, type, content, youtube_url, drive_url, total_points, created_by } = data;
+  const { title, class_id, lesson_id, description, assignment_type, due_date, total_points, is_published, is_template, time_limit_minutes, created_by } = data;
   const { data: row, error } = await supabase
     .from('assignments')
     .insert({
       title,
-      subject_id,
-      type,
-      content,
-      youtube_url,
-      drive_url,
-      total_points,
+      class_id,
+      lesson_id,
+      description,
+      assignment_type: assignment_type || 'mixed',
+      due_date,
+      total_points: total_points || 100,
+      is_published: is_published || false,
+      is_template: is_template || false,
+      time_limit_minutes,
       created_by,
     })
     .select()
@@ -168,16 +151,19 @@ const create = async (data) => {
 };
 
 const update = async (id, data) => {
-  const { title, subject_id, type, content, youtube_url, drive_url, total_points } = data;
+  const { title, class_id, lesson_id, description, assignment_type, due_date, total_points, is_published, is_template, time_limit_minutes } = data;
 
   const updateObj = {};
   if (title !== undefined) updateObj.title = title;
-  if (subject_id !== undefined) updateObj.subject_id = subject_id;
-  if (type !== undefined) updateObj.type = type;
-  if (content !== undefined) updateObj.content = content;
-  if (youtube_url !== undefined) updateObj.youtube_url = youtube_url;
-  if (drive_url !== undefined) updateObj.drive_url = drive_url;
+  if (class_id !== undefined) updateObj.class_id = class_id;
+  if (lesson_id !== undefined) updateObj.lesson_id = lesson_id;
+  if (description !== undefined) updateObj.description = description;
+  if (assignment_type !== undefined) updateObj.assignment_type = assignment_type;
+  if (due_date !== undefined) updateObj.due_date = due_date;
   if (total_points !== undefined) updateObj.total_points = total_points;
+  if (is_published !== undefined) updateObj.is_published = is_published;
+  if (is_template !== undefined) updateObj.is_template = is_template;
+  if (time_limit_minutes !== undefined) updateObj.time_limit_minutes = time_limit_minutes;
   updateObj.updated_at = new Date().toISOString();
 
   const { data: row, error } = await supabase
@@ -210,15 +196,19 @@ const remove = async (id) => {
 };
 
 const addQuestion = async (assignmentId, data) => {
-  const { question_text, type, points, order_index } = data;
+  const { question_text, question_type, options, correct_answer, points, order_index, file_url, youtube_url } = data;
   const { data: row, error } = await supabase
     .from('assignment_questions')
     .insert({
       assignment_id: assignmentId,
       question_text,
-      type,
-      points,
-      order_index,
+      question_type,
+      options: options || null,
+      correct_answer,
+      points: points || 10,
+      order_index: order_index || 0,
+      file_url,
+      youtube_url,
     })
     .select()
     .single();
@@ -228,13 +218,17 @@ const addQuestion = async (assignmentId, data) => {
 };
 
 const updateQuestion = async (questionId, data) => {
-  const { question_text, type, points, order_index } = data;
+  const { question_text, question_type, options, correct_answer, points, order_index, file_url, youtube_url } = data;
 
   const updateObj = {};
   if (question_text !== undefined) updateObj.question_text = question_text;
-  if (type !== undefined) updateObj.type = type;
+  if (question_type !== undefined) updateObj.question_type = question_type;
+  if (options !== undefined) updateObj.options = options;
+  if (correct_answer !== undefined) updateObj.correct_answer = correct_answer;
   if (points !== undefined) updateObj.points = points;
   if (order_index !== undefined) updateObj.order_index = order_index;
+  if (file_url !== undefined) updateObj.file_url = file_url;
+  if (youtube_url !== undefined) updateObj.youtube_url = youtube_url;
 
   const { data: row, error } = await supabase
     .from('assignment_questions')
@@ -265,96 +259,7 @@ const removeQuestion = async (questionId) => {
   return data;
 };
 
-const addOption = async (questionId, data) => {
-  const { option_text, is_correct, order_index } = data;
-  const { data: row, error } = await supabase
-    .from('question_options')
-    .insert({
-      question_id: questionId,
-      option_text,
-      is_correct: is_correct || false,
-      order_index,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return row;
-};
-
-const updateOption = async (optionId, data) => {
-  const { option_text, is_correct, order_index } = data;
-
-  const updateObj = {};
-  if (option_text !== undefined) updateObj.option_text = option_text;
-  if (is_correct !== undefined) updateObj.is_correct = is_correct;
-  if (order_index !== undefined) updateObj.order_index = order_index;
-
-  const { data: row, error } = await supabase
-    .from('question_options')
-    .update(updateObj)
-    .eq('id', optionId)
-    .select()
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null;
-    throw error;
-  }
-  return row;
-};
-
-const removeOption = async (optionId) => {
-  const { data, error } = await supabase
-    .from('question_options')
-    .delete()
-    .eq('id', optionId)
-    .select('id')
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null;
-    throw error;
-  }
-  return data;
-};
-
-const addAttachment = async (assignmentId, fileData) => {
-  const { file_name, file_url, file_type, file_size } = fileData;
-  const { data, error } = await supabase
-    .from('assignment_attachments')
-    .insert({
-      assignment_id: assignmentId,
-      file_name,
-      file_url,
-      file_type,
-      file_size,
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-};
-
-const removeAttachment = async (attachmentId) => {
-  const { data, error } = await supabase
-    .from('assignment_attachments')
-    .delete()
-    .eq('id', attachmentId)
-    .select()
-    .single();
-
-  if (error) {
-    if (error.code === 'PGRST116') return null;
-    throw error;
-  }
-  return data;
-};
-
 module.exports = {
   getAll, getById, create, update, remove,
   addQuestion, updateQuestion, removeQuestion,
-  addOption, updateOption, removeOption,
-  addAttachment, removeAttachment,
 };

@@ -60,36 +60,4 @@ const remove = async (req, res, next) => {
   }
 };
 
-const uploadAttachment = async (req, res, next) => {
-  try {
-    if (!req.file) {
-      return response.badRequest(res, 'No file uploaded');
-    }
-
-    const fileData = {
-      file_name: req.file.originalname,
-      file_url: `/uploads/${req.file.filename}`,
-      file_type: req.file.mimetype,
-      file_size: req.file.size,
-    };
-
-    const attachment = await lessonsService.addAttachment(req.params.id, fileData);
-    return response.created(res, attachment, 'Attachment uploaded successfully');
-  } catch (error) {
-    next(error);
-  }
-};
-
-const removeAttachment = async (req, res, next) => {
-  try {
-    const result = await lessonsService.removeAttachment(req.params.attachmentId);
-    if (!result) {
-      return response.notFound(res, 'Attachment not found');
-    }
-    return response.success(res, null, 'Attachment removed successfully');
-  } catch (error) {
-    next(error);
-  }
-};
-
-module.exports = { getAll, getById, create, update, remove, uploadAttachment, removeAttachment };
+module.exports = { getAll, getById, create, update, remove };

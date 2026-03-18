@@ -7,17 +7,20 @@ import QuestionBuilder from './QuestionBuilder'
 import { ToastContext } from '../../context/ToastContext'
 import { useFetch } from '../../hooks/useFetch'
 import assignmentsService from '../../services/assignments.service'
-import subjectsService from '../../services/subjects.service'
+import classesService from '../../services/classes.service'
+import lessonsService from '../../services/lessons.service'
 import { validateForm, required } from '../../utils/validators'
+import { toInputDate } from '../../utils/formatDate'
 
 const initialForm = {
   title: '',
-  subjectId: '',
-  type: 'essay',
-  content: '',
-  youtube_url: '',
-  drive_url: '',
+  class_id: '',
+  lesson_id: '',
+  assignment_type: 'essay',
   total_points: '',
+  due_date: '',
+  is_published: false,
+  time_limit_minutes: '',
   questions: [],
 }
 
@@ -28,21 +31,31 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess 
   const { success, error: showError } = useContext(ToastContext)
   const isEdit = !!assignment
 
-  const fetchSubjects = useCallback(() => subjectsService.getAll(), [])
-  const { data: subjectsData } = useFetch(fetchSubjects)
-  const subjects = Array.isArray(subjectsData) ? subjectsData : subjectsData?.subjects || []
-  const subjectOptions = subjects.map((s) => ({ value: s._id || s.id, label: s.name }))
+  const fetchClasses = useCallback(() => classesService.getAll(), [])
+  const { data: classesData } = useFetch(fetchClasses)
+  const classes = Array.isArray(classesData) ? classesData : classesData?.classes || []
+  const classOptions = classes.map((c) => ({ value: c.id, label: c.name }))
+
+  const fetchLessons = useCallback(() => lessonsService.getAll(), [])
+  const { data: lessonsData } = useFetch(fetchLessons)
+  const lessons = Array.isArray(lessonsData) ? lessonsData : lessonsData?.lessons || []
+  // Filter lessons by selected class if possible
+  const filteredLessons = form.class_id
+    ? lessons.filter((l) => l.class_id === form.class_id || l.class?.id === form.class_id)
+    : lessons
+  const lessonOptions = filteredLessons.map((l) => ({ value: l.id, label: l.title }))
 
   useEffect(() => {
     if (assignment) {
       setForm({
         title: assignment.title || '',
-        subjectId: assignment.subjectId || assignment.subject?._id || assignment.subject?.id || '',
-        type: assignment.type || 'essay',
-        content: assignment.content || '',
-        youtube_url: assignment.youtube_url || assignment.youtubeUrl || '',
-        drive_url: assignment.drive_url || assignment.driveUrl || '',
-        total_points: assignment.total_points ?? assignment.totalPoints ?? '',
+        class_id: assignment.class_id || assignment.class?.id || '',
+        lesson_id: assignment.lesson_id || assignment.lesson?.id || '',
+        assignment_type: assignment.assignment_type || 'essay',
+        total_points: assignment.total_points ?? '',
+        due_date: toInputDate(assignment.due_date) || '',
+        is_published: assignment.is_published || false,
+        time_limit_minutes: assignment.time_limit_minutes ?? '',
         questions: assignment.questions || [],
       })
     } else {
@@ -52,15 +65,15 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess 
   }, [assignment, isOpen])
 
   const handleChange = (e) => {
-    const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
+    const { name, value, type, checked } = e.target
+    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }))
   }
 
   const validate = () => {
     return validateForm({
       title: [() => required(form.title, 'Tiêu đề')],
-      subjectId: [() => required(form.subjectId, 'Môn học')],
+      class_id: [() => required(form.class_id, 'Lớp học')],
     })
   }
 
@@ -75,9 +88,11 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess 
       const payload = {
         ...form,
         total_points: form.total_points !== '' ? Number(form.total_points) : undefined,
+        time_limit_minutes: form.time_limit_minutes !== '' ? Number(form.time_limit_minutes) : undefined,
+        lesson_id: form.lesson_id || undefined,
       }
       if (isEdit) {
-        await assignmentsService.update(assignment._id || assignment.id, payload)
+        await assignmentsService.update(assignment.id, payload)
         success('Cập nhật bài tập thành công')
       } else {
         await assignmentsService.create(payload)
@@ -120,19 +135,27 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess 
             required
           />
           <Select
-            label="Môn học"
-            name="subjectId"
-            value={form.subjectId}
+            label="Lớp học"
+            name="class_id"
+            value={form.class_id}
             onChange={handleChange}
-            options={subjectOptions}
-            placeholder="Chọn môn học"
-            error={errors.subjectId}
+            options={classOptions}
+            placeholder="Chọn lớp học"
+            error={errors.class_id}
             required
           />
           <Select
+            label="Bài học (tùy chọn)"
+            name="lesson_id"
+            value={form.lesson_id}
+            onChange={handleChange}
+            options={lessonOptions}
+            placeholder="Chọn bài học"
+          />
+          <Select
             label="Loại bài tập"
-            name="type"
-            value={form.type}
+            name="assignment_type"
+            value={form.assignment_type}
             onChange={handleChange}
             options={[
               { value: 'essay', label: 'Tự luận' },
@@ -149,29 +172,34 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess 
             placeholder="100"
           />
           <Input
-            label="YouTube URL"
-            name="youtube_url"
-            value={form.youtube_url}
+            label="Hạn nộp"
+            name="due_date"
+            type="date"
+            value={form.due_date}
             onChange={handleChange}
-            placeholder="https://youtube.com/watch?v=..."
           />
           <Input
-            label="Google Drive URL"
-            name="drive_url"
-            value={form.drive_url}
+            label="Thời gian làm bài (phút)"
+            name="time_limit_minutes"
+            type="number"
+            value={form.time_limit_minutes}
             onChange={handleChange}
-            placeholder="https://drive.google.com/..."
+            placeholder="60"
           />
         </div>
-        <Input
-          label="Nội dung / Hướng dẫn"
-          name="content"
-          type="textarea"
-          value={form.content}
-          onChange={handleChange}
-          placeholder="Mô tả bài tập, hướng dẫn làm bài..."
-          rows={3}
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="is_published"
+            name="is_published"
+            checked={form.is_published}
+            onChange={handleChange}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <label htmlFor="is_published" className="text-sm text-gray-700">
+            Đã xuất bản
+          </label>
+        </div>
 
         {/* Question builder */}
         <div className="pt-4 border-t border-gray-100">

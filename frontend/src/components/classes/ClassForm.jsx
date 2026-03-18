@@ -6,20 +6,18 @@ import Button from '../common/Button'
 import { ToastContext } from '../../context/ToastContext'
 import { useFetch } from '../../hooks/useFetch'
 import classesService from '../../services/classes.service'
-import subjectsService from '../../services/subjects.service'
 import teachersService from '../../services/teachers.service'
 import { validateForm, required, positiveNumber } from '../../utils/validators'
 import { toInputDate } from '../../utils/formatDate'
 
 const initialForm = {
   name: '',
-  subjectId: '',
-  teacherId: '',
-  maxStudents: '',
+  teacher_id: '',
+  max_students: '',
   status: 'active',
-  startDate: '',
-  endDate: '',
-  notes: '',
+  start_date: '',
+  end_date: '',
+  description: '',
 }
 
 export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
@@ -29,28 +27,22 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
   const { success, error: showError } = useContext(ToastContext)
   const isEdit = !!classData
 
-  const fetchSubjects = useCallback(() => subjectsService.getAll(), [])
   const fetchTeachers = useCallback(() => teachersService.getAll(), [])
-  const { data: subjectsData } = useFetch(fetchSubjects)
   const { data: teachersData } = useFetch(fetchTeachers)
 
-  const subjects = Array.isArray(subjectsData) ? subjectsData : subjectsData?.subjects || []
   const teachers = Array.isArray(teachersData) ? teachersData : teachersData?.teachers || []
-
-  const subjectOptions = subjects.map((s) => ({ value: s._id || s.id, label: s.name }))
-  const teacherOptions = teachers.map((t) => ({ value: t._id || t.id, label: t.name }))
+  const teacherOptions = teachers.map((t) => ({ value: t.id, label: t.full_name }))
 
   useEffect(() => {
     if (classData) {
       setForm({
         name: classData.name || '',
-        subjectId: classData.subjectId || classData.subject?._id || classData.subject?.id || '',
-        teacherId: classData.teacherId || classData.teacher?._id || classData.teacher?.id || '',
-        maxStudents: classData.maxStudents ?? '',
+        teacher_id: classData.teacher_id || classData.teacher?.id || '',
+        max_students: classData.max_students ?? '',
         status: classData.status || 'active',
-        startDate: toInputDate(classData.startDate) || '',
-        endDate: toInputDate(classData.endDate) || '',
-        notes: classData.notes || '',
+        start_date: toInputDate(classData.start_date) || '',
+        end_date: toInputDate(classData.end_date) || '',
+        description: classData.description || '',
       })
     } else {
       setForm(initialForm)
@@ -67,8 +59,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
   const validate = () => {
     return validateForm({
       name: [() => required(form.name, 'Tên lớp')],
-      subjectId: [() => required(form.subjectId, 'Môn học')],
-      maxStudents: [() => positiveNumber(form.maxStudents, 'Sĩ số tối đa')],
+      max_students: [() => positiveNumber(form.max_students, 'Sĩ số tối đa')],
     })
   }
 
@@ -82,10 +73,11 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
     try {
       const payload = {
         ...form,
-        maxStudents: form.maxStudents ? Number(form.maxStudents) : undefined,
+        max_students: form.max_students ? Number(form.max_students) : undefined,
+        teacher_id: form.teacher_id || undefined,
       }
       if (isEdit) {
-        await classesService.update(classData._id || classData.id, payload)
+        await classesService.update(classData.id, payload)
         success('Cập nhật lớp học thành công')
       } else {
         await classesService.create(payload)
@@ -128,30 +120,20 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             required
           />
           <Select
-            label="Môn học"
-            name="subjectId"
-            value={form.subjectId}
-            onChange={handleChange}
-            options={subjectOptions}
-            placeholder="Chọn môn học"
-            error={errors.subjectId}
-            required
-          />
-          <Select
-            label="Giáo viên chủ nhiệm"
-            name="teacherId"
-            value={form.teacherId}
+            label="Giáo viên"
+            name="teacher_id"
+            value={form.teacher_id}
             onChange={handleChange}
             options={teacherOptions}
             placeholder="Chọn giáo viên"
           />
           <Input
             label="Sĩ số tối đa"
-            name="maxStudents"
+            name="max_students"
             type="number"
-            value={form.maxStudents}
+            value={form.max_students}
             onChange={handleChange}
-            error={errors.maxStudents}
+            error={errors.max_students}
             placeholder="30"
           />
           <Select
@@ -167,26 +149,26 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
           />
           <Input
             label="Ngày bắt đầu"
-            name="startDate"
+            name="start_date"
             type="date"
-            value={form.startDate}
+            value={form.start_date}
             onChange={handleChange}
           />
           <Input
             label="Ngày kết thúc"
-            name="endDate"
+            name="end_date"
             type="date"
-            value={form.endDate}
+            value={form.end_date}
             onChange={handleChange}
           />
         </div>
         <Input
-          label="Ghi chú"
-          name="notes"
+          label="Mô tả"
+          name="description"
           type="textarea"
-          value={form.notes}
+          value={form.description}
           onChange={handleChange}
-          placeholder="Ghi chú thêm..."
+          placeholder="Mô tả lớp học..."
           rows={3}
         />
       </form>

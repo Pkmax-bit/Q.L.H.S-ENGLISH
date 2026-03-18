@@ -1,22 +1,21 @@
 import { useState, useEffect, useCallback, useContext } from 'react'
 import Modal from '../common/Modal'
 import StatusBadge from '../common/StatusBadge'
-import Button from '../common/Button'
 import LoadingSpinner from '../common/LoadingSpinner'
 import ClassStudentManager from './ClassStudentManager'
 import { useFetch } from '../../hooks/useFetch'
 import { ToastContext } from '../../context/ToastContext'
 import classesService from '../../services/classes.service'
 import { formatDate } from '../../utils/formatDate'
-import { Calendar, Users, BookOpen, User, FileText } from 'lucide-react'
+import { Calendar, Users, User, FileText } from 'lucide-react'
 
 export default function ClassDetail({ isOpen, onClose, classData }) {
   const [activeTab, setActiveTab] = useState('info')
   const { success, error: showError } = useContext(ToastContext)
 
   const fetchStudents = useCallback(() => {
-    if (classData?._id || classData?.id) {
-      return classesService.getStudents(classData._id || classData.id)
+    if (classData?.id) {
+      return classesService.getStudents(classData.id)
     }
     return Promise.resolve({ data: [] })
   }, [classData])
@@ -24,7 +23,7 @@ export default function ClassDetail({ isOpen, onClose, classData }) {
   const { data: studentsData, loading: studentsLoading, execute: reloadStudents } = useFetch(
     fetchStudents,
     [classData],
-    !!(classData?._id || classData?.id)
+    !!(classData?.id)
   )
 
   const students = Array.isArray(studentsData) ? studentsData : studentsData?.students || []
@@ -68,40 +67,34 @@ export default function ClassDetail({ isOpen, onClose, classData }) {
 
           <div className="space-y-3">
             <div className="flex items-center gap-3 text-sm">
-              <BookOpen className="h-4 w-4 text-gray-400" />
-              <span className="text-gray-700">
-                Môn học: {classData.subject?.name || classData.subjectName || '—'}
-              </span>
-            </div>
-            <div className="flex items-center gap-3 text-sm">
               <User className="h-4 w-4 text-gray-400" />
               <span className="text-gray-700">
-                Giáo viên: {classData.teacher?.name || classData.teacherName || '—'}
+                Giáo viên: {classData.teacher?.full_name || '—'}
               </span>
             </div>
             <div className="flex items-center gap-3 text-sm">
               <Users className="h-4 w-4 text-gray-400" />
               <span className="text-gray-700">
-                Sĩ số: {classData.studentCount ?? students.length ?? 0}
-                {classData.maxStudents ? ` / ${classData.maxStudents}` : ''}
+                Sĩ số: {classData.student_count ?? students.length ?? 0}
+                {classData.max_students ? ` / ${classData.max_students}` : ''}
               </span>
             </div>
             <div className="flex items-center gap-3 text-sm">
               <Calendar className="h-4 w-4 text-gray-400" />
               <span className="text-gray-700">
-                Thời gian: {formatDate(classData.startDate) || '—'}
-                {classData.endDate ? ` — ${formatDate(classData.endDate)}` : ''}
+                Thời gian: {formatDate(classData.start_date) || '—'}
+                {classData.end_date ? ` — ${formatDate(classData.end_date)}` : ''}
               </span>
             </div>
           </div>
 
-          {classData.notes && (
+          {classData.description && (
             <div className="pt-3 border-t border-gray-100">
               <div className="flex items-center gap-2 mb-1">
                 <FileText className="h-4 w-4 text-gray-400" />
-                <p className="text-sm font-medium text-gray-600">Ghi chú</p>
+                <p className="text-sm font-medium text-gray-600">Mô tả</p>
               </div>
-              <p className="text-sm text-gray-700 whitespace-pre-wrap">{classData.notes}</p>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">{classData.description}</p>
             </div>
           )}
         </div>
@@ -109,7 +102,7 @@ export default function ClassDetail({ isOpen, onClose, classData }) {
 
       {activeTab === 'students' && (
         <ClassStudentManager
-          classId={classData._id || classData.id}
+          classId={classData.id}
           students={students}
           loading={studentsLoading}
           onReload={reloadStudents}

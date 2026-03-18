@@ -3,31 +3,35 @@ const { parsePagination, buildPaginationResponse } = require('../utils/paginatio
 
 const getAll = async (queryParams) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
-  const allowedSort = ['full_name', 'email', 'status', 'hire_date', 'created_at'];
+  const allowedSort = ['full_name', 'email', 'is_active', 'created_at'];
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
-  const statusFilter = queryParams.status || null;
+  const isActiveFilter = queryParams.is_active;
 
   // Count query
-  let countQuery = supabase.from('teachers').select('id', { count: 'exact', head: true });
+  let countQuery = supabase
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('role', 'teacher');
   if (search) {
-    countQuery = countQuery.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,specialization.ilike.%${search}%`);
+    countQuery = countQuery.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
   }
-  if (statusFilter) {
-    countQuery = countQuery.eq('status', statusFilter);
+  if (isActiveFilter !== undefined) {
+    countQuery = countQuery.eq('is_active', isActiveFilter === 'true');
   }
   const { count: total, error: countError } = await countQuery;
   if (countError) throw countError;
 
   // Data query
   let dataQuery = supabase
-    .from('teachers')
-    .select('*, users(email)');
+    .from('profiles')
+    .select('id, email, full_name, role, phone, avatar_url, is_active, created_at, updated_at')
+    .eq('role', 'teacher');
 
   if (search) {
-    dataQuery = dataQuery.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,specialization.ilike.%${search}%`);
+    dataQuery = dataQuery.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
   }
-  if (statusFilter) {
-    dataQuery = dataQuery.eq('status', statusFilter);
+  if (isActiveFilter !== undefined) {
+    dataQuery = dataQuery.eq('is_active', isActiveFilter === 'true');
   }
 
   dataQuery = dataQuery
@@ -37,50 +41,46 @@ const getAll = async (queryParams) => {
   const { data, error } = await dataQuery;
   if (error) throw error;
 
-  // Flatten user_email
-  const rows = (data || []).map(row => {
-    const { users, ...rest } = row;
-    return { ...rest, user_email: users?.email || null };
-  });
-
   return {
-    data: rows,
+    data: data || [],
     pagination: buildPaginationResponse(total || 0, page, limit),
   };
 };
 
 const getById = async (id) => {
   const { data, error } = await supabase
-    .from('teachers')
-    .select('*, users(email)')
+    .from('profiles')
+    .select('id, email, full_name, role, phone, avatar_url, is_active, created_at, updated_at')
     .eq('id', id)
+    .eq('role', 'teacher')
     .single();
 
   if (error) {
     if (error.code === 'PGRST116') return null;
     throw error;
   }
-
-  const { users, ...rest } = data;
-  return { ...rest, user_email: users?.email || null };
+  return data;
 };
 
 const create = async (data) => {
-  const { full_name, phone, email, specialization, status, salary, hire_date, notes, user_id } = data;
+  const bcrypt = require('bcryptjs');
+  const { full_name, phone, email, password, avatar_url } = data;
+
+  const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12;
+  const password_hash = await bcrypt.hash(password || 'changeme123', saltRounds);
+
   const { data: row, error } = await supabase
-    .from('teachers')
+    .from('profiles')
     .insert({
       full_name,
       phone,
       email,
-      specialization,
-      status: status || 'active',
-      salary,
-      hire_date,
-      notes,
-      user_id,
+      password_hash,
+      role: 'teacher',
+      avatar_url,
+      is_active: true,
     })
-    .select()
+    .select('id, email, full_name, role, phone, avatar_url, is_active, created_at, updated_at')
     .single();
 
   if (error) throw error;
@@ -88,25 +88,22 @@ const create = async (data) => {
 };
 
 const update = async (id, data) => {
-  const { full_name, phone, email, specialization, status, salary, hire_date, notes } = data;
+  const { full_name, phone, email, avatar_url, is_active } = data;
 
-  // Build update object with only provided fields (COALESCE equivalent)
   const updateObj = {};
   if (full_name !== undefined) updateObj.full_name = full_name;
   if (phone !== undefined) updateObj.phone = phone;
   if (email !== undefined) updateObj.email = email;
-  if (specialization !== undefined) updateObj.specialization = specialization;
-  if (status !== undefined) updateObj.status = status;
-  if (salary !== undefined) updateObj.salary = salary;
-  if (hire_date !== undefined) updateObj.hire_date = hire_date;
-  if (notes !== undefined) updateObj.notes = notes;
+  if (avatar_url !== undefined) updateObj.avatar_url = avatar_url;
+  if (is_active !== undefined) updateObj.is_active = is_active;
   updateObj.updated_at = new Date().toISOString();
 
   const { data: row, error } = await supabase
-    .from('teachers')
+    .from('profiles')
     .update(updateObj)
     .eq('id', id)
-    .select()
+    .eq('role', 'teacher')
+    .select('id, email, full_name, role, phone, avatar_url, is_active, created_at, updated_at')
     .single();
 
   if (error) {
@@ -118,9 +115,10 @@ const update = async (id, data) => {
 
 const remove = async (id) => {
   const { data, error } = await supabase
-    .from('teachers')
+    .from('profiles')
     .delete()
     .eq('id', id)
+    .eq('role', 'teacher')
     .select('id')
     .single();
 
@@ -132,54 +130,59 @@ const remove = async (id) => {
 };
 
 const getClasses = async (teacherId) => {
+  // In the new schema, classes.teacher_id points directly to profiles
   const { data, error } = await supabase
-    .from('class_teachers')
+    .from('classes')
     .select(`
-      role,
-      classes(
-        *,
-        subjects(name)
-      )
+      *,
+      subjects(name, code)
     `)
     .eq('teacher_id', teacherId);
 
   if (error) throw error;
 
-  // Flatten the result
   return (data || []).map(row => {
-    const cls = row.classes || {};
+    const { subjects, ...rest } = row;
     return {
-      ...cls,
-      teacher_role: row.role,
-      subject_name: cls.subjects?.name || null,
+      ...rest,
+      subject_name: subjects?.name || null,
+      subject_code: subjects?.code || null,
     };
   });
 };
 
 const getSchedule = async (teacherId) => {
+  // Get schedules for classes where this teacher is assigned
+  const { data: classes, error: classError } = await supabase
+    .from('classes')
+    .select('id')
+    .eq('teacher_id', teacherId);
+
+  if (classError) throw classError;
+
+  const classIds = (classes || []).map(c => c.id);
+  if (classIds.length === 0) return [];
+
   const { data, error } = await supabase
-    .from('schedule_slots')
+    .from('schedules')
     .select(`
       *,
-      schedules!inner(name, is_active, classes(name)),
-      rooms(name),
-      subjects(name)
+      classes(name),
+      facilities(name)
     `)
-    .eq('teacher_id', teacherId)
-    .eq('schedules.is_active', true)
+    .in('class_id', classIds)
+    .eq('is_active', true)
     .order('day_of_week', { ascending: true })
     .order('start_time', { ascending: true });
 
   if (error) throw error;
 
   return (data || []).map(row => {
-    const { schedules, rooms, subjects, ...rest } = row;
+    const { classes, facilities, ...rest } = row;
     return {
       ...rest,
-      schedule_name: schedules?.name || null,
-      room_name: rooms?.name || null,
-      subject_name: subjects?.name || null,
-      class_name: schedules?.classes?.name || null,
+      class_name: classes?.name || null,
+      room_name: facilities?.name || null,
     };
   });
 };
@@ -188,12 +191,13 @@ const getAllForExport = async (queryParams) => {
   const { search } = parsePagination(queryParams);
 
   let query = supabase
-    .from('teachers')
-    .select('full_name, email, phone, specialization, status, salary, hire_date')
+    .from('profiles')
+    .select('full_name, email, phone, is_active, created_at')
+    .eq('role', 'teacher')
     .order('full_name', { ascending: true });
 
   if (search) {
-    query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,specialization.ilike.%${search}%`);
+    query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`);
   }
 
   const { data, error } = await query;

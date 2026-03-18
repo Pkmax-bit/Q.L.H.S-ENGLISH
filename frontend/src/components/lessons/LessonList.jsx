@@ -2,6 +2,7 @@ import { useState, useContext, useCallback } from 'react'
 import { Plus, Download } from 'lucide-react'
 import Table from '../common/Table'
 import Button from '../common/Button'
+import StatusBadge from '../common/StatusBadge'
 import ConfirmDialog from '../common/ConfirmDialog'
 import LessonForm from './LessonForm'
 import LessonDetail from './LessonDetail'
@@ -10,6 +11,12 @@ import { useExcelExport } from '../../hooks/useExcelExport'
 import { ToastContext } from '../../context/ToastContext'
 import lessonsService from '../../services/lessons.service'
 import { formatDate } from '../../utils/formatDate'
+
+const contentTypeMap = {
+  text: 'Văn bản',
+  video: 'Video',
+  file: 'Tệp tin',
+}
 
 export default function LessonList() {
   const [showForm, setShowForm] = useState(false)
@@ -28,15 +35,30 @@ export default function LessonList() {
   const columns = [
     { key: 'title', label: 'Tiêu đề' },
     {
-      key: 'subject',
-      label: 'Môn học',
-      accessor: (row) => row.subject?.name || row.subjectName || '—',
+      key: 'class',
+      label: 'Lớp học',
+      accessor: (row) => row.class?.name || '—',
     },
-    { key: 'order_index', label: 'Thứ tự', accessor: (row) => row.order_index ?? row.orderIndex ?? '—' },
     {
-      key: 'createdAt',
+      key: 'content_type',
+      label: 'Loại nội dung',
+      accessor: (row) => contentTypeMap[row.content_type] || row.content_type || '—',
+    },
+    { key: 'order_index', label: 'Thứ tự', accessor: (row) => row.order_index ?? '—' },
+    {
+      key: 'is_published',
+      label: 'Xuất bản',
+      render: (row) => (
+        <StatusBadge
+          status={row.is_published ? 'active' : 'inactive'}
+          label={row.is_published ? 'Đã xuất bản' : 'Nháp'}
+        />
+      ),
+    },
+    {
+      key: 'created_at',
       label: 'Ngày tạo',
-      accessor: (row) => formatDate(row.createdAt),
+      accessor: (row) => formatDate(row.created_at),
     },
   ]
 
@@ -47,7 +69,7 @@ export default function LessonList() {
   const confirmDelete = async () => {
     setDeleting(true)
     try {
-      await lessonsService.delete(selected._id || selected.id)
+      await lessonsService.delete(selected.id)
       success('Xóa bài học thành công')
       reload()
     } catch (err) {
@@ -62,8 +84,10 @@ export default function LessonList() {
   const handleExport = () => {
     const exportCols = [
       { key: 'title', header: 'Tiêu đề' },
-      { key: 'subject', header: 'Môn học', accessor: (r) => r.subject?.name || '' },
+      { key: 'class', header: 'Lớp học', accessor: (r) => r.class?.name || '' },
+      { key: 'content_type', header: 'Loại nội dung', accessor: (r) => contentTypeMap[r.content_type] || '' },
       { key: 'order_index', header: 'Thứ tự' },
+      { key: 'is_published', header: 'Xuất bản', accessor: (r) => r.is_published ? 'Có' : 'Không' },
     ]
     exportToExcel(lessonList, exportCols, 'danh-sach-bai-hoc')
   }

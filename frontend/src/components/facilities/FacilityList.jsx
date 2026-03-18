@@ -11,6 +11,12 @@ import { useExcelExport } from '../../hooks/useExcelExport'
 import { ToastContext } from '../../context/ToastContext'
 import facilitiesService from '../../services/facilities.service'
 
+const typeLabels = {
+  building: 'Tòa nhà',
+  classroom: 'Phòng học',
+  lab: 'Phòng thí nghiệm',
+}
+
 export default function FacilityList() {
   const [showForm, setShowForm] = useState(false)
   const [showRooms, setShowRooms] = useState(false)
@@ -25,10 +31,18 @@ export default function FacilityList() {
 
   const facilityList = Array.isArray(facilities) ? facilities : facilities?.facilities || []
 
+  // Show top-level (no parent) facilities in the main list
+  const topLevel = facilityList.filter((f) => !f.parent_id)
+
   const columns = [
     { key: 'name', label: 'Tên cơ sở' },
-    { key: 'address', label: 'Địa chỉ' },
-    { key: 'phone', label: 'Số điện thoại' },
+    {
+      key: 'type',
+      label: 'Loại',
+      accessor: (row) => typeLabels[row.type] || row.type || '—',
+    },
+    { key: 'capacity', label: 'Sức chứa', accessor: (row) => row.capacity ?? '—' },
+    { key: 'equipment', label: 'Trang thiết bị', accessor: (row) => row.equipment || '—' },
     {
       key: 'status',
       label: 'Trạng thái',
@@ -43,7 +57,7 @@ export default function FacilityList() {
   const confirmDelete = async () => {
     setDeleting(true)
     try {
-      await facilitiesService.delete(selected._id || selected.id)
+      await facilitiesService.delete(selected.id)
       success('Xóa cơ sở thành công')
       reload()
     } catch (err) {
@@ -58,11 +72,12 @@ export default function FacilityList() {
   const handleExport = () => {
     const exportCols = [
       { key: 'name', header: 'Tên cơ sở' },
-      { key: 'address', header: 'Địa chỉ' },
-      { key: 'phone', header: 'Số điện thoại' },
+      { key: 'type', header: 'Loại', accessor: (r) => typeLabels[r.type] || r.type || '' },
+      { key: 'capacity', header: 'Sức chứa' },
+      { key: 'equipment', header: 'Trang thiết bị' },
       { key: 'status', header: 'Trạng thái' },
     ]
-    exportToExcel(facilityList, exportCols, 'danh-sach-co-so')
+    exportToExcel(topLevel, exportCols, 'danh-sach-co-so')
   }
 
   return (
@@ -84,7 +99,7 @@ export default function FacilityList() {
 
       <Table
         columns={columns}
-        data={facilityList}
+        data={topLevel}
         loading={loading}
         onEdit={handleEdit}
         onDelete={handleDelete}
@@ -95,7 +110,7 @@ export default function FacilityList() {
           <button
             onClick={() => { setSelected(item); setShowRooms(true) }}
             className="p-1.5 rounded-lg hover:bg-purple-100 text-purple-500 transition-colors"
-            title="Quản lý phòng học"
+            title="Quản lý phòng"
           >
             <Building2 className="h-4 w-4" />
           </button>
@@ -113,6 +128,8 @@ export default function FacilityList() {
         isOpen={showRooms}
         onClose={() => { setShowRooms(false); setSelected(null) }}
         facility={selected}
+        allFacilities={facilityList}
+        onReload={reload}
       />
 
       <ConfirmDialog
@@ -121,7 +138,7 @@ export default function FacilityList() {
         onConfirm={confirmDelete}
         loading={deleting}
         title="Xóa cơ sở"
-        message={`Bạn có chắc chắn muốn xóa cơ sở "${selected?.name}"? Tất cả phòng học trong cơ sở cũng sẽ bị xóa.`}
+        message={`Bạn có chắc chắn muốn xóa cơ sở "${selected?.name}"? Tất cả phòng con cũng sẽ bị xóa.`}
       />
     </div>
   )

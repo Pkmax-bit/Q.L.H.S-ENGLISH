@@ -99,8 +99,8 @@ function SortableQuestion({ question, index, onUpdate, onRemove }) {
           <div className="grid grid-cols-2 gap-3">
             <Select
               label="Loại"
-              value={question.type || 'essay'}
-              onChange={(e) => handleChange('type', e.target.value)}
+              value={question.question_type || 'essay'}
+              onChange={(e) => handleChange('question_type', e.target.value)}
               options={[
                 { value: 'essay', label: 'Tự luận' },
                 { value: 'multiple_choice', label: 'Trắc nghiệm' },
@@ -115,8 +115,18 @@ function SortableQuestion({ question, index, onUpdate, onRemove }) {
             />
           </div>
 
-          {/* Options for multiple choice */}
-          {question.type === 'multiple_choice' && (
+          {/* Correct answer for essay */}
+          {question.question_type !== 'multiple_choice' && (
+            <Input
+              label="Đáp án"
+              value={question.correct_answer || ''}
+              onChange={(e) => handleChange('correct_answer', e.target.value)}
+              placeholder="Nhập đáp án..."
+            />
+          )}
+
+          {/* Options for multiple choice (JSONB array) */}
+          {question.question_type === 'multiple_choice' && (
             <div className="space-y-2">
               <p className="text-sm font-medium text-gray-600">Đáp án</p>
               {(question.options || []).map((opt, optIdx) => (
@@ -159,6 +169,22 @@ function SortableQuestion({ question, index, onUpdate, onRemove }) {
               </button>
             </div>
           )}
+
+          {/* File URL and YouTube URL */}
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="URL tệp tin"
+              value={question.file_url || ''}
+              onChange={(e) => handleChange('file_url', e.target.value)}
+              placeholder="https://example.com/file.pdf"
+            />
+            <Input
+              label="YouTube URL"
+              value={question.youtube_url || ''}
+              onChange={(e) => handleChange('youtube_url', e.target.value)}
+              placeholder="https://youtube.com/watch?v=..."
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -195,9 +221,12 @@ export default function QuestionBuilder({ questions = [], onChange }) {
     const newQ = {
       id: `q_${nextId++}`,
       text: '',
-      type: 'essay',
+      question_type: 'essay',
       points: '',
       options: [],
+      correct_answer: '',
+      file_url: '',
+      youtube_url: '',
     }
     onChange([...questionsWithIds, newQ])
   }

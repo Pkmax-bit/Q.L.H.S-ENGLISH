@@ -3,16 +3,25 @@ const { parsePagination, buildPaginationResponse } = require('../utils/paginatio
 
 const getAll = async (queryParams) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
-  const allowedSort = ['name', 'created_at'];
+  const allowedSort = ['name', 'type', 'capacity', 'status', 'created_at'];
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
+  const typeFilter = queryParams.type || null;
+  const statusFilter = queryParams.status || null;
+  const parentId = queryParams.parent_id || null;
 
   // Count query
   let countQuery = supabase.from('facilities').select('id', { count: 'exact', head: true });
   if (search) {
-    countQuery = countQuery.or(`name.ilike.%${search}%,address.ilike.%${search}%,phone.ilike.%${search}%`);
+    countQuery = countQuery.or(`name.ilike.%${search}%,address.ilike.%${search}%,equipment.ilike.%${search}%`);
   }
-  if (queryParams.is_active !== undefined) {
-    countQuery = countQuery.eq('is_active', queryParams.is_active === 'true');
+  if (typeFilter) {
+    countQuery = countQuery.eq('type', typeFilter);
+  }
+  if (statusFilter) {
+    countQuery = countQuery.eq('status', statusFilter);
+  }
+  if (parentId) {
+    countQuery = countQuery.eq('parent_id', parentId);
   }
   const { count: total, error: countError } = await countQuery;
   if (countError) throw countError;
@@ -23,10 +32,16 @@ const getAll = async (queryParams) => {
     .select('*');
 
   if (search) {
-    dataQuery = dataQuery.or(`name.ilike.%${search}%,address.ilike.%${search}%,phone.ilike.%${search}%`);
+    dataQuery = dataQuery.or(`name.ilike.%${search}%,address.ilike.%${search}%,equipment.ilike.%${search}%`);
   }
-  if (queryParams.is_active !== undefined) {
-    dataQuery = dataQuery.eq('is_active', queryParams.is_active === 'true');
+  if (typeFilter) {
+    dataQuery = dataQuery.eq('type', typeFilter);
+  }
+  if (statusFilter) {
+    dataQuery = dataQuery.eq('status', statusFilter);
+  }
+  if (parentId) {
+    dataQuery = dataQuery.eq('parent_id', parentId);
   }
 
   dataQuery = dataQuery
@@ -36,24 +51,24 @@ const getAll = async (queryParams) => {
   const { data, error } = await dataQuery;
   if (error) throw error;
 
-  // Get room counts for these facilities
+  // Get child counts for these facilities (how many children each has)
   const facilityIds = (data || []).map(f => f.id);
-  let roomCounts = {};
+  let childCounts = {};
   if (facilityIds.length > 0) {
-    const { data: roomData, error: roomError } = await supabase
-      .from('rooms')
-      .select('facility_id')
-      .in('facility_id', facilityIds);
-    if (roomError) throw roomError;
+    const { data: childData, error: childError } = await supabase
+      .from('facilities')
+      .select('parent_id')
+      .in('parent_id', facilityIds);
+    if (childError) throw childError;
 
-    for (const row of (roomData || [])) {
-      roomCounts[row.facility_id] = (roomCounts[row.facility_id] || 0) + 1;
+    for (const row of (childData || [])) {
+      childCounts[row.parent_id] = (childCounts[row.parent_id] || 0) + 1;
     }
   }
 
   const rows = (data || []).map(row => ({
     ...row,
-    room_count: roomCounts[row.id] || 0,
+    child_count: childCounts[row.id] || 0,
   }));
 
   return {
@@ -74,25 +89,28 @@ const getById = async (id) => {
     throw error;
   }
 
-  // Get room count
+  // Get child count
   const { count, error: countError } = await supabase
-    .from('rooms')
+    .from('facilities')
     .select('id', { count: 'exact', head: true })
-    .eq('facility_id', id);
+    .eq('parent_id', id);
   if (countError) throw countError;
 
-  return { ...data, room_count: count || 0 };
+  return { ...data, child_count: count || 0 };
 };
 
 const create = async (data) => {
-  const { name, address, phone, is_active } = data;
+  const { name, type, parent_id, capacity, equipment, status, address } = data;
   const { data: row, error } = await supabase
     .from('facilities')
     .insert({
       name,
+      type: type || 'classroom',
+      parent_id,
+      capacity,
+      equipment,
+      status: status || 'available',
       address,
-      phone,
-      is_active: is_active !== undefined ? is_active : true,
     })
     .select()
     .single();
@@ -102,13 +120,16 @@ const create = async (data) => {
 };
 
 const update = async (id, data) => {
-  const { name, address, phone, is_active } = data;
+  const { name, type, parent_id, capacity, equipment, status, address } = data;
 
   const updateObj = {};
   if (name !== undefined) updateObj.name = name;
+  if (type !== undefined) updateObj.type = type;
+  if (parent_id !== undefined) updateObj.parent_id = parent_id;
+  if (capacity !== undefined) updateObj.capacity = capacity;
+  if (equipment !== undefined) updateObj.equipment = equipment;
+  if (status !== undefined) updateObj.status = status;
   if (address !== undefined) updateObj.address = address;
-  if (phone !== undefined) updateObj.phone = phone;
-  if (is_active !== undefined) updateObj.is_active = is_active;
   updateObj.updated_at = new Date().toISOString();
 
   const { data: row, error } = await supabase

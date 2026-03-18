@@ -1,4 +1,4 @@
-import { useState, useContext, useCallback } from 'react'
+import { useState, useContext, useCallback, useMemo } from 'react'
 import { Plus, Download, Filter } from 'lucide-react'
 import Table from '../common/Table'
 import Button from '../common/Button'
@@ -14,44 +14,52 @@ import financesService from '../../services/finances.service'
 import { formatDate } from '../../utils/formatDate'
 import { formatCurrency } from '../../utils/formatCurrency'
 
+const statusMap = {
+  pending: 'Chờ xử lý',
+  completed: 'Hoàn thành',
+  cancelled: 'Đã hủy',
+}
+
 export default function FinanceList() {
   const [showForm, setShowForm] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
   const [selected, setSelected] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
-  const [filters, setFilters] = useState({ type: '', categoryId: '', dateFrom: '', dateTo: '' })
+  const [filters, setFilters] = useState({ type: '', category: '', dateFrom: '', dateTo: '' })
   const { success, error: showError } = useContext(ToastContext)
   const { exportToExcel } = useExcelExport()
 
   const fetchFinances = useCallback(() => financesService.getAll(), [])
   const { data: finances, loading, execute: reload } = useFetch(fetchFinances)
 
-  const fetchCategories = useCallback(() => financesService.getCategories(), [])
-  const { data: categoriesData } = useFetch(fetchCategories)
-  const categories = Array.isArray(categoriesData) ? categoriesData : categoriesData?.categories || []
-
   const financeList = Array.isArray(finances) ? finances : finances?.finances || []
+
+  // Get unique categories for filter dropdown
+  const uniqueCategories = useMemo(() => {
+    const cats = new Set()
+    financeList.forEach((item) => {
+      if (item.category) cats.add(item.category)
+    })
+    return Array.from(cats).sort()
+  }, [financeList])
+
+  const categoryOptions = uniqueCategories.map((c) => ({ value: c, label: c }))
 
   // Apply filters
   const filteredList = financeList.filter((item) => {
     if (filters.type && item.type !== filters.type) return false
-    if (filters.categoryId) {
-      const catId = item.categoryId || item.category?._id || item.category?.id
-      if (catId !== filters.categoryId) return false
-    }
+    if (filters.category && item.category !== filters.category) return false
     if (filters.dateFrom) {
-      const itemDate = new Date(item.payment_date || item.paymentDate || item.createdAt)
+      const itemDate = new Date(item.payment_date || item.paymentDate || item.created_at)
       if (itemDate < new Date(filters.dateFrom)) return false
     }
     if (filters.dateTo) {
-      const itemDate = new Date(item.payment_date || item.paymentDate || item.createdAt)
+      const itemDate = new Date(item.payment_date || item.paymentDate || item.created_at)
       if (itemDate > new Date(filters.dateTo + 'T23:59:59')) return false
     }
     return true
   })
-
-  const categoryOptions = categories.map((c) => ({ value: c._id || c.id, label: c.name }))
 
   const paymentMethodMap = {
     cash: 'Tiền mặt',
@@ -64,7 +72,7 @@ export default function FinanceList() {
     {
       key: 'payment_date',
       label: 'Ngày',
-      accessor: (row) => formatDate(row.payment_date || row.paymentDate || row.createdAt),
+      accessor: (row) => formatDate(row.payment_date || row.paymentDate || row.created_at),
     },
     {
       key: 'type',
@@ -74,7 +82,7 @@ export default function FinanceList() {
     {
       key: 'category',
       label: 'Danh mục',
-      accessor: (row) => row.category?.name || row.categoryName || '—',
+      accessor: (row) => row.category || '—',
     },
     {
       key: 'amount',
@@ -86,6 +94,11 @@ export default function FinanceList() {
       ),
     },
     { key: 'description', label: 'Mô tả' },
+    {
+      key: 'status',
+      label: 'Trạng thái',
+      render: (row) => <StatusBadge status={row.status || 'pending'} />,
+    },
     {
       key: 'payment_method',
       label: 'Phương thức',
@@ -99,7 +112,7 @@ export default function FinanceList() {
   const confirmDelete = async () => {
     setDeleting(true)
     try {
-      await financesService.delete(selected._id || selected.id)
+      await financesService.delete(selected.id)
       success('Xóa giao dịch thành công')
       reload()
     } catch (err) {
@@ -115,15 +128,16 @@ export default function FinanceList() {
     const exportCols = [
       { key: 'payment_date', header: 'Ngày', accessor: (r) => formatDate(r.payment_date || r.paymentDate) },
       { key: 'type', header: 'Loại' },
-      { key: 'category', header: 'Danh mục', accessor: (r) => r.category?.name || '' },
+      { key: 'category', header: 'Danh mục' },
       { key: 'amount', header: 'Số tiền' },
       { key: 'description', header: 'Mô tả' },
+      { key: 'status', header: 'Trạng thái' },
       { key: 'payment_method', header: 'Phương thức' },
     ]
     exportToExcel(filteredList, exportCols, 'danh-sach-tai-chinh')
   }
 
-  const clearFilters = () => setFilters({ type: '', categoryId: '', dateFrom: '', dateTo: '' })
+  const clearFilters = () => setFilters({ type: '', category: '', dateFrom: '', dateTo: '' })
 
   return (
     <div>
@@ -161,8 +175,8 @@ export default function FinanceList() {
             />
             <Select
               label="Danh mục"
-              value={filters.categoryId}
-              onChange={(e) => setFilters((f) => ({ ...f, categoryId: e.target.value }))}
+              value={filters.category}
+              onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))}
               options={categoryOptions}
               placeholder="Tất cả"
             />
@@ -199,7 +213,6 @@ export default function FinanceList() {
         isOpen={showForm}
         onClose={() => { setShowForm(false); setSelected(null) }}
         finance={selected}
-        categories={categories}
         onSuccess={() => { setShowForm(false); setSelected(null); reload() }}
       />
 
@@ -209,7 +222,7 @@ export default function FinanceList() {
         onConfirm={confirmDelete}
         loading={deleting}
         title="Xóa giao dịch"
-        message={`Bạn có chắc chắn muốn xóa giao dịch này?`}
+        message="Bạn có chắc chắn muốn xóa giao dịch này?"
       />
     </div>
   )

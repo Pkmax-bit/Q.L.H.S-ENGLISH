@@ -74,15 +74,10 @@ const exportExcel = async (req, res, next) => {
     const data = await studentsService.getAllForExport(req.query);
     const columns = [
       { key: 'full_name', header: 'Full Name', width: 25 },
-      { key: 'date_of_birth', header: 'Date of Birth', width: 15 },
-      { key: 'gender', header: 'Gender', width: 10 },
-      { key: 'phone', header: 'Phone', width: 15 },
-      { key: 'parent_phone', header: 'Parent Phone', width: 15 },
-      { key: 'parent_name', header: 'Parent Name', width: 25 },
       { key: 'email', header: 'Email', width: 30 },
-      { key: 'address', header: 'Address', width: 30 },
-      { key: 'enrollment_date', header: 'Enrollment Date', width: 15 },
-      { key: 'status', header: 'Status', width: 12 },
+      { key: 'phone', header: 'Phone', width: 15 },
+      { key: 'is_active', header: 'Active', width: 10 },
+      { key: 'created_at', header: 'Created At', width: 20 },
     ];
     const buffer = exportToExcel(data, 'Students', columns);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

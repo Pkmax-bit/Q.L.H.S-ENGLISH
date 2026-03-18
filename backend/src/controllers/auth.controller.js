@@ -9,10 +9,7 @@ const login = async (req, res, next) => {
       return response.badRequest(res, 'Email and password are required');
     }
 
-    const deviceInfo = req.headers['user-agent'] || 'unknown';
-    const ipAddress = req.ip || req.connection.remoteAddress;
-
-    const result = await authService.login(email, password, deviceInfo, ipAddress);
+    const result = await authService.login(email, password);
     return response.success(res, result, 'Login successful');
   } catch (error) {
     if (error.statusCode) {
@@ -30,10 +27,7 @@ const refresh = async (req, res, next) => {
       return response.badRequest(res, 'Refresh token is required');
     }
 
-    const deviceInfo = req.headers['user-agent'] || 'unknown';
-    const ipAddress = req.ip || req.connection.remoteAddress;
-
-    const result = await authService.refresh(refreshToken, deviceInfo, ipAddress);
+    const result = await authService.refresh(refreshToken);
     return response.success(res, result, 'Token refreshed successfully');
   } catch (error) {
     if (error.statusCode) {
@@ -45,13 +39,7 @@ const refresh = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-      return response.badRequest(res, 'Refresh token is required');
-    }
-
-    await authService.logout(refreshToken);
+    await authService.logout();
     return response.success(res, null, 'Logged out successfully');
   } catch (error) {
     next(error);
@@ -60,7 +48,7 @@ const logout = async (req, res, next) => {
 
 const logoutAll = async (req, res, next) => {
   try {
-    await authService.logoutAll(req.user.id);
+    await authService.logoutAll();
     return response.success(res, null, 'Logged out from all devices');
   } catch (error) {
     next(error);
@@ -103,7 +91,7 @@ const changePassword = async (req, res, next) => {
 
 const register = async (req, res, next) => {
   try {
-    const { email, password, role, fullName, phone, createTeacher } = req.body;
+    const { email, password, role, fullName, phone } = req.body;
 
     if (!email || !password || !role || !fullName) {
       return response.badRequest(res, 'Email, password, role, and full name are required');
@@ -113,11 +101,11 @@ const register = async (req, res, next) => {
       return response.badRequest(res, 'Password must be at least 6 characters');
     }
 
-    if (!['admin', 'teacher'].includes(role)) {
-      return response.badRequest(res, 'Role must be admin or teacher');
+    if (!['admin', 'teacher', 'student'].includes(role)) {
+      return response.badRequest(res, 'Role must be admin, teacher, or student');
     }
 
-    const user = await authService.register({ email, password, role, fullName, phone, createTeacher });
+    const user = await authService.register({ email, password, role, fullName, phone });
     return response.created(res, user, 'User registered successfully');
   } catch (error) {
     if (error.statusCode) {

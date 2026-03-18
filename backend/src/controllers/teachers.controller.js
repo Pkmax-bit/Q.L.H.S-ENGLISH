@@ -85,10 +85,8 @@ const exportExcel = async (req, res, next) => {
       { key: 'full_name', header: 'Full Name', width: 25 },
       { key: 'email', header: 'Email', width: 30 },
       { key: 'phone', header: 'Phone', width: 15 },
-      { key: 'specialization', header: 'Specialization', width: 20 },
-      { key: 'status', header: 'Status', width: 12 },
-      { key: 'salary', header: 'Salary', width: 15 },
-      { key: 'hire_date', header: 'Hire Date', width: 15 },
+      { key: 'is_active', header: 'Active', width: 10 },
+      { key: 'created_at', header: 'Created At', width: 20 },
     ];
     const buffer = exportToExcel(data, 'Teachers', columns);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

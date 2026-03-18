@@ -27,19 +27,18 @@ export default function TeacherList() {
   const teacherList = Array.isArray(teachers) ? teachers : teachers?.teachers || []
 
   const columns = [
-    { key: 'name', label: 'Họ tên' },
+    { key: 'full_name', label: 'Họ tên' },
     { key: 'email', label: 'Email' },
     { key: 'phone', label: 'Số điện thoại' },
-    { key: 'specialization', label: 'Chuyên môn' },
     {
-      key: 'status',
+      key: 'is_active',
       label: 'Trạng thái',
-      render: (row) => <StatusBadge status={row.status || 'active'} />,
+      render: (row) => <StatusBadge status={row.is_active === false ? 'inactive' : 'active'} />,
     },
     {
-      key: 'createdAt',
+      key: 'created_at',
       label: 'Ngày tạo',
-      accessor: (row) => formatDate(row.createdAt),
+      accessor: (row) => formatDate(row.created_at),
     },
   ]
 
@@ -61,7 +60,7 @@ export default function TeacherList() {
   const confirmDelete = async () => {
     setDeleting(true)
     try {
-      await teachersService.delete(selected._id || selected.id)
+      await teachersService.delete(selected.id)
       success('Xóa giáo viên thành công')
       reload()
     } catch (err) {
@@ -75,11 +74,10 @@ export default function TeacherList() {
 
   const handleExport = () => {
     const exportCols = [
-      { key: 'name', header: 'Họ tên' },
+      { key: 'full_name', header: 'Họ tên' },
       { key: 'email', header: 'Email' },
       { key: 'phone', header: 'Số điện thoại' },
-      { key: 'specialization', header: 'Chuyên môn' },
-      { key: 'status', header: 'Trạng thái' },
+      { key: 'is_active', header: 'Trạng thái', accessor: (r) => r.is_active === false ? 'Ngừng' : 'Hoạt động' },
     ]
     exportToExcel(teacherList, exportCols, 'danh-sach-giao-vien')
   }
@@ -131,7 +129,7 @@ export default function TeacherList() {
         onConfirm={confirmDelete}
         loading={deleting}
         title="Xóa giáo viên"
-        message={`Bạn có chắc chắn muốn xóa giáo viên "${selected?.name}"? Hành động này không thể hoàn tác.`}
+        message={`Bạn có chắc chắn muốn xóa giáo viên "${selected?.full_name}"? Hành động này không thể hoàn tác.`}
       />
     </div>
   )
