@@ -216,4 +216,52 @@ const checkScheduleConflict = async (roomId, classId, dayOfWeek, startTime, endT
   return conflicts;
 };
 
-module.exports = { getAll, getById, create, update, remove };
+/**
+ * Bulk create schedules — repeat weekly within a date range.
+ * Input: { class_id, room_id, days_of_week: [1,3,5], start_time, end_time, start_date, end_date }
+ * Creates one schedule row per day_of_week (each row IS a recurring weekly slot).
+ * If sessions_count is provided instead of end_date, calculate end_date.
+ */
+const bulkCreate = async (data) => {
+  const { class_id, room_id, days_of_week, start_time, end_time, start_date, end_date, sessions_count } = data;
+
+  if (!days_of_week || !Array.isArray(days_of_week) || days_of_week.length === 0) {
+    throw { statusCode: 400, message: 'Phải chọn ít nhất 1 ngày trong tuần' };
+  }
+
+  const rows = [];
+  for (const day of days_of_week) {
+    // Check conflicts for each day
+    const conflicts = await checkScheduleConflict(room_id, class_id, day, start_time, end_time);
+    if (conflicts.length > 0) {
+      const dayNames = { 0: 'CN', 1: 'T2', 2: 'T3', 3: 'T4', 4: 'T5', 5: 'T6', 6: 'T7' };
+      throw {
+        statusCode: 409,
+        message: `Trùng lịch vào ${dayNames[day] || day}: ${conflicts[0].message}`,
+        data: { conflicts },
+      };
+    }
+
+    rows.push({
+      class_id,
+      day_of_week: day,
+      start_time,
+      end_time,
+      room_id: room_id || null,
+      is_active: true,
+    });
+  }
+
+  const { data: inserted, error } = await supabase.from('schedules').insert(rows).select();
+  if (error) throw error;
+
+  return {
+    created: inserted.length,
+    schedules: inserted,
+    start_date: start_date || null,
+    end_date: end_date || null,
+    sessions_count: sessions_count || null,
+  };
+};
+
+module.exports = { getAll, getById, create, update, remove, bulkCreate };

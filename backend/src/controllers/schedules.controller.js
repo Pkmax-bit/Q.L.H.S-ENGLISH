@@ -65,4 +65,17 @@ const remove = async (req, res, next) => {
   }
 };
 
-module.exports = { getAll, getById, create, update, remove };
+const bulkCreate = async (req, res, next) => {
+  try {
+    const result = await schedulesService.bulkCreate(req.body);
+    emitNotification('schedule:bulk-created', result);
+    return response.created(res, result, `Đã tạo ${result.created} lịch học`);
+  } catch (error) {
+    if (error.statusCode) {
+      return response.error(res, error.message, error.statusCode, error.data);
+    }
+    next(error);
+  }
+};
+
+module.exports = { getAll, getById, create, update, remove, bulkCreate };
