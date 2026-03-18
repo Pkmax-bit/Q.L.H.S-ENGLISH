@@ -8,7 +8,7 @@ import schedulesService from '../../services/schedules.service'
 import classesService from '../../services/classes.service'
 import facilitiesService from '../../services/facilities.service'
 import { validateForm, required } from '../../utils/validators'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Building2, DoorOpen } from 'lucide-react'
 
 const DAY_OPTIONS = [
   { value: '1', label: 'Thứ 2' },
@@ -20,13 +20,16 @@ const DAY_OPTIONS = [
   { value: '0', label: 'Chủ nhật' },
 ]
 
-const HOUR_OPTIONS = Array.from({ length: 15 }, (_, i) => ({
-  value: String(i + 7),
-  label: `${String(i + 7).padStart(2, '0')}:00`,
-}))
+const TIME_OPTIONS = Array.from({ length: 30 }, (_, i) => {
+  const hour = Math.floor(i / 2) + 7
+  const min = i % 2 === 0 ? '00' : '30'
+  const label = `${String(hour).padStart(2, '0')}:${min}`
+  return { value: label, label }
+})
 
 const initialForm = {
   class_id: '',
+  facility_id: '', // cơ sở cha
   room_id: '',
   day_of_week: '',
   start_time: '',
@@ -50,7 +53,7 @@ export default function ScheduleForm({
   const isEdit = !!schedule
 
   const fetchClasses = useCallback(() => classesService.getAll(), [])
-  const fetchFacilities = useCallback(() => facilitiesService.getAll(), [])
+  const fetchFacilities = useCallback(() => facilitiesService.getAll({ limit: 100 }), [])
 
   const { data: classesData } = useFetch(fetchClasses)
   const { data: facilitiesData } = useFetch(fetchFacilities)
@@ -58,41 +61,59 @@ export default function ScheduleForm({
   const classes = Array.isArray(classesData) ? classesData : classesData?.classes || []
   const facilities = Array.isArray(facilitiesData) ? facilitiesData : facilitiesData?.facilities || []
 
-  // All facilities can serve as rooms (hierarchical: classrooms and labs are sub-facilities)
-  const roomOptions = facilities
-    .filter((f) => f.type === 'classroom' || f.type === 'lab' || !f.parent_id === false)
-    .map((f) => ({ value: f.id, label: f.name }))
+  // Separate buildings (parents) and rooms (children)
+  const buildings = facilities.filter((f) => f.type === 'building' || (!f.parent_id && f.type !== 'classroom' && f.type !== 'lab'))
+  const allRooms = facilities.filter((f) => f.parent_id || f.type === 'classroom' || f.type === 'lab')
 
-  // If no sub-facilities found, list all facilities as room options
-  const finalRoomOptions = roomOptions.length > 0
-    ? roomOptions
-    : facilities.map((f) => ({ value: f.id, label: f.name }))
+  // Filter rooms by selected building
+  const filteredRooms = form.facility_id
+    ? allRooms.filter((r) => r.parent_id === form.facility_id)
+    : allRooms
+
+  const buildingOptions = buildings.map((b) => ({ value: b.id, label: `🏢 ${b.name}` }))
+  const roomOptions = filteredRooms.map((r) => ({
+    value: r.id,
+    label: `${r.type === 'lab' ? '🔬' : '🚪'} ${r.name}${r.capacity ? ` (${r.capacity} chỗ)` : ''}`,
+  }))
 
   const classOptions = classes.map((c) => ({ value: c.id, label: c.name }))
 
+  // When editing, find the building from room's parent_id
   useEffect(() => {
     if (schedule) {
+      const roomId = schedule.room_id || schedule.room?.id || ''
+      const room = facilities.find((f) => f.id === roomId)
       setForm({
         class_id: schedule.class_id || schedule.class?.id || '',
-        room_id: schedule.room_id || schedule.room?.id || '',
+        facility_id: room?.parent_id || '',
+        room_id: roomId,
         day_of_week: String(schedule.day_of_week ?? ''),
-        start_time: String(schedule.start_time || ''),
-        end_time: String(schedule.end_time || ''),
+        start_time: schedule.start_time ? schedule.start_time.substring(0, 5) : '',
+        end_time: schedule.end_time ? schedule.end_time.substring(0, 5) : '',
       })
     } else {
+      const startHour = defaultHour != null ? `${String(defaultHour).padStart(2, '0')}:00` : ''
+      const endHour = defaultHour != null ? `${String(defaultHour + 1).padStart(2, '0')}:00` : ''
       setForm({
         ...initialForm,
         day_of_week: defaultDay != null ? String(defaultDay) : '',
-        start_time: defaultHour != null ? String(defaultHour) : '',
-        end_time: defaultHour != null ? String(defaultHour + 1) : '',
+        start_time: startHour,
+        end_time: endHour,
       })
     }
     setErrors({})
-  }, [schedule, defaultDay, defaultHour, isOpen])
+  }, [schedule, defaultDay, defaultHour, isOpen, facilities])
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setForm((prev) => ({ ...prev, [name]: value }))
+    setForm((prev) => {
+      const next = { ...prev, [name]: value }
+      // Reset room when building changes
+      if (name === 'facility_id') {
+        next.room_id = ''
+      }
+      return next
+    })
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }))
   }
 
@@ -100,16 +121,13 @@ export default function ScheduleForm({
   const conflicts = useMemo(() => {
     if (!form.day_of_week || !form.start_time || !form.end_time) return []
     const day = Number(form.day_of_week)
-    const start = Number(form.start_time)
-    const end = Number(form.end_time)
     const slotId = schedule?.id
 
     return existingSlots.filter((s) => {
       if (s.id === slotId) return false
       const sDay = s.day_of_week
-      const sStart = Number(s.start_time)
-      const sEnd = Number(s.end_time)
-      return sDay === day && start < sEnd && end > sStart
+      // Compare time strings
+      return sDay === day && form.start_time < (s.end_time || '').substring(0, 5) && form.end_time > (s.start_time || '').substring(0, 5)
     })
   }, [form, existingSlots, schedule])
 
@@ -128,7 +146,7 @@ export default function ScheduleForm({
     setErrors(errs)
     if (Object.keys(errs).length > 0) return
 
-    if (Number(form.end_time) <= Number(form.start_time)) {
+    if (form.end_time <= form.start_time) {
       setErrors({ end_time: 'Giờ kết thúc phải sau giờ bắt đầu' })
       return
     }
@@ -136,8 +154,10 @@ export default function ScheduleForm({
     setLoading(true)
     try {
       const payload = {
-        ...form,
+        class_id: form.class_id,
         day_of_week: Number(form.day_of_week),
+        start_time: form.start_time,
+        end_time: form.end_time,
         room_id: form.room_id || undefined,
       }
       if (isEdit) {
@@ -174,7 +194,7 @@ export default function ScheduleForm({
       isOpen={isOpen}
       onClose={onClose}
       title={isEdit ? 'Chỉnh sửa lịch học' : 'Thêm lịch học mới'}
-      size="md"
+      size="lg"
       footer={
         <>
           {isEdit && (
@@ -214,14 +234,7 @@ export default function ScheduleForm({
           error={errors.class_id}
           required
         />
-        <Select
-          label="Phòng học"
-          name="room_id"
-          value={form.room_id}
-          onChange={handleChange}
-          options={finalRoomOptions}
-          placeholder="Chọn phòng"
-        />
+
         <Select
           label="Ngày trong tuần"
           name="day_of_week"
@@ -232,13 +245,14 @@ export default function ScheduleForm({
           error={errors.day_of_week}
           required
         />
+
         <div className="grid grid-cols-2 gap-4">
           <Select
             label="Giờ bắt đầu"
             name="start_time"
             value={form.start_time}
             onChange={handleChange}
-            options={HOUR_OPTIONS}
+            options={TIME_OPTIONS}
             placeholder="Chọn giờ"
             error={errors.start_time}
             required
@@ -248,11 +262,46 @@ export default function ScheduleForm({
             name="end_time"
             value={form.end_time}
             onChange={handleChange}
-            options={HOUR_OPTIONS}
+            options={TIME_OPTIONS}
             placeholder="Chọn giờ"
             error={errors.end_time}
             required
           />
+        </div>
+
+        {/* Location: Building → Room */}
+        <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50/50">
+          <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
+            <Building2 className="h-4 w-4" /> Địa điểm
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="flex items-start gap-2">
+              <Building2 className="h-5 w-5 text-blue-500 mt-7 flex-shrink-0" />
+              <Select
+                label="Cơ sở"
+                name="facility_id"
+                value={form.facility_id}
+                onChange={handleChange}
+                options={buildingOptions}
+                placeholder="Chọn cơ sở trước..."
+              />
+            </div>
+            <div className="flex items-start gap-2">
+              <DoorOpen className="h-5 w-5 text-green-500 mt-7 flex-shrink-0" />
+              <Select
+                label="Phòng học"
+                name="room_id"
+                value={form.room_id}
+                onChange={handleChange}
+                options={roomOptions}
+                placeholder={form.facility_id ? 'Chọn phòng...' : 'Chọn cơ sở trước'}
+                disabled={!form.facility_id && buildings.length > 0}
+              />
+            </div>
+          </div>
+          {form.facility_id && roomOptions.length === 0 && (
+            <p className="text-xs text-amber-600">Cơ sở này chưa có phòng học nào.</p>
+          )}
         </div>
       </form>
     </Modal>

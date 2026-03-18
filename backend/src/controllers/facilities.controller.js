@@ -55,6 +55,9 @@ const remove = async (req, res, next) => {
     emitNotification('facility:deleted', { id: req.params.id });
     return response.success(res, null, 'Facility deleted successfully');
   } catch (error) {
+    if (error.statusCode) {
+      return response.error(res, error.message, error.statusCode);
+    }
     next(error);
   }
 };

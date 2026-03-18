@@ -147,6 +147,34 @@ const update = async (id, data) => {
 };
 
 const remove = async (id) => {
+  // Check for child facilities first
+  const { count, error: countError } = await supabase
+    .from('facilities')
+    .select('id', { count: 'exact', head: true })
+    .eq('parent_id', id);
+  if (countError) throw countError;
+
+  if (count > 0) {
+    throw {
+      statusCode: 400,
+      message: `Không thể xóa cơ sở này vì còn ${count} phòng/khu vực con. Hãy xóa các phòng con trước.`,
+    };
+  }
+
+  // Check for schedules referencing this facility
+  const { count: schedCount, error: schedErr } = await supabase
+    .from('schedules')
+    .select('id', { count: 'exact', head: true })
+    .eq('room_id', id);
+  if (schedErr) throw schedErr;
+
+  if (schedCount > 0) {
+    throw {
+      statusCode: 400,
+      message: `Không thể xóa vì phòng này đang được dùng trong ${schedCount} thời khóa biểu. Hãy xóa lịch học trước.`,
+    };
+  }
+
   const { data, error } = await supabase
     .from('facilities')
     .delete()
@@ -156,6 +184,9 @@ const remove = async (id) => {
 
   if (error) {
     if (error.code === 'PGRST116') return null;
+    if (error.code === '23503') {
+      throw { statusCode: 400, message: 'Không thể xóa vì cơ sở đang được tham chiếu ở nơi khác.' };
+    }
     throw error;
   }
   return data;
