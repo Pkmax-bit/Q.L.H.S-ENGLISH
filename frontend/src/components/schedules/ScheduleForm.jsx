@@ -9,7 +9,7 @@ import schedulesService from '../../services/schedules.service'
 import classesService from '../../services/classes.service'
 import facilitiesService from '../../services/facilities.service'
 import { validateForm, required } from '../../utils/validators'
-import { AlertTriangle, Building2, DoorOpen, Repeat, CalendarPlus } from 'lucide-react'
+import { Building2, DoorOpen, Repeat, CalendarPlus, CalendarDays } from 'lucide-react'
 
 const ALL_DAYS = [
   { value: 1, label: 'Thứ 2', short: 'T2' },
@@ -21,12 +21,53 @@ const ALL_DAYS = [
   { value: 0, label: 'Chủ nhật', short: 'CN' },
 ]
 
+// Map our day_of_week (1=Mon..6=Sat, 0=Sun) to JS getDay() (0=Sun, 1=Mon..6=Sat)
+function toJsDay(d) { return d; } // 0=Sun,1=Mon matches JS
+
 const TIME_OPTIONS = Array.from({ length: 30 }, (_, i) => {
   const hour = Math.floor(i / 2) + 7
   const min = i % 2 === 0 ? '00' : '30'
   const label = `${String(hour).padStart(2, '0')}:${min}`
   return { value: label, label }
 })
+
+/**
+ * Generate concrete session dates starting from startDate,
+ * picking only dates that fall on the selected daysOfWeek,
+ * until we have sessionsCount dates.
+ *
+ * daysOfWeek: array of our day codes (1=Mon..6=Sat, 0=Sun)
+ * Returns: array of Date objects
+ */
+function generateSessionDates(startDateStr, daysOfWeek, sessionsCount) {
+  if (!startDateStr || !daysOfWeek.length || !sessionsCount) return []
+  const count = Number(sessionsCount)
+  if (count <= 0) return []
+
+  // Convert our day codes to JS getDay() values (they match: 0=Sun,1=Mon..6=Sat)
+  const jsDays = new Set(daysOfWeek.map(d => toJsDay(d)))
+
+  const dates = []
+  const current = new Date(startDateStr + 'T00:00:00')
+
+  // Safety: max 365 iterations
+  for (let i = 0; i < 365 && dates.length < count; i++) {
+    if (jsDays.has(current.getDay())) {
+      dates.push(new Date(current))
+    }
+    current.setDate(current.getDate() + 1)
+  }
+  return dates
+}
+
+function formatDateVN(d) {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+}
+
+function getDayShort(d) {
+  const map = { 0: 'CN', 1: 'T2', 2: 'T3', 3: 'T4', 4: 'T5', 5: 'T6', 6: 'T7' }
+  return map[d.getDay()] || ''
+}
 
 export default function ScheduleForm({
   isOpen,
@@ -37,7 +78,7 @@ export default function ScheduleForm({
   existingSlots = [],
   onSuccess,
 }) {
-  const [mode, setMode] = useState('single') // 'single' | 'bulk'
+  const [mode, setMode] = useState('single')
   const [form, setForm] = useState({
     class_id: '',
     facility_id: '',
@@ -74,8 +115,12 @@ export default function ScheduleForm({
   }))
   const classOptions = classes.map((c) => ({ value: c.id, label: c.name }))
 
-  // Get selected class info for date range
   const selectedClass = useMemo(() => classes.find((c) => c.id === form.class_id), [classes, form.class_id])
+
+  // Calculate preview sessions
+  const previewSessions = useMemo(() => {
+    return generateSessionDates(form.start_date, form.days_of_week, form.sessions_count)
+  }, [form.start_date, form.days_of_week, form.sessions_count])
 
   useEffect(() => {
     if (schedule) {
@@ -135,11 +180,12 @@ export default function ScheduleForm({
     e.preventDefault()
 
     if (mode === 'bulk') {
-      // Bulk validation
       if (!form.class_id) { setErrors({ class_id: 'Chọn lớp học' }); return }
       if (form.days_of_week.length === 0) { showError('Chọn ít nhất 1 ngày trong tuần'); return }
       if (!form.start_time || !form.end_time) { showError('Chọn giờ bắt đầu và kết thúc'); return }
       if (form.end_time <= form.start_time) { setErrors({ end_time: 'Giờ kết thúc phải sau giờ bắt đầu' }); return }
+      if (!form.start_date) { showError('Chọn ngày bắt đầu'); return }
+      if (!form.sessions_count || Number(form.sessions_count) <= 0) { showError('Nhập số buổi học'); return }
 
       setLoading(true)
       try {
@@ -149,11 +195,12 @@ export default function ScheduleForm({
           days_of_week: form.days_of_week,
           start_time: form.start_time,
           end_time: form.end_time,
-          start_date: form.start_date || undefined,
-          sessions_count: form.sessions_count ? Number(form.sessions_count) : undefined,
+          start_date: form.start_date,
+          sessions_count: Number(form.sessions_count),
         }
         const result = await schedulesService.bulkCreate(payload)
-        success(`Đã tạo ${result.data?.created || result.created || form.days_of_week.length} lịch học`)
+        const created = result.data?.created || result.created || form.days_of_week.length
+        success(`Đã tạo ${created} lịch học`)
         onSuccess()
       } catch (err) {
         showError(err.response?.data?.message || 'Có lỗi xảy ra')
@@ -231,7 +278,7 @@ export default function ScheduleForm({
             Hủy
           </Button>
           <Button onClick={handleSubmit} loading={loading} icon={mode === 'bulk' ? Repeat : CalendarPlus}>
-            {isEdit ? 'Cập nhật' : mode === 'bulk' ? `Tạo lịch (${form.days_of_week.length} ngày)` : 'Thêm mới'}
+            {isEdit ? 'Cập nhật' : mode === 'bulk' ? `Tạo lịch (${form.days_of_week.length} ngày/tuần)` : 'Thêm mới'}
           </Button>
         </>
       }
@@ -261,7 +308,7 @@ export default function ScheduleForm({
           </div>
         )}
 
-        {/* Class selection */}
+        {/* Class */}
         <Select
           label="Lớp học"
           name="class_id"
@@ -272,8 +319,6 @@ export default function ScheduleForm({
           error={errors.class_id}
           required
         />
-
-        {/* Show class date range */}
         {selectedClass && (selectedClass.start_date || selectedClass.end_date) && (
           <div className="text-xs text-gray-500 bg-blue-50 rounded-lg px-3 py-2 -mt-2">
             📅 Thời gian lớp: {selectedClass.start_date || '?'} → {selectedClass.end_date || '?'}
@@ -318,7 +363,7 @@ export default function ScheduleForm({
             </div>
             {form.days_of_week.length > 0 && (
               <p className="text-xs text-blue-600 mt-1">
-                ✅ Đã chọn: {form.days_of_week.map((d) => ALL_DAYS.find((a) => a.value === d)?.short).join(', ')}
+                ✅ Đã chọn: {form.days_of_week.sort((a,b) => (a||7) - (b||7)).map((d) => ALL_DAYS.find((a) => a.value === d)?.short).join(', ')}
               </p>
             )}
           </div>
@@ -348,7 +393,7 @@ export default function ScheduleForm({
           />
         </div>
 
-        {/* Bulk: start date + sessions count */}
+        {/* Bulk: start date + sessions count + preview */}
         {mode === 'bulk' && (
           <div className="border border-purple-200 rounded-lg p-4 space-y-3 bg-purple-50/50">
             <p className="text-sm font-medium text-purple-700 flex items-center gap-2">
@@ -361,7 +406,7 @@ export default function ScheduleForm({
                 type="date"
                 value={form.start_date}
                 onChange={handleChange}
-                placeholder="dd/mm/yyyy"
+                required
               />
               <Input
                 label="Số buổi học"
@@ -370,13 +415,50 @@ export default function ScheduleForm({
                 value={form.sessions_count}
                 onChange={handleChange}
                 placeholder="VD: 24"
+                required
               />
             </div>
-            {form.days_of_week.length > 0 && form.sessions_count && (
-              <p className="text-xs text-purple-600">
-                📊 {form.days_of_week.length} buổi/tuần × {Math.ceil(Number(form.sessions_count) / form.days_of_week.length)} tuần
-                = khoảng {Math.ceil(Number(form.sessions_count) / form.days_of_week.length)} tuần học
-              </p>
+
+            {/* Preview: list of concrete dates */}
+            {previewSessions.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-purple-700 flex items-center gap-1">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Lịch {previewSessions.length} buổi học cụ thể:
+                  </p>
+                  <span className="text-xs text-purple-500">
+                    {formatDateVN(previewSessions[0])} → {formatDateVN(previewSessions[previewSessions.length - 1])}
+                  </span>
+                </div>
+                <div className="max-h-[180px] overflow-y-auto rounded-lg border border-purple-200 bg-white">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-purple-50">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left text-purple-600 font-medium w-10">#</th>
+                        <th className="px-2 py-1.5 text-left text-purple-600 font-medium">Thứ</th>
+                        <th className="px-2 py-1.5 text-left text-purple-600 font-medium">Ngày</th>
+                        <th className="px-2 py-1.5 text-left text-purple-600 font-medium">Giờ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-purple-100">
+                      {previewSessions.map((date, i) => (
+                        <tr key={i} className="hover:bg-purple-50/50">
+                          <td className="px-2 py-1 text-gray-400">{i + 1}</td>
+                          <td className="px-2 py-1 font-medium text-gray-700">{getDayShort(date)}</td>
+                          <td className="px-2 py-1 text-gray-600">{formatDateVN(date)}</td>
+                          <td className="px-2 py-1 text-gray-500">{form.start_time} - {form.end_time}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex gap-4 text-xs text-purple-600">
+                  <span>📊 {form.days_of_week.length} buổi/tuần</span>
+                  <span>📅 {Math.ceil(previewSessions.length / form.days_of_week.length)} tuần</span>
+                  <span>🏁 Kết thúc: {formatDateVN(previewSessions[previewSessions.length - 1])}</span>
+                </div>
+              </div>
             )}
           </div>
         )}
