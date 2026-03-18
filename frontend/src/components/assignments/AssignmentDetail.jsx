@@ -1,10 +1,12 @@
 import Modal from '../common/Modal'
 import StatusBadge from '../common/StatusBadge'
+import RichContentViewer from '../common/RichContentViewer'
 import { formatDate } from '../../utils/formatDate'
 import { BookOpen, Calendar, Hash, Clock, Check, X } from 'lucide-react'
 
 const typeLabelMap = {
   essay: 'Tự luận',
+  mcq: 'Trắc nghiệm',
   multiple_choice: 'Trắc nghiệm',
   mixed: 'Hỗn hợp',
 }
@@ -55,11 +57,21 @@ export default function AssignmentDetail({ isOpen, onClose, assignment }) {
           )}
         </div>
 
+        {/* Description */}
+        {assignment.description && (
+          <div className="pt-3 border-t border-gray-100">
+            <p className="text-sm font-medium text-gray-600 mb-2">📋 Mô tả</p>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <RichContentViewer content={assignment.description} />
+            </div>
+          </div>
+        )}
+
         {/* Lesson reference */}
         {assignment.lesson && (
           <div className="pt-3 border-t border-gray-100">
             <p className="text-sm text-gray-600">
-              <span className="font-medium">Bài học:</span> {assignment.lesson.title || '—'}
+              <span className="font-medium">📖 Bài học:</span> {assignment.lesson.title || '—'}
             </p>
           </div>
         )}

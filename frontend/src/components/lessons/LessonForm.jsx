@@ -3,11 +3,13 @@ import Modal from '../common/Modal'
 import Input from '../common/Input'
 import Select from '../common/Select'
 import Button from '../common/Button'
+import RichTextEditor from '../common/RichTextEditor'
 import { ToastContext } from '../../context/ToastContext'
 import { useFetch } from '../../hooks/useFetch'
 import lessonsService from '../../services/lessons.service'
 import classesService from '../../services/classes.service'
 import { validateForm, required } from '../../utils/validators'
+import { Youtube, FolderOpen, FileText, Link } from 'lucide-react'
 
 const initialForm = {
   title: '',
@@ -16,6 +18,8 @@ const initialForm = {
   content_type: 'text',
   is_published: false,
   file_url: '',
+  youtube_url: '',
+  drive_url: '',
   order_index: '',
 }
 
@@ -40,6 +44,8 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess }) {
         content_type: lesson.content_type || 'text',
         is_published: lesson.is_published || false,
         file_url: lesson.file_url || '',
+        youtube_url: lesson.youtube_url || '',
+        drive_url: lesson.drive_url || '',
         order_index: lesson.order_index ?? '',
       })
     } else {
@@ -52,6 +58,10 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess }) {
     const { name, value, type, checked } = e.target
     setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }))
+  }
+
+  const handleContentChange = (value) => {
+    setForm((prev) => ({ ...prev, content: value }))
   }
 
   const validate = () => {
@@ -94,7 +104,7 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess }) {
       isOpen={isOpen}
       onClose={onClose}
       title={isEdit ? 'Chỉnh sửa bài học' : 'Thêm bài học mới'}
-      size="lg"
+      size="2xl"
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>
@@ -107,6 +117,7 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess }) {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Basic info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Tiêu đề"
@@ -146,14 +157,48 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess }) {
             onChange={handleChange}
             placeholder="1"
           />
-          <Input
-            label="URL tệp tin"
-            name="file_url"
-            value={form.file_url}
-            onChange={handleChange}
-            placeholder="https://example.com/file.pdf"
-          />
         </div>
+
+        {/* Media links */}
+        <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50/50">
+          <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
+            <Link className="h-4 w-4" /> Liên kết tài nguyên
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="flex items-start gap-2">
+              <Youtube className="h-5 w-5 text-red-500 mt-7 flex-shrink-0" />
+              <Input
+                label="YouTube URL"
+                name="youtube_url"
+                value={form.youtube_url}
+                onChange={handleChange}
+                placeholder="https://youtube.com/watch?v=..."
+              />
+            </div>
+            <div className="flex items-start gap-2">
+              <FolderOpen className="h-5 w-5 text-yellow-500 mt-7 flex-shrink-0" />
+              <Input
+                label="Google Drive URL"
+                name="drive_url"
+                value={form.drive_url}
+                onChange={handleChange}
+                placeholder="https://drive.google.com/..."
+              />
+            </div>
+            <div className="flex items-start gap-2">
+              <FileText className="h-5 w-5 text-blue-500 mt-7 flex-shrink-0" />
+              <Input
+                label="URL tệp đính kèm"
+                name="file_url"
+                value={form.file_url}
+                onChange={handleChange}
+                placeholder="https://example.com/file.pdf"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Published toggle */}
         <div className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -167,14 +212,14 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess }) {
             Đã xuất bản
           </label>
         </div>
-        <Input
-          label="Nội dung"
-          name="content"
-          type="textarea"
+
+        {/* Rich text content */}
+        <RichTextEditor
+          label="Nội dung bài học"
           value={form.content}
-          onChange={handleChange}
-          placeholder="Nội dung bài học..."
-          rows={5}
+          onChange={handleContentChange}
+          placeholder="Soạn nội dung bài học với định dạng phong phú..."
+          minHeight="350px"
         />
       </form>
     </Modal>
