@@ -1,80 +1,64 @@
-const { query } = require('../config/database');
+const { supabase } = require('../config/database');
 
 const checkScheduleConflict = async (roomId, teacherId, dayOfWeek, startTime, endTime, specificDate, excludeSlotId = null) => {
   const conflicts = [];
 
   if (roomId) {
-    let sql = `
-      SELECT ss.*, s.name as schedule_name, r.name as room_name
-      FROM schedule_slots ss
-      JOIN schedules s ON ss.schedule_id = s.id
-      JOIN rooms r ON ss.room_id = r.id
-      WHERE ss.room_id = $1
-        AND ss.day_of_week = $2
-        AND ss.start_time < $3
-        AND ss.end_time > $4
-        AND s.is_active = true
-    `;
-    const params = [roomId, dayOfWeek, endTime, startTime];
-    let paramIdx = 5;
+    let query = supabase
+      .from('schedule_slots')
+      .select(`
+        *,
+        schedules!inner(name, is_active),
+        rooms!inner(name)
+      `)
+      .eq('room_id', roomId)
+      .eq('day_of_week', dayOfWeek)
+      .lt('start_time', endTime)
+      .gt('end_time', startTime)
+      .eq('schedules.is_active', true);
 
     if (excludeSlotId) {
-      sql += ` AND ss.id != $${paramIdx}`;
-      params.push(excludeSlotId);
-      paramIdx++;
+      query = query.neq('id', excludeSlotId);
     }
 
-    if (specificDate) {
-      sql += ` AND (ss.specific_date = $${paramIdx} OR (ss.recurrence = 'weekly' AND ss.specific_date IS NULL))`;
-      params.push(specificDate);
-    } else {
-      sql += ` AND (ss.recurrence = 'weekly' OR ss.specific_date IS NOT NULL)`;
-    }
+    const { data: roomConflicts, error } = await query;
+    if (error) throw error;
 
-    const result = await query(sql, params);
-    if (result.rows.length > 0) {
+    if (roomConflicts && roomConflicts.length > 0) {
       conflicts.push({
         type: 'room',
-        message: `Room "${result.rows[0].room_name}" is already booked at this time`,
-        conflictingSlots: result.rows,
+        message: `Room "${roomConflicts[0].rooms.name}" is already booked at this time`,
+        conflictingSlots: roomConflicts,
       });
     }
   }
 
   if (teacherId) {
-    let sql = `
-      SELECT ss.*, s.name as schedule_name, t.full_name as teacher_name
-      FROM schedule_slots ss
-      JOIN schedules s ON ss.schedule_id = s.id
-      JOIN teachers t ON ss.teacher_id = t.id
-      WHERE ss.teacher_id = $1
-        AND ss.day_of_week = $2
-        AND ss.start_time < $3
-        AND ss.end_time > $4
-        AND s.is_active = true
-    `;
-    const params = [teacherId, dayOfWeek, endTime, startTime];
-    let paramIdx = 5;
+    let query = supabase
+      .from('schedule_slots')
+      .select(`
+        *,
+        schedules!inner(name, is_active),
+        teachers!inner(full_name)
+      `)
+      .eq('teacher_id', teacherId)
+      .eq('day_of_week', dayOfWeek)
+      .lt('start_time', endTime)
+      .gt('end_time', startTime)
+      .eq('schedules.is_active', true);
 
     if (excludeSlotId) {
-      sql += ` AND ss.id != $${paramIdx}`;
-      params.push(excludeSlotId);
-      paramIdx++;
+      query = query.neq('id', excludeSlotId);
     }
 
-    if (specificDate) {
-      sql += ` AND (ss.specific_date = $${paramIdx} OR (ss.recurrence = 'weekly' AND ss.specific_date IS NULL))`;
-      params.push(specificDate);
-    } else {
-      sql += ` AND (ss.recurrence = 'weekly' OR ss.specific_date IS NOT NULL)`;
-    }
+    const { data: teacherConflicts, error } = await query;
+    if (error) throw error;
 
-    const result = await query(sql, params);
-    if (result.rows.length > 0) {
+    if (teacherConflicts && teacherConflicts.length > 0) {
       conflicts.push({
         type: 'teacher',
-        message: `Teacher "${result.rows[0].teacher_name}" already has a class at this time`,
-        conflictingSlots: result.rows,
+        message: `Teacher "${teacherConflicts[0].teachers.full_name}" already has a class at this time`,
+        conflictingSlots: teacherConflicts,
       });
     }
   }

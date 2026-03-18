@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { query } = require('../config/database');
+const { supabase } = require('../config/database');
 const jwtConfig = require('../config/jwt');
 
 const generateAccessToken = (user) => {
@@ -17,16 +17,15 @@ const generateRefreshToken = () => {
 };
 
 const login = async (email, password, deviceInfo, ipAddress) => {
-  const result = await query(
-    'SELECT id, email, password_hash, role, full_name, phone, avatar_url, is_active FROM users WHERE email = $1',
-    [email]
-  );
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('id, email, password_hash, role, full_name, phone, avatar_url, is_active')
+    .eq('email', email)
+    .single();
 
-  if (result.rows.length === 0) {
+  if (error || !user) {
     throw { statusCode: 401, message: 'Invalid email or password' };
   }
-
-  const user = result.rows[0];
 
   if (!user.is_active) {
     throw { statusCode: 403, message: 'Account is deactivated' };
@@ -41,12 +40,22 @@ const login = async (email, password, deviceInfo, ipAddress) => {
   const refreshToken = generateRefreshToken();
   const expiresAt = new Date(Date.now() + jwtConfig.refresh.expiresInMs);
 
-  await query(
-    'INSERT INTO refresh_tokens (user_id, token, device_info, ip_address, expires_at) VALUES ($1, $2, $3, $4, $5)',
-    [user.id, refreshToken, deviceInfo, ipAddress, expiresAt]
-  );
+  const { error: insertError } = await supabase
+    .from('refresh_tokens')
+    .insert({
+      user_id: user.id,
+      token: refreshToken,
+      device_info: deviceInfo,
+      ip_address: ipAddress,
+      expires_at: expiresAt.toISOString(),
+    });
+  if (insertError) throw insertError;
 
-  await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+  const { error: updateError } = await supabase
+    .from('users')
+    .update({ last_login_at: new Date().toISOString() })
+    .eq('id', user.id);
+  if (updateError) throw updateError;
 
   const { password_hash, ...userData } = user;
 
@@ -59,44 +68,55 @@ const login = async (email, password, deviceInfo, ipAddress) => {
 };
 
 const refresh = async (refreshToken, deviceInfo, ipAddress) => {
-  const result = await query(
-    `SELECT rt.*, u.id as user_id, u.email, u.role, u.full_name, u.is_active
-     FROM refresh_tokens rt
-     JOIN users u ON rt.user_id = u.id
-     WHERE rt.token = $1 AND rt.is_revoked = false AND rt.expires_at > NOW()`,
-    [refreshToken]
-  );
+  // Get the refresh token with user data
+  const { data: tokenData, error: tokenError } = await supabase
+    .from('refresh_tokens')
+    .select('*')
+    .eq('token', refreshToken)
+    .eq('is_revoked', false)
+    .gt('expires_at', new Date().toISOString())
+    .single();
 
-  if (result.rows.length === 0) {
+  if (tokenError || !tokenData) {
     throw { statusCode: 401, message: 'Invalid or expired refresh token' };
   }
 
-  const tokenData = result.rows[0];
+  // Get user data
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('id, email, role, full_name, is_active')
+    .eq('id', tokenData.user_id)
+    .single();
 
-  if (!tokenData.is_active) {
+  if (userError || !user) {
+    throw { statusCode: 401, message: 'Invalid or expired refresh token' };
+  }
+
+  if (!user.is_active) {
     throw { statusCode: 403, message: 'Account is deactivated' };
   }
 
-  await query(
-    'UPDATE refresh_tokens SET is_revoked = true, revoked_at = NOW() WHERE id = $1',
-    [tokenData.id]
-  );
-
-  const user = {
-    id: tokenData.user_id,
-    email: tokenData.email,
-    role: tokenData.role,
-    full_name: tokenData.full_name,
-  };
+  // Revoke old token
+  const { error: revokeError } = await supabase
+    .from('refresh_tokens')
+    .update({ is_revoked: true, revoked_at: new Date().toISOString() })
+    .eq('id', tokenData.id);
+  if (revokeError) throw revokeError;
 
   const newAccessToken = generateAccessToken(user);
   const newRefreshToken = generateRefreshToken();
   const expiresAt = new Date(Date.now() + jwtConfig.refresh.expiresInMs);
 
-  await query(
-    'INSERT INTO refresh_tokens (user_id, token, device_info, ip_address, expires_at) VALUES ($1, $2, $3, $4, $5)',
-    [user.id, newRefreshToken, deviceInfo, ipAddress, expiresAt]
-  );
+  const { error: insertError } = await supabase
+    .from('refresh_tokens')
+    .insert({
+      user_id: user.id,
+      token: newRefreshToken,
+      device_info: deviceInfo,
+      ip_address: ipAddress,
+      expires_at: expiresAt.toISOString(),
+    });
+  if (insertError) throw insertError;
 
   return {
     accessToken: newAccessToken,
@@ -106,41 +126,52 @@ const refresh = async (refreshToken, deviceInfo, ipAddress) => {
 };
 
 const logout = async (refreshToken) => {
-  const result = await query(
-    'UPDATE refresh_tokens SET is_revoked = true, revoked_at = NOW() WHERE token = $1 AND is_revoked = false RETURNING id',
-    [refreshToken]
-  );
-  return result.rows.length > 0;
+  const { data, error } = await supabase
+    .from('refresh_tokens')
+    .update({ is_revoked: true, revoked_at: new Date().toISOString() })
+    .eq('token', refreshToken)
+    .eq('is_revoked', false)
+    .select('id');
+
+  if (error) throw error;
+  return data && data.length > 0;
 };
 
 const logoutAll = async (userId) => {
-  await query(
-    'UPDATE refresh_tokens SET is_revoked = true, revoked_at = NOW() WHERE user_id = $1 AND is_revoked = false',
-    [userId]
-  );
+  const { error } = await supabase
+    .from('refresh_tokens')
+    .update({ is_revoked: true, revoked_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('is_revoked', false);
+  if (error) throw error;
 };
 
 const getMe = async (userId) => {
-  const result = await query(
-    'SELECT id, email, role, full_name, phone, avatar_url, is_active, last_login_at, created_at FROM users WHERE id = $1',
-    [userId]
-  );
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, role, full_name, phone, avatar_url, is_active, last_login_at, created_at')
+    .eq('id', userId)
+    .single();
 
-  if (result.rows.length === 0) {
+  if (error || !data) {
     throw { statusCode: 404, message: 'User not found' };
   }
 
-  return result.rows[0];
+  return data;
 };
 
 const changePassword = async (userId, currentPassword, newPassword) => {
-  const result = await query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('password_hash')
+    .eq('id', userId)
+    .single();
 
-  if (result.rows.length === 0) {
+  if (error || !user) {
     throw { statusCode: 404, message: 'User not found' };
   }
 
-  const isValid = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
+  const isValid = await bcrypt.compare(currentPassword, user.password_hash);
   if (!isValid) {
     throw { statusCode: 400, message: 'Current password is incorrect' };
   }
@@ -148,43 +179,64 @@ const changePassword = async (userId, currentPassword, newPassword) => {
   const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12;
   const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
 
-  await query(
-    'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
-    [hashedPassword, userId]
-  );
+  const { error: updateError } = await supabase
+    .from('users')
+    .update({ password_hash: hashedPassword, updated_at: new Date().toISOString() })
+    .eq('id', userId);
+  if (updateError) throw updateError;
 
-  await query(
-    'UPDATE refresh_tokens SET is_revoked = true, revoked_at = NOW() WHERE user_id = $1 AND is_revoked = false',
-    [userId]
-  );
+  // Revoke all refresh tokens
+  const { error: revokeError } = await supabase
+    .from('refresh_tokens')
+    .update({ is_revoked: true, revoked_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('is_revoked', false);
+  if (revokeError) throw revokeError;
 };
 
 const register = async (userData) => {
   const { email, password, role, fullName, phone, createTeacher } = userData;
 
-  const existing = await query('SELECT id FROM users WHERE email = $1', [email]);
-  if (existing.rows.length > 0) {
+  // Check if email exists
+  const { data: existing } = await supabase
+    .from('users')
+    .select('id')
+    .eq('email', email)
+    .single();
+
+  if (existing) {
     throw { statusCode: 409, message: 'Email already exists' };
   }
 
   const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS) || 12;
   const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-  const result = await query(
-    `INSERT INTO users (email, password_hash, role, full_name, phone)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, email, role, full_name, phone, is_active, created_at`,
-    [email, hashedPassword, role, fullName, phone]
-  );
+  const { data: user, error } = await supabase
+    .from('users')
+    .insert({
+      email,
+      password_hash: hashedPassword,
+      role,
+      full_name: fullName,
+      phone,
+    })
+    .select('id, email, role, full_name, phone, is_active, created_at')
+    .single();
 
-  const user = result.rows[0];
+  if (error) throw error;
 
   if (createTeacher && role === 'teacher') {
-    await query(
-      `INSERT INTO teachers (user_id, full_name, phone, email, status, hire_date)
-       VALUES ($1, $2, $3, $4, 'active', CURRENT_DATE)`,
-      [user.id, fullName, phone, email]
-    );
+    const { error: teacherError } = await supabase
+      .from('teachers')
+      .insert({
+        user_id: user.id,
+        full_name: fullName,
+        phone,
+        email,
+        status: 'active',
+        hire_date: new Date().toISOString().split('T')[0],
+      });
+    if (teacherError) throw teacherError;
   }
 
   return user;

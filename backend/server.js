@@ -3,7 +3,6 @@ require('dotenv').config();
 const http = require('http');
 const app = require('./src/app');
 const { initSocket } = require('./src/socket');
-const { pool } = require('./src/config/database');
 
 const PORT = process.env.PORT || 3001;
 
@@ -15,13 +14,8 @@ initSocket(server);
 // Graceful shutdown
 const shutdown = async (signal) => {
   console.log(`\n${signal} received. Shutting down gracefully...`);
-  server.close(async () => {
-    try {
-      await pool.end();
-      console.log('Database pool closed');
-    } catch (err) {
-      console.error('Error closing database pool:', err);
-    }
+  server.close(() => {
+    console.log('Server closed');
     process.exit(0);
   });
 
@@ -36,13 +30,8 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 // Start server
 server.listen(PORT, () => {
-  console.log(`
-╔══════════════════════════════════════════════╗
-║   Education Center Management System API     ║
-║   Running on port ${PORT}                        ║
-║   Environment: ${process.env.NODE_ENV || 'development'}               ║
-╚══════════════════════════════════════════════╝
-  `);
+  console.log(`Education Center API running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 module.exports = server;

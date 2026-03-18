@@ -1,4 +1,4 @@
-const { query } = require('../config/database');
+const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const getAll = async (queryParams) => {
@@ -6,71 +6,110 @@ const getAll = async (queryParams) => {
   const allowedSort = ['name', 'code', 'created_at'];
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
 
-  let whereClause = 'WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
+  // Count query
+  let countQuery = supabase.from('subjects').select('id', { count: 'exact', head: true });
+  if (search) {
+    countQuery = countQuery.or(`name.ilike.%${search}%,code.ilike.%${search}%,description.ilike.%${search}%`);
+  }
+  if (queryParams.is_active !== undefined) {
+    countQuery = countQuery.eq('is_active', queryParams.is_active === 'true');
+  }
+  const { count: total, error: countError } = await countQuery;
+  if (countError) throw countError;
+
+  // Data query
+  let dataQuery = supabase
+    .from('subjects')
+    .select('*');
 
   if (search) {
-    whereClause += ` AND (name ILIKE $${paramIdx} OR code ILIKE $${paramIdx} OR description ILIKE $${paramIdx})`;
-    params.push(`%${search}%`);
-    paramIdx++;
+    dataQuery = dataQuery.or(`name.ilike.%${search}%,code.ilike.%${search}%,description.ilike.%${search}%`);
   }
-
   if (queryParams.is_active !== undefined) {
-    whereClause += ` AND is_active = $${paramIdx}`;
-    params.push(queryParams.is_active === 'true');
-    paramIdx++;
+    dataQuery = dataQuery.eq('is_active', queryParams.is_active === 'true');
   }
 
-  const countResult = await query(`SELECT COUNT(*) FROM subjects ${whereClause}`, params);
-  const total = parseInt(countResult.rows[0].count);
+  dataQuery = dataQuery
+    .order(sort, { ascending: sortOrder === 'ASC' })
+    .range(offset, offset + limit - 1);
 
-  const dataResult = await query(
-    `SELECT * FROM subjects ${whereClause}
-     ORDER BY ${sort} ${sortOrder}
-     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
-    [...params, limit, offset]
-  );
+  const { data, error } = await dataQuery;
+  if (error) throw error;
 
   return {
-    data: dataResult.rows,
-    pagination: buildPaginationResponse(total, page, limit),
+    data: data || [],
+    pagination: buildPaginationResponse(total || 0, page, limit),
   };
 };
 
 const getById = async (id) => {
-  const result = await query('SELECT * FROM subjects WHERE id = $1', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('subjects')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const create = async (data) => {
   const { code, name, description, is_active } = data;
-  const result = await query(
-    'INSERT INTO subjects (code, name, description, is_active) VALUES ($1, $2, $3, $4) RETURNING *',
-    [code, name, description, is_active !== undefined ? is_active : true]
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('subjects')
+    .insert({
+      code,
+      name,
+      description,
+      is_active: is_active !== undefined ? is_active : true,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const update = async (id, data) => {
   const { code, name, description, is_active } = data;
-  const result = await query(
-    `UPDATE subjects SET
-       code = COALESCE($1, code),
-       name = COALESCE($2, name),
-       description = COALESCE($3, description),
-       is_active = COALESCE($4, is_active),
-       updated_at = NOW()
-     WHERE id = $5
-     RETURNING *`,
-    [code, name, description, is_active, id]
-  );
-  return result.rows[0] || null;
+
+  const updateObj = {};
+  if (code !== undefined) updateObj.code = code;
+  if (name !== undefined) updateObj.name = name;
+  if (description !== undefined) updateObj.description = description;
+  if (is_active !== undefined) updateObj.is_active = is_active;
+  updateObj.updated_at = new Date().toISOString();
+
+  const { data: row, error } = await supabase
+    .from('subjects')
+    .update(updateObj)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const remove = async (id) => {
-  const result = await query('DELETE FROM subjects WHERE id = $1 RETURNING id', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('subjects')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 module.exports = { getAll, getById, create, update, remove };

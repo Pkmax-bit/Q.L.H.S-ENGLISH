@@ -1,4 +1,4 @@
-const { query } = require('../config/database');
+const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const getAll = async (queryParams) => {
@@ -7,41 +7,54 @@ const getAll = async (queryParams) => {
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
   const statusFilter = queryParams.status || null;
 
-  let whereClause = 'WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
+  // Count query
+  let countQuery = supabase.from('students').select('id', { count: 'exact', head: true });
+  if (search) {
+    countQuery = countQuery.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,parent_name.ilike.%${search}%`);
+  }
+  if (statusFilter) {
+    countQuery = countQuery.eq('status', statusFilter);
+  }
+  const { count: total, error: countError } = await countQuery;
+  if (countError) throw countError;
+
+  // Data query
+  let dataQuery = supabase
+    .from('students')
+    .select('*');
 
   if (search) {
-    whereClause += ` AND (full_name ILIKE $${paramIdx} OR email ILIKE $${paramIdx} OR phone ILIKE $${paramIdx} OR parent_name ILIKE $${paramIdx})`;
-    params.push(`%${search}%`);
-    paramIdx++;
+    dataQuery = dataQuery.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,parent_name.ilike.%${search}%`);
   }
-
   if (statusFilter) {
-    whereClause += ` AND status = $${paramIdx}`;
-    params.push(statusFilter);
-    paramIdx++;
+    dataQuery = dataQuery.eq('status', statusFilter);
   }
 
-  const countResult = await query(`SELECT COUNT(*) FROM students ${whereClause}`, params);
-  const total = parseInt(countResult.rows[0].count);
+  dataQuery = dataQuery
+    .order(sort, { ascending: sortOrder === 'ASC' })
+    .range(offset, offset + limit - 1);
 
-  const dataResult = await query(
-    `SELECT * FROM students ${whereClause}
-     ORDER BY ${sort} ${sortOrder}
-     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
-    [...params, limit, offset]
-  );
+  const { data, error } = await dataQuery;
+  if (error) throw error;
 
   return {
-    data: dataResult.rows,
-    pagination: buildPaginationResponse(total, page, limit),
+    data: data || [],
+    pagination: buildPaginationResponse(total || 0, page, limit),
   };
 };
 
 const getById = async (id) => {
-  const result = await query('SELECT * FROM students WHERE id = $1', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('students')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const create = async (data) => {
@@ -49,13 +62,27 @@ const create = async (data) => {
     full_name, date_of_birth, gender, phone, parent_phone,
     parent_name, email, address, enrollment_date, status, notes,
   } = data;
-  const result = await query(
-    `INSERT INTO students (full_name, date_of_birth, gender, phone, parent_phone, parent_name, email, address, enrollment_date, status, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-     RETURNING *`,
-    [full_name, date_of_birth, gender, phone, parent_phone, parent_name, email, address, enrollment_date, status || 'active', notes]
-  );
-  return result.rows[0];
+
+  const { data: row, error } = await supabase
+    .from('students')
+    .insert({
+      full_name,
+      date_of_birth,
+      gender,
+      phone,
+      parent_phone,
+      parent_name,
+      email,
+      address,
+      enrollment_date,
+      status: status || 'active',
+      notes,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const update = async (id, data) => {
@@ -63,63 +90,92 @@ const update = async (id, data) => {
     full_name, date_of_birth, gender, phone, parent_phone,
     parent_name, email, address, enrollment_date, status, notes,
   } = data;
-  const result = await query(
-    `UPDATE students SET
-       full_name = COALESCE($1, full_name),
-       date_of_birth = COALESCE($2, date_of_birth),
-       gender = COALESCE($3, gender),
-       phone = COALESCE($4, phone),
-       parent_phone = COALESCE($5, parent_phone),
-       parent_name = COALESCE($6, parent_name),
-       email = COALESCE($7, email),
-       address = COALESCE($8, address),
-       enrollment_date = COALESCE($9, enrollment_date),
-       status = COALESCE($10, status),
-       notes = COALESCE($11, notes),
-       updated_at = NOW()
-     WHERE id = $12
-     RETURNING *`,
-    [full_name, date_of_birth, gender, phone, parent_phone, parent_name, email, address, enrollment_date, status, notes, id]
-  );
-  return result.rows[0] || null;
+
+  const updateObj = {};
+  if (full_name !== undefined) updateObj.full_name = full_name;
+  if (date_of_birth !== undefined) updateObj.date_of_birth = date_of_birth;
+  if (gender !== undefined) updateObj.gender = gender;
+  if (phone !== undefined) updateObj.phone = phone;
+  if (parent_phone !== undefined) updateObj.parent_phone = parent_phone;
+  if (parent_name !== undefined) updateObj.parent_name = parent_name;
+  if (email !== undefined) updateObj.email = email;
+  if (address !== undefined) updateObj.address = address;
+  if (enrollment_date !== undefined) updateObj.enrollment_date = enrollment_date;
+  if (status !== undefined) updateObj.status = status;
+  if (notes !== undefined) updateObj.notes = notes;
+  updateObj.updated_at = new Date().toISOString();
+
+  const { data: row, error } = await supabase
+    .from('students')
+    .update(updateObj)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const remove = async (id) => {
-  const result = await query('DELETE FROM students WHERE id = $1 RETURNING id', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('students')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const getClasses = async (studentId) => {
-  const result = await query(
-    `SELECT c.*, cs.enrolled_at, s.name as subject_name, t.full_name as teacher_name
-     FROM class_students cs
-     JOIN classes c ON cs.class_id = c.id
-     LEFT JOIN subjects s ON c.subject_id = s.id
-     LEFT JOIN teachers t ON c.homeroom_teacher_id = t.id
-     WHERE cs.student_id = $1
-     ORDER BY c.created_at DESC`,
-    [studentId]
-  );
-  return result.rows;
+  const { data, error } = await supabase
+    .from('class_students')
+    .select(`
+      enrolled_at,
+      classes(
+        *,
+        subjects(name),
+        teachers!classes_homeroom_teacher_id_fkey(full_name)
+      )
+    `)
+    .eq('student_id', studentId)
+    .order('enrolled_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data || []).map(row => {
+    const cls = row.classes || {};
+    return {
+      ...cls,
+      enrolled_at: row.enrolled_at,
+      subject_name: cls.subjects?.name || null,
+      teacher_name: cls.teachers?.full_name || null,
+    };
+  });
 };
 
 const getAllForExport = async (queryParams) => {
   const { search } = parsePagination(queryParams);
-  let whereClause = 'WHERE 1=1';
-  const params = [];
+
+  let query = supabase
+    .from('students')
+    .select('full_name, date_of_birth, gender, phone, parent_phone, parent_name, email, address, enrollment_date, status')
+    .order('full_name', { ascending: true });
 
   if (search) {
-    whereClause += ` AND (full_name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1)`;
-    params.push(`%${search}%`);
+    query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
   }
 
-  const result = await query(
-    `SELECT full_name, date_of_birth, gender, phone, parent_phone, parent_name, email, address, enrollment_date, status
-     FROM students ${whereClause}
-     ORDER BY full_name`,
-    params
-  );
-  return result.rows;
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
 };
 
 module.exports = { getAll, getById, create, update, remove, getClasses, getAllForExport };

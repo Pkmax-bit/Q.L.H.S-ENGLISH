@@ -1,4 +1,4 @@
-const { query } = require('../config/database');
+const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const getAll = async (queryParams) => {
@@ -7,157 +7,284 @@ const getAll = async (queryParams) => {
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
   const statusFilter = queryParams.status || null;
 
-  let whereClause = 'WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
+  // Count query
+  let countQuery = supabase.from('classes').select('id', { count: 'exact', head: true });
+  if (search) {
+    countQuery = countQuery.or(`name.ilike.%${search}%,notes.ilike.%${search}%`);
+  }
+  if (statusFilter) {
+    countQuery = countQuery.eq('status', statusFilter);
+  }
+  const { count: total, error: countError } = await countQuery;
+  if (countError) throw countError;
+
+  // Data query - Supabase doesn't support subquery count in select,
+  // so we fetch classes with joins and get student counts separately
+  let dataQuery = supabase
+    .from('classes')
+    .select(`
+      *,
+      subjects(name, code),
+      teachers!classes_homeroom_teacher_id_fkey(full_name)
+    `);
 
   if (search) {
-    whereClause += ` AND (c.name ILIKE $${paramIdx} OR c.notes ILIKE $${paramIdx})`;
-    params.push(`%${search}%`);
-    paramIdx++;
+    dataQuery = dataQuery.or(`name.ilike.%${search}%,notes.ilike.%${search}%`);
   }
-
   if (statusFilter) {
-    whereClause += ` AND c.status = $${paramIdx}`;
-    params.push(statusFilter);
-    paramIdx++;
+    dataQuery = dataQuery.eq('status', statusFilter);
   }
 
-  const countResult = await query(`SELECT COUNT(*) FROM classes c ${whereClause}`, params);
-  const total = parseInt(countResult.rows[0].count);
+  dataQuery = dataQuery
+    .order(sort, { ascending: sortOrder === 'ASC' })
+    .range(offset, offset + limit - 1);
 
-  const dataResult = await query(
-    `SELECT c.*, s.name as subject_name, s.code as subject_code,
-            t.full_name as homeroom_teacher_name,
-            (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id = c.id) as student_count
-     FROM classes c
-     LEFT JOIN subjects s ON c.subject_id = s.id
-     LEFT JOIN teachers t ON c.homeroom_teacher_id = t.id
-     ${whereClause}
-     ORDER BY c.${sort} ${sortOrder}
-     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
-    [...params, limit, offset]
-  );
+  const { data, error } = await dataQuery;
+  if (error) throw error;
+
+  // Get student counts for these classes
+  const classIds = (data || []).map(c => c.id);
+  let studentCounts = {};
+  if (classIds.length > 0) {
+    const { data: csData, error: csError } = await supabase
+      .from('class_students')
+      .select('class_id')
+      .in('class_id', classIds);
+    if (csError) throw csError;
+
+    for (const row of (csData || [])) {
+      studentCounts[row.class_id] = (studentCounts[row.class_id] || 0) + 1;
+    }
+  }
+
+  const rows = (data || []).map(row => {
+    const { subjects, teachers, ...rest } = row;
+    return {
+      ...rest,
+      subject_name: subjects?.name || null,
+      subject_code: subjects?.code || null,
+      homeroom_teacher_name: teachers?.full_name || null,
+      student_count: studentCounts[row.id] || 0,
+    };
+  });
 
   return {
-    data: dataResult.rows,
-    pagination: buildPaginationResponse(total, page, limit),
+    data: rows,
+    pagination: buildPaginationResponse(total || 0, page, limit),
   };
 };
 
 const getById = async (id) => {
-  const result = await query(
-    `SELECT c.*, s.name as subject_name, s.code as subject_code,
-            t.full_name as homeroom_teacher_name,
-            (SELECT COUNT(*) FROM class_students cs WHERE cs.class_id = c.id) as student_count
-     FROM classes c
-     LEFT JOIN subjects s ON c.subject_id = s.id
-     LEFT JOIN teachers t ON c.homeroom_teacher_id = t.id
-     WHERE c.id = $1`,
-    [id]
-  );
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('classes')
+    .select(`
+      *,
+      subjects(name, code),
+      teachers!classes_homeroom_teacher_id_fkey(full_name)
+    `)
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+
+  // Get student count
+  const { count, error: countError } = await supabase
+    .from('class_students')
+    .select('id', { count: 'exact', head: true })
+    .eq('class_id', id);
+  if (countError) throw countError;
+
+  const { subjects, teachers, ...rest } = data;
+  return {
+    ...rest,
+    subject_name: subjects?.name || null,
+    subject_code: subjects?.code || null,
+    homeroom_teacher_name: teachers?.full_name || null,
+    student_count: count || 0,
+  };
 };
 
 const create = async (data) => {
   const { name, subject_id, homeroom_teacher_id, max_students, status, start_date, end_date, notes } = data;
-  const result = await query(
-    `INSERT INTO classes (name, subject_id, homeroom_teacher_id, max_students, status, start_date, end_date, notes)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING *`,
-    [name, subject_id, homeroom_teacher_id, max_students || 30, status || 'active', start_date, end_date, notes]
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('classes')
+    .insert({
+      name,
+      subject_id,
+      homeroom_teacher_id,
+      max_students: max_students || 30,
+      status: status || 'active',
+      start_date,
+      end_date,
+      notes,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const update = async (id, data) => {
   const { name, subject_id, homeroom_teacher_id, max_students, status, start_date, end_date, notes } = data;
-  const result = await query(
-    `UPDATE classes SET
-       name = COALESCE($1, name),
-       subject_id = COALESCE($2, subject_id),
-       homeroom_teacher_id = COALESCE($3, homeroom_teacher_id),
-       max_students = COALESCE($4, max_students),
-       status = COALESCE($5, status),
-       start_date = COALESCE($6, start_date),
-       end_date = COALESCE($7, end_date),
-       notes = COALESCE($8, notes),
-       updated_at = NOW()
-     WHERE id = $9
-     RETURNING *`,
-    [name, subject_id, homeroom_teacher_id, max_students, status, start_date, end_date, notes, id]
-  );
-  return result.rows[0] || null;
+
+  const updateObj = {};
+  if (name !== undefined) updateObj.name = name;
+  if (subject_id !== undefined) updateObj.subject_id = subject_id;
+  if (homeroom_teacher_id !== undefined) updateObj.homeroom_teacher_id = homeroom_teacher_id;
+  if (max_students !== undefined) updateObj.max_students = max_students;
+  if (status !== undefined) updateObj.status = status;
+  if (start_date !== undefined) updateObj.start_date = start_date;
+  if (end_date !== undefined) updateObj.end_date = end_date;
+  if (notes !== undefined) updateObj.notes = notes;
+  updateObj.updated_at = new Date().toISOString();
+
+  const { data: row, error } = await supabase
+    .from('classes')
+    .update(updateObj)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const remove = async (id) => {
-  const result = await query('DELETE FROM classes WHERE id = $1 RETURNING id', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('classes')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const getStudents = async (classId) => {
-  const result = await query(
-    `SELECT s.*, cs.enrolled_at
-     FROM class_students cs
-     JOIN students s ON cs.student_id = s.id
-     WHERE cs.class_id = $1
-     ORDER BY s.full_name`,
-    [classId]
-  );
-  return result.rows;
+  const { data, error } = await supabase
+    .from('class_students')
+    .select(`
+      enrolled_at,
+      students(*)
+    `)
+    .eq('class_id', classId);
+
+  if (error) throw error;
+
+  return (data || []).map(row => ({
+    ...row.students,
+    enrolled_at: row.enrolled_at,
+  })).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
 };
 
 const addStudent = async (classId, studentId) => {
-  const classInfo = await query(
-    'SELECT max_students, (SELECT COUNT(*) FROM class_students WHERE class_id = $1) as current_count FROM classes WHERE id = $1',
-    [classId]
-  );
-  if (classInfo.rows.length === 0) throw { statusCode: 404, message: 'Class not found' };
-  if (parseInt(classInfo.rows[0].current_count) >= classInfo.rows[0].max_students) {
+  // Check class capacity
+  const { data: classInfo, error: classError } = await supabase
+    .from('classes')
+    .select('max_students')
+    .eq('id', classId)
+    .single();
+
+  if (classError || !classInfo) {
+    throw { statusCode: 404, message: 'Class not found' };
+  }
+
+  const { count, error: countError } = await supabase
+    .from('class_students')
+    .select('id', { count: 'exact', head: true })
+    .eq('class_id', classId);
+  if (countError) throw countError;
+
+  if (count >= classInfo.max_students) {
     throw { statusCode: 400, message: 'Class is full' };
   }
 
-  const result = await query(
-    'INSERT INTO class_students (class_id, student_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING *',
-    [classId, studentId]
-  );
-  return result.rows[0];
+  // Upsert (ON CONFLICT DO NOTHING equivalent)
+  const { data, error } = await supabase
+    .from('class_students')
+    .upsert(
+      { class_id: classId, student_id: studentId },
+      { onConflict: 'class_id,student_id', ignoreDuplicates: true }
+    )
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 };
 
 const removeStudent = async (classId, studentId) => {
-  const result = await query(
-    'DELETE FROM class_students WHERE class_id = $1 AND student_id = $2 RETURNING *',
-    [classId, studentId]
-  );
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('class_students')
+    .delete()
+    .eq('class_id', classId)
+    .eq('student_id', studentId)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const getTeachers = async (classId) => {
-  const result = await query(
-    `SELECT t.*, ct.role as class_role
-     FROM class_teachers ct
-     JOIN teachers t ON ct.teacher_id = t.id
-     WHERE ct.class_id = $1
-     ORDER BY t.full_name`,
-    [classId]
-  );
-  return result.rows;
+  const { data, error } = await supabase
+    .from('class_teachers')
+    .select(`
+      role,
+      teachers(*)
+    `)
+    .eq('class_id', classId);
+
+  if (error) throw error;
+
+  return (data || []).map(row => ({
+    ...row.teachers,
+    class_role: row.role,
+  })).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
 };
 
 const addTeacher = async (classId, teacherId, role = 'instructor') => {
-  const result = await query(
-    'INSERT INTO class_teachers (class_id, teacher_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING *',
-    [classId, teacherId, role]
-  );
-  return result.rows[0];
+  const { data, error } = await supabase
+    .from('class_teachers')
+    .upsert(
+      { class_id: classId, teacher_id: teacherId, role },
+      { onConflict: 'class_id,teacher_id', ignoreDuplicates: true }
+    )
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 };
 
 const removeTeacher = async (classId, teacherId) => {
-  const result = await query(
-    'DELETE FROM class_teachers WHERE class_id = $1 AND teacher_id = $2 RETURNING *',
-    [classId, teacherId]
-  );
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('class_teachers')
+    .delete()
+    .eq('class_id', classId)
+    .eq('teacher_id', teacherId)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 module.exports = {

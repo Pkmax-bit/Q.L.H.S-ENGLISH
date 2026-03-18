@@ -1,4 +1,4 @@
-const { query } = require('../config/database');
+const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 const { checkScheduleConflict } = require('../utils/scheduleValidator');
 
@@ -8,105 +8,181 @@ const getAll = async (queryParams) => {
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
   const classId = queryParams.class_id || null;
 
-  let whereClause = 'WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
+  // Count query - need to handle search across joined table
+  // For search on class name, we need inner join approach
+  let countQuery = supabase.from('schedules').select('id, classes!inner(name)', { count: 'exact', head: true });
+  if (search) {
+    countQuery = countQuery.or(`name.ilike.%${search}%,classes.name.ilike.%${search}%`);
+  }
+  if (classId) {
+    countQuery = countQuery.eq('class_id', classId);
+  }
+  if (queryParams.is_active !== undefined) {
+    countQuery = countQuery.eq('is_active', queryParams.is_active === 'true');
+  }
+  const { count: total, error: countError } = await countQuery;
+  if (countError) {
+    // Fallback: count without cross-table search
+    let fallbackCount = supabase.from('schedules').select('id', { count: 'exact', head: true });
+    if (search) {
+      fallbackCount = fallbackCount.ilike('name', `%${search}%`);
+    }
+    if (classId) {
+      fallbackCount = fallbackCount.eq('class_id', classId);
+    }
+    if (queryParams.is_active !== undefined) {
+      fallbackCount = fallbackCount.eq('is_active', queryParams.is_active === 'true');
+    }
+    const { count: fallbackTotal, error: fbError } = await fallbackCount;
+    if (fbError) throw fbError;
+    var totalCount = fallbackTotal || 0;
+  } else {
+    var totalCount = total || 0;
+  }
+
+  // Data query
+  let dataQuery = supabase
+    .from('schedules')
+    .select(`
+      *,
+      classes(name)
+    `);
 
   if (search) {
-    whereClause += ` AND (s.name ILIKE $${paramIdx} OR c.name ILIKE $${paramIdx})`;
-    params.push(`%${search}%`);
-    paramIdx++;
+    dataQuery = dataQuery.ilike('name', `%${search}%`);
   }
-
   if (classId) {
-    whereClause += ` AND s.class_id = $${paramIdx}`;
-    params.push(classId);
-    paramIdx++;
+    dataQuery = dataQuery.eq('class_id', classId);
   }
-
   if (queryParams.is_active !== undefined) {
-    whereClause += ` AND s.is_active = $${paramIdx}`;
-    params.push(queryParams.is_active === 'true');
-    paramIdx++;
+    dataQuery = dataQuery.eq('is_active', queryParams.is_active === 'true');
   }
 
-  const countResult = await query(`SELECT COUNT(*) FROM schedules s JOIN classes c ON s.class_id = c.id ${whereClause}`, params);
-  const total = parseInt(countResult.rows[0].count);
+  dataQuery = dataQuery
+    .order(sort, { ascending: sortOrder === 'ASC' })
+    .range(offset, offset + limit - 1);
 
-  const dataResult = await query(
-    `SELECT s.*, c.name as class_name
-     FROM schedules s
-     JOIN classes c ON s.class_id = c.id
-     ${whereClause}
-     ORDER BY s.${sort} ${sortOrder}
-     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
-    [...params, limit, offset]
-  );
+  const { data, error } = await dataQuery;
+  if (error) throw error;
+
+  const rows = (data || []).map(row => {
+    const { classes, ...rest } = row;
+    return {
+      ...rest,
+      class_name: classes?.name || null,
+    };
+  });
 
   return {
-    data: dataResult.rows,
-    pagination: buildPaginationResponse(total, page, limit),
+    data: rows,
+    pagination: buildPaginationResponse(totalCount, page, limit),
   };
 };
 
 const getById = async (id) => {
-  const result = await query(
-    `SELECT s.*, c.name as class_name
-     FROM schedules s
-     JOIN classes c ON s.class_id = c.id
-     WHERE s.id = $1`,
-    [id]
-  );
+  const { data, error } = await supabase
+    .from('schedules')
+    .select(`
+      *,
+      classes(name)
+    `)
+    .eq('id', id)
+    .single();
 
-  if (result.rows.length === 0) return null;
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
 
-  const schedule = result.rows[0];
+  const { classes, ...rest } = data;
+  const schedule = {
+    ...rest,
+    class_name: classes?.name || null,
+  };
 
-  const slots = await query(
-    `SELECT ss.*, t.full_name as teacher_name, r.name as room_name, sub.name as subject_name
-     FROM schedule_slots ss
-     LEFT JOIN teachers t ON ss.teacher_id = t.id
-     LEFT JOIN rooms r ON ss.room_id = r.id
-     LEFT JOIN subjects sub ON ss.subject_id = sub.id
-     WHERE ss.schedule_id = $1
-     ORDER BY ss.day_of_week, ss.start_time`,
-    [id]
-  );
-  schedule.slots = slots.rows;
+  // Get slots with joins
+  const { data: slots, error: slotsError } = await supabase
+    .from('schedule_slots')
+    .select(`
+      *,
+      teachers(full_name),
+      rooms(name),
+      subjects(name)
+    `)
+    .eq('schedule_id', id)
+    .order('day_of_week', { ascending: true })
+    .order('start_time', { ascending: true });
+
+  if (slotsError) throw slotsError;
+
+  schedule.slots = (slots || []).map(slot => {
+    const { teachers, rooms, subjects, ...slotRest } = slot;
+    return {
+      ...slotRest,
+      teacher_name: teachers?.full_name || null,
+      room_name: rooms?.name || null,
+      subject_name: subjects?.name || null,
+    };
+  });
 
   return schedule;
 };
 
 const create = async (data) => {
   const { class_id, name, start_date, end_date, is_active } = data;
-  const result = await query(
-    `INSERT INTO schedules (class_id, name, start_date, end_date, is_active)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING *`,
-    [class_id, name, start_date, end_date, is_active !== undefined ? is_active : true]
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('schedules')
+    .insert({
+      class_id,
+      name,
+      start_date,
+      end_date,
+      is_active: is_active !== undefined ? is_active : true,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const update = async (id, data) => {
   const { name, start_date, end_date, is_active } = data;
-  const result = await query(
-    `UPDATE schedules SET
-       name = COALESCE($1, name),
-       start_date = COALESCE($2, start_date),
-       end_date = COALESCE($3, end_date),
-       is_active = COALESCE($4, is_active),
-       updated_at = NOW()
-     WHERE id = $5
-     RETURNING *`,
-    [name, start_date, end_date, is_active, id]
-  );
-  return result.rows[0] || null;
+
+  const updateObj = {};
+  if (name !== undefined) updateObj.name = name;
+  if (start_date !== undefined) updateObj.start_date = start_date;
+  if (end_date !== undefined) updateObj.end_date = end_date;
+  if (is_active !== undefined) updateObj.is_active = is_active;
+  updateObj.updated_at = new Date().toISOString();
+
+  const { data: row, error } = await supabase
+    .from('schedules')
+    .update(updateObj)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const remove = async (id) => {
-  const result = await query('DELETE FROM schedules WHERE id = $1 RETURNING id', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('schedules')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const addSlot = async (scheduleId, data) => {
@@ -120,30 +196,48 @@ const addSlot = async (scheduleId, data) => {
     throw { statusCode: 409, message: 'Schedule conflict detected', data: { conflicts } };
   }
 
-  const result = await query(
-    `INSERT INTO schedule_slots (schedule_id, teacher_id, room_id, subject_id, day_of_week, start_time, end_time, recurrence, specific_date)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING *`,
-    [scheduleId, teacher_id, room_id, subject_id, day_of_week, start_time, end_time, recurrence || 'weekly', specific_date]
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('schedule_slots')
+    .insert({
+      schedule_id: scheduleId,
+      teacher_id,
+      room_id,
+      subject_id,
+      day_of_week,
+      start_time,
+      end_time,
+      recurrence: recurrence || 'weekly',
+      specific_date,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const updateSlot = async (slotId, data) => {
   const { teacher_id, room_id, subject_id, day_of_week, start_time, end_time, recurrence, specific_date } = data;
 
   if (room_id || teacher_id || day_of_week !== undefined || start_time || end_time) {
-    const currentSlot = await query('SELECT * FROM schedule_slots WHERE id = $1', [slotId]);
-    if (currentSlot.rows.length === 0) throw { statusCode: 404, message: 'Slot not found' };
-    const current = currentSlot.rows[0];
+    // Get current slot data
+    const { data: currentSlot, error: slotError } = await supabase
+      .from('schedule_slots')
+      .select('*')
+      .eq('id', slotId)
+      .single();
+
+    if (slotError || !currentSlot) {
+      throw { statusCode: 404, message: 'Slot not found' };
+    }
 
     const conflicts = await checkScheduleConflict(
-      room_id || current.room_id,
-      teacher_id || current.teacher_id,
-      day_of_week !== undefined ? day_of_week : current.day_of_week,
-      start_time || current.start_time,
-      end_time || current.end_time,
-      specific_date || current.specific_date,
+      room_id || currentSlot.room_id,
+      teacher_id || currentSlot.teacher_id,
+      day_of_week !== undefined ? day_of_week : currentSlot.day_of_week,
+      start_time || currentSlot.start_time,
+      end_time || currentSlot.end_time,
+      specific_date || currentSlot.specific_date,
       slotId
     );
 
@@ -152,26 +246,43 @@ const updateSlot = async (slotId, data) => {
     }
   }
 
-  const result = await query(
-    `UPDATE schedule_slots SET
-       teacher_id = COALESCE($1, teacher_id),
-       room_id = COALESCE($2, room_id),
-       subject_id = COALESCE($3, subject_id),
-       day_of_week = COALESCE($4, day_of_week),
-       start_time = COALESCE($5, start_time),
-       end_time = COALESCE($6, end_time),
-       recurrence = COALESCE($7, recurrence),
-       specific_date = COALESCE($8, specific_date)
-     WHERE id = $9
-     RETURNING *`,
-    [teacher_id, room_id, subject_id, day_of_week, start_time, end_time, recurrence, specific_date, slotId]
-  );
-  return result.rows[0] || null;
+  const updateObj = {};
+  if (teacher_id !== undefined) updateObj.teacher_id = teacher_id;
+  if (room_id !== undefined) updateObj.room_id = room_id;
+  if (subject_id !== undefined) updateObj.subject_id = subject_id;
+  if (day_of_week !== undefined) updateObj.day_of_week = day_of_week;
+  if (start_time !== undefined) updateObj.start_time = start_time;
+  if (end_time !== undefined) updateObj.end_time = end_time;
+  if (recurrence !== undefined) updateObj.recurrence = recurrence;
+  if (specific_date !== undefined) updateObj.specific_date = specific_date;
+
+  const { data: row, error } = await supabase
+    .from('schedule_slots')
+    .update(updateObj)
+    .eq('id', slotId)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const removeSlot = async (slotId) => {
-  const result = await query('DELETE FROM schedule_slots WHERE id = $1 RETURNING id', [slotId]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('schedule_slots')
+    .delete()
+    .eq('id', slotId)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 module.exports = { getAll, getById, create, update, remove, addSlot, updateSlot, removeSlot };

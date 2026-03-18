@@ -1,4 +1,4 @@
-const { query } = require('../config/database');
+const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const getAll = async (queryParams) => {
@@ -8,196 +8,348 @@ const getAll = async (queryParams) => {
   const subjectId = queryParams.subject_id || null;
   const typeFilter = queryParams.type || null;
 
-  let whereClause = 'WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
+  // Count query
+  let countQuery = supabase.from('assignments').select('id', { count: 'exact', head: true });
+  if (search) {
+    countQuery = countQuery.or(`title.ilike.%${search}%,content.ilike.%${search}%`);
+  }
+  if (subjectId) {
+    countQuery = countQuery.eq('subject_id', subjectId);
+  }
+  if (typeFilter) {
+    countQuery = countQuery.eq('type', typeFilter);
+  }
+  const { count: total, error: countError } = await countQuery;
+  if (countError) throw countError;
+
+  // Data query
+  let dataQuery = supabase
+    .from('assignments')
+    .select(`
+      *,
+      subjects(name),
+      users!assignments_created_by_fkey(full_name)
+    `);
 
   if (search) {
-    whereClause += ` AND (a.title ILIKE $${paramIdx} OR a.content ILIKE $${paramIdx})`;
-    params.push(`%${search}%`);
-    paramIdx++;
+    dataQuery = dataQuery.or(`title.ilike.%${search}%,content.ilike.%${search}%`);
   }
-
   if (subjectId) {
-    whereClause += ` AND a.subject_id = $${paramIdx}`;
-    params.push(subjectId);
-    paramIdx++;
+    dataQuery = dataQuery.eq('subject_id', subjectId);
   }
-
   if (typeFilter) {
-    whereClause += ` AND a.type = $${paramIdx}`;
-    params.push(typeFilter);
-    paramIdx++;
+    dataQuery = dataQuery.eq('type', typeFilter);
   }
 
-  const countResult = await query(`SELECT COUNT(*) FROM assignments a ${whereClause}`, params);
-  const total = parseInt(countResult.rows[0].count);
+  dataQuery = dataQuery
+    .order(sort, { ascending: sortOrder === 'ASC' })
+    .range(offset, offset + limit - 1);
 
-  const dataResult = await query(
-    `SELECT a.*, s.name as subject_name, u.full_name as created_by_name,
-            (SELECT COUNT(*) FROM assignment_questions aq WHERE aq.assignment_id = a.id) as question_count
-     FROM assignments a
-     LEFT JOIN subjects s ON a.subject_id = s.id
-     LEFT JOIN users u ON a.created_by = u.id
-     ${whereClause}
-     ORDER BY a.${sort} ${sortOrder}
-     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
-    [...params, limit, offset]
-  );
+  const { data, error } = await dataQuery;
+  if (error) throw error;
+
+  // Get question counts for these assignments
+  const assignmentIds = (data || []).map(a => a.id);
+  let questionCounts = {};
+  if (assignmentIds.length > 0) {
+    const { data: qData, error: qError } = await supabase
+      .from('assignment_questions')
+      .select('assignment_id')
+      .in('assignment_id', assignmentIds);
+    if (qError) throw qError;
+
+    for (const row of (qData || [])) {
+      questionCounts[row.assignment_id] = (questionCounts[row.assignment_id] || 0) + 1;
+    }
+  }
+
+  const rows = (data || []).map(row => {
+    const { subjects, users, ...rest } = row;
+    return {
+      ...rest,
+      subject_name: subjects?.name || null,
+      created_by_name: users?.full_name || null,
+      question_count: questionCounts[row.id] || 0,
+    };
+  });
 
   return {
-    data: dataResult.rows,
-    pagination: buildPaginationResponse(total, page, limit),
+    data: rows,
+    pagination: buildPaginationResponse(total || 0, page, limit),
   };
 };
 
 const getById = async (id) => {
-  const result = await query(
-    `SELECT a.*, s.name as subject_name, u.full_name as created_by_name
-     FROM assignments a
-     LEFT JOIN subjects s ON a.subject_id = s.id
-     LEFT JOIN users u ON a.created_by = u.id
-     WHERE a.id = $1`,
-    [id]
-  );
+  const { data, error } = await supabase
+    .from('assignments')
+    .select(`
+      *,
+      subjects(name),
+      users!assignments_created_by_fkey(full_name)
+    `)
+    .eq('id', id)
+    .single();
 
-  if (result.rows.length === 0) return null;
-
-  const assignment = result.rows[0];
-
-  const questions = await query(
-    'SELECT * FROM assignment_questions WHERE assignment_id = $1 ORDER BY order_index',
-    [id]
-  );
-
-  for (const question of questions.rows) {
-    const options = await query(
-      'SELECT * FROM question_options WHERE question_id = $1 ORDER BY order_index',
-      [question.id]
-    );
-    question.options = options.rows;
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
   }
-  assignment.questions = questions.rows;
 
-  const attachments = await query(
-    'SELECT * FROM assignment_attachments WHERE assignment_id = $1 ORDER BY uploaded_at DESC',
-    [id]
-  );
-  assignment.attachments = attachments.rows;
+  const { subjects, users, ...rest } = data;
+  const assignment = {
+    ...rest,
+    subject_name: subjects?.name || null,
+    created_by_name: users?.full_name || null,
+  };
+
+  // Get questions
+  const { data: questions, error: qError } = await supabase
+    .from('assignment_questions')
+    .select('*')
+    .eq('assignment_id', id)
+    .order('order_index', { ascending: true });
+  if (qError) throw qError;
+
+  // Get options for each question
+  const questionIds = (questions || []).map(q => q.id);
+  let optionsByQuestion = {};
+  if (questionIds.length > 0) {
+    const { data: options, error: oError } = await supabase
+      .from('question_options')
+      .select('*')
+      .in('question_id', questionIds)
+      .order('order_index', { ascending: true });
+    if (oError) throw oError;
+
+    for (const opt of (options || [])) {
+      if (!optionsByQuestion[opt.question_id]) {
+        optionsByQuestion[opt.question_id] = [];
+      }
+      optionsByQuestion[opt.question_id].push(opt);
+    }
+  }
+
+  assignment.questions = (questions || []).map(q => ({
+    ...q,
+    options: optionsByQuestion[q.id] || [],
+  }));
+
+  // Get attachments
+  const { data: attachments, error: attError } = await supabase
+    .from('assignment_attachments')
+    .select('*')
+    .eq('assignment_id', id)
+    .order('uploaded_at', { ascending: false });
+  if (attError) throw attError;
+  assignment.attachments = attachments || [];
 
   return assignment;
 };
 
 const create = async (data) => {
   const { title, subject_id, type, content, youtube_url, drive_url, total_points, created_by } = data;
-  const result = await query(
-    `INSERT INTO assignments (title, subject_id, type, content, youtube_url, drive_url, total_points, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING *`,
-    [title, subject_id, type, content, youtube_url, drive_url, total_points, created_by]
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('assignments')
+    .insert({
+      title,
+      subject_id,
+      type,
+      content,
+      youtube_url,
+      drive_url,
+      total_points,
+      created_by,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const update = async (id, data) => {
   const { title, subject_id, type, content, youtube_url, drive_url, total_points } = data;
-  const result = await query(
-    `UPDATE assignments SET
-       title = COALESCE($1, title),
-       subject_id = COALESCE($2, subject_id),
-       type = COALESCE($3, type),
-       content = COALESCE($4, content),
-       youtube_url = COALESCE($5, youtube_url),
-       drive_url = COALESCE($6, drive_url),
-       total_points = COALESCE($7, total_points),
-       updated_at = NOW()
-     WHERE id = $8
-     RETURNING *`,
-    [title, subject_id, type, content, youtube_url, drive_url, total_points, id]
-  );
-  return result.rows[0] || null;
+
+  const updateObj = {};
+  if (title !== undefined) updateObj.title = title;
+  if (subject_id !== undefined) updateObj.subject_id = subject_id;
+  if (type !== undefined) updateObj.type = type;
+  if (content !== undefined) updateObj.content = content;
+  if (youtube_url !== undefined) updateObj.youtube_url = youtube_url;
+  if (drive_url !== undefined) updateObj.drive_url = drive_url;
+  if (total_points !== undefined) updateObj.total_points = total_points;
+  updateObj.updated_at = new Date().toISOString();
+
+  const { data: row, error } = await supabase
+    .from('assignments')
+    .update(updateObj)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const remove = async (id) => {
-  const result = await query('DELETE FROM assignments WHERE id = $1 RETURNING id', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('assignments')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const addQuestion = async (assignmentId, data) => {
   const { question_text, type, points, order_index } = data;
-  const result = await query(
-    `INSERT INTO assignment_questions (assignment_id, question_text, type, points, order_index)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING *`,
-    [assignmentId, question_text, type, points, order_index]
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('assignment_questions')
+    .insert({
+      assignment_id: assignmentId,
+      question_text,
+      type,
+      points,
+      order_index,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const updateQuestion = async (questionId, data) => {
   const { question_text, type, points, order_index } = data;
-  const result = await query(
-    `UPDATE assignment_questions SET
-       question_text = COALESCE($1, question_text),
-       type = COALESCE($2, type),
-       points = COALESCE($3, points),
-       order_index = COALESCE($4, order_index)
-     WHERE id = $5
-     RETURNING *`,
-    [question_text, type, points, order_index, questionId]
-  );
-  return result.rows[0] || null;
+
+  const updateObj = {};
+  if (question_text !== undefined) updateObj.question_text = question_text;
+  if (type !== undefined) updateObj.type = type;
+  if (points !== undefined) updateObj.points = points;
+  if (order_index !== undefined) updateObj.order_index = order_index;
+
+  const { data: row, error } = await supabase
+    .from('assignment_questions')
+    .update(updateObj)
+    .eq('id', questionId)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const removeQuestion = async (questionId) => {
-  const result = await query('DELETE FROM assignment_questions WHERE id = $1 RETURNING id', [questionId]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('assignment_questions')
+    .delete()
+    .eq('id', questionId)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const addOption = async (questionId, data) => {
   const { option_text, is_correct, order_index } = data;
-  const result = await query(
-    `INSERT INTO question_options (question_id, option_text, is_correct, order_index)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
-    [questionId, option_text, is_correct || false, order_index]
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('question_options')
+    .insert({
+      question_id: questionId,
+      option_text,
+      is_correct: is_correct || false,
+      order_index,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const updateOption = async (optionId, data) => {
   const { option_text, is_correct, order_index } = data;
-  const result = await query(
-    `UPDATE question_options SET
-       option_text = COALESCE($1, option_text),
-       is_correct = COALESCE($2, is_correct),
-       order_index = COALESCE($3, order_index)
-     WHERE id = $4
-     RETURNING *`,
-    [option_text, is_correct, order_index, optionId]
-  );
-  return result.rows[0] || null;
+
+  const updateObj = {};
+  if (option_text !== undefined) updateObj.option_text = option_text;
+  if (is_correct !== undefined) updateObj.is_correct = is_correct;
+  if (order_index !== undefined) updateObj.order_index = order_index;
+
+  const { data: row, error } = await supabase
+    .from('question_options')
+    .update(updateObj)
+    .eq('id', optionId)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const removeOption = async (optionId) => {
-  const result = await query('DELETE FROM question_options WHERE id = $1 RETURNING id', [optionId]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('question_options')
+    .delete()
+    .eq('id', optionId)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const addAttachment = async (assignmentId, fileData) => {
   const { file_name, file_url, file_type, file_size } = fileData;
-  const result = await query(
-    `INSERT INTO assignment_attachments (assignment_id, file_name, file_url, file_type, file_size)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING *`,
-    [assignmentId, file_name, file_url, file_type, file_size]
-  );
-  return result.rows[0];
+  const { data, error } = await supabase
+    .from('assignment_attachments')
+    .insert({
+      assignment_id: assignmentId,
+      file_name,
+      file_url,
+      file_type,
+      file_size,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
 };
 
 const removeAttachment = async (attachmentId) => {
-  const result = await query('DELETE FROM assignment_attachments WHERE id = $1 RETURNING *', [attachmentId]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('assignment_attachments')
+    .delete()
+    .eq('id', attachmentId)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 module.exports = {

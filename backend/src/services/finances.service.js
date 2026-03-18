@@ -1,4 +1,4 @@
-const { query } = require('../config/database');
+const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const getAll = async (queryParams) => {
@@ -10,193 +10,288 @@ const getAll = async (queryParams) => {
   const startDate = queryParams.start_date || null;
   const endDate = queryParams.end_date || null;
 
-  let whereClause = 'WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
+  // Count query
+  let countQuery = supabase.from('finances').select('id', { count: 'exact', head: true });
+  if (search) {
+    countQuery = countQuery.ilike('description', `%${search}%`);
+  }
+  if (typeFilter) {
+    countQuery = countQuery.eq('type', typeFilter);
+  }
+  if (categoryId) {
+    countQuery = countQuery.eq('category_id', categoryId);
+  }
+  if (startDate) {
+    countQuery = countQuery.gte('payment_date', startDate);
+  }
+  if (endDate) {
+    countQuery = countQuery.lte('payment_date', endDate);
+  }
+  const { count: total, error: countError } = await countQuery;
+  if (countError) throw countError;
+
+  // Data query
+  let dataQuery = supabase
+    .from('finances')
+    .select(`
+      *,
+      finance_categories(name, type),
+      users!finances_created_by_fkey(full_name)
+    `);
 
   if (search) {
-    whereClause += ` AND (f.description ILIKE $${paramIdx} OR fc.name ILIKE $${paramIdx})`;
-    params.push(`%${search}%`);
-    paramIdx++;
+    dataQuery = dataQuery.ilike('description', `%${search}%`);
   }
-
   if (typeFilter) {
-    whereClause += ` AND f.type = $${paramIdx}`;
-    params.push(typeFilter);
-    paramIdx++;
+    dataQuery = dataQuery.eq('type', typeFilter);
   }
-
   if (categoryId) {
-    whereClause += ` AND f.category_id = $${paramIdx}`;
-    params.push(categoryId);
-    paramIdx++;
+    dataQuery = dataQuery.eq('category_id', categoryId);
   }
-
   if (startDate) {
-    whereClause += ` AND f.payment_date >= $${paramIdx}`;
-    params.push(startDate);
-    paramIdx++;
+    dataQuery = dataQuery.gte('payment_date', startDate);
   }
-
   if (endDate) {
-    whereClause += ` AND f.payment_date <= $${paramIdx}`;
-    params.push(endDate);
-    paramIdx++;
+    dataQuery = dataQuery.lte('payment_date', endDate);
   }
 
-  const countResult = await query(
-    `SELECT COUNT(*) FROM finances f LEFT JOIN finance_categories fc ON f.category_id = fc.id ${whereClause}`,
-    params
-  );
-  const total = parseInt(countResult.rows[0].count);
+  dataQuery = dataQuery
+    .order(sort, { ascending: sortOrder === 'ASC' })
+    .range(offset, offset + limit - 1);
 
-  const dataResult = await query(
-    `SELECT f.*, fc.name as category_name, fc.type as category_type, u.full_name as created_by_name
-     FROM finances f
-     LEFT JOIN finance_categories fc ON f.category_id = fc.id
-     LEFT JOIN users u ON f.created_by = u.id
-     ${whereClause}
-     ORDER BY f.${sort} ${sortOrder}
-     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
-    [...params, limit, offset]
-  );
+  const { data, error } = await dataQuery;
+  if (error) throw error;
+
+  const rows = (data || []).map(row => {
+    const { finance_categories, users, ...rest } = row;
+    return {
+      ...rest,
+      category_name: finance_categories?.name || null,
+      category_type: finance_categories?.type || null,
+      created_by_name: users?.full_name || null,
+    };
+  });
 
   return {
-    data: dataResult.rows,
-    pagination: buildPaginationResponse(total, page, limit),
+    data: rows,
+    pagination: buildPaginationResponse(total || 0, page, limit),
   };
 };
 
 const getById = async (id) => {
-  const result = await query(
-    `SELECT f.*, fc.name as category_name, u.full_name as created_by_name
-     FROM finances f
-     LEFT JOIN finance_categories fc ON f.category_id = fc.id
-     LEFT JOIN users u ON f.created_by = u.id
-     WHERE f.id = $1`,
-    [id]
-  );
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('finances')
+    .select(`
+      *,
+      finance_categories(name),
+      users!finances_created_by_fkey(full_name)
+    `)
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+
+  const { finance_categories, users, ...rest } = data;
+  return {
+    ...rest,
+    category_name: finance_categories?.name || null,
+    created_by_name: users?.full_name || null,
+  };
 };
 
 const create = async (data) => {
   const { type, category_id, amount, description, reference_type, reference_id, payment_date, payment_method, receipt_url, created_by } = data;
-  const result = await query(
-    `INSERT INTO finances (type, category_id, amount, description, reference_type, reference_id, payment_date, payment_method, receipt_url, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-     RETURNING *`,
-    [type, category_id, amount, description, reference_type, reference_id, payment_date, payment_method, receipt_url, created_by]
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('finances')
+    .insert({
+      type,
+      category_id,
+      amount,
+      description,
+      reference_type,
+      reference_id,
+      payment_date,
+      payment_method,
+      receipt_url,
+      created_by,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const update = async (id, data) => {
   const { type, category_id, amount, description, reference_type, reference_id, payment_date, payment_method, receipt_url } = data;
-  const result = await query(
-    `UPDATE finances SET
-       type = COALESCE($1, type),
-       category_id = COALESCE($2, category_id),
-       amount = COALESCE($3, amount),
-       description = COALESCE($4, description),
-       reference_type = COALESCE($5, reference_type),
-       reference_id = COALESCE($6, reference_id),
-       payment_date = COALESCE($7, payment_date),
-       payment_method = COALESCE($8, payment_method),
-       receipt_url = COALESCE($9, receipt_url),
-       updated_at = NOW()
-     WHERE id = $10
-     RETURNING *`,
-    [type, category_id, amount, description, reference_type, reference_id, payment_date, payment_method, receipt_url, id]
-  );
-  return result.rows[0] || null;
+
+  const updateObj = {};
+  if (type !== undefined) updateObj.type = type;
+  if (category_id !== undefined) updateObj.category_id = category_id;
+  if (amount !== undefined) updateObj.amount = amount;
+  if (description !== undefined) updateObj.description = description;
+  if (reference_type !== undefined) updateObj.reference_type = reference_type;
+  if (reference_id !== undefined) updateObj.reference_id = reference_id;
+  if (payment_date !== undefined) updateObj.payment_date = payment_date;
+  if (payment_method !== undefined) updateObj.payment_method = payment_method;
+  if (receipt_url !== undefined) updateObj.receipt_url = receipt_url;
+  updateObj.updated_at = new Date().toISOString();
+
+  const { data: row, error } = await supabase
+    .from('finances')
+    .update(updateObj)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const remove = async (id) => {
-  const result = await query('DELETE FROM finances WHERE id = $1 RETURNING id', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('finances')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const getCategories = async (typeFilter) => {
-  let sql = 'SELECT * FROM finance_categories WHERE is_active = true';
-  const params = [];
+  let query = supabase
+    .from('finance_categories')
+    .select('*')
+    .eq('is_active', true)
+    .order('name', { ascending: true });
+
   if (typeFilter) {
-    sql += ' AND type = $1';
-    params.push(typeFilter);
+    query = query.eq('type', typeFilter);
   }
-  sql += ' ORDER BY name';
-  const result = await query(sql, params);
-  return result.rows;
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
 };
 
 const createCategory = async (data) => {
   const { name, type, description, is_active } = data;
-  const result = await query(
-    'INSERT INTO finance_categories (name, type, description, is_active) VALUES ($1, $2, $3, $4) RETURNING *',
-    [name, type, description, is_active !== undefined ? is_active : true]
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('finance_categories')
+    .insert({
+      name,
+      type,
+      description,
+      is_active: is_active !== undefined ? is_active : true,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const updateCategory = async (id, data) => {
   const { name, type, description, is_active } = data;
-  const result = await query(
-    `UPDATE finance_categories SET
-       name = COALESCE($1, name),
-       type = COALESCE($2, type),
-       description = COALESCE($3, description),
-       is_active = COALESCE($4, is_active)
-     WHERE id = $5
-     RETURNING *`,
-    [name, type, description, is_active, id]
-  );
-  return result.rows[0] || null;
+
+  const updateObj = {};
+  if (name !== undefined) updateObj.name = name;
+  if (type !== undefined) updateObj.type = type;
+  if (description !== undefined) updateObj.description = description;
+  if (is_active !== undefined) updateObj.is_active = is_active;
+
+  const { data: row, error } = await supabase
+    .from('finance_categories')
+    .update(updateObj)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const removeCategory = async (id) => {
-  const result = await query('DELETE FROM finance_categories WHERE id = $1 RETURNING id', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('finance_categories')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const getSummary = async (startDate, endDate) => {
-  let whereClause = 'WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
+  // Get all finances within date range for aggregation
+  let query = supabase
+    .from('finances')
+    .select('type, amount, category_id, finance_categories(name, type)');
 
   if (startDate) {
-    whereClause += ` AND payment_date >= $${paramIdx}`;
-    params.push(startDate);
-    paramIdx++;
+    query = query.gte('payment_date', startDate);
   }
-
   if (endDate) {
-    whereClause += ` AND payment_date <= $${paramIdx}`;
-    params.push(endDate);
-    paramIdx++;
+    query = query.lte('payment_date', endDate);
   }
 
-  const result = await query(
-    `SELECT
-       COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as total_income,
-       COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_expense,
-       COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END), 0) as net_balance,
-       COUNT(*) as total_transactions
-     FROM finances ${whereClause}`,
-    params
-  );
+  const { data, error } = await query;
+  if (error) throw error;
 
-  const byCategory = await query(
-    `SELECT fc.name, fc.type, COALESCE(SUM(f.amount), 0) as total
-     FROM finances f
-     JOIN finance_categories fc ON f.category_id = fc.id
-     ${whereClause.replace(/payment_date/g, 'f.payment_date')}
-     GROUP BY fc.name, fc.type
-     ORDER BY total DESC`,
-    params
-  );
+  let totalIncome = 0;
+  let totalExpense = 0;
+  let totalTransactions = 0;
+  const categoryTotals = {};
+
+  for (const row of (data || [])) {
+    totalTransactions++;
+    const amount = parseFloat(row.amount) || 0;
+
+    if (row.type === 'income') {
+      totalIncome += amount;
+    } else {
+      totalExpense += amount;
+    }
+
+    if (row.finance_categories) {
+      const catKey = `${row.finance_categories.name}|${row.finance_categories.type}`;
+      if (!categoryTotals[catKey]) {
+        categoryTotals[catKey] = {
+          name: row.finance_categories.name,
+          type: row.finance_categories.type,
+          total: 0,
+        };
+      }
+      categoryTotals[catKey].total += amount;
+    }
+  }
+
+  const byCategory = Object.values(categoryTotals).sort((a, b) => b.total - a.total);
 
   return {
-    ...result.rows[0],
-    by_category: byCategory.rows,
+    total_income: totalIncome,
+    total_expense: totalExpense,
+    net_balance: totalIncome - totalExpense,
+    total_transactions: totalTransactions,
+    by_category: byCategory,
   };
 };
 
@@ -206,43 +301,37 @@ const getAllForExport = async (queryParams) => {
   const startDate = queryParams.start_date || null;
   const endDate = queryParams.end_date || null;
 
-  let whereClause = 'WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
+  let query = supabase
+    .from('finances')
+    .select(`
+      type, amount, description, payment_date, payment_method,
+      finance_categories(name)
+    `)
+    .order('payment_date', { ascending: false });
 
   if (search) {
-    whereClause += ` AND (f.description ILIKE $${paramIdx})`;
-    params.push(`%${search}%`);
-    paramIdx++;
+    query = query.ilike('description', `%${search}%`);
   }
-
   if (typeFilter) {
-    whereClause += ` AND f.type = $${paramIdx}`;
-    params.push(typeFilter);
-    paramIdx++;
+    query = query.eq('type', typeFilter);
   }
-
   if (startDate) {
-    whereClause += ` AND f.payment_date >= $${paramIdx}`;
-    params.push(startDate);
-    paramIdx++;
+    query = query.gte('payment_date', startDate);
   }
-
   if (endDate) {
-    whereClause += ` AND f.payment_date <= $${paramIdx}`;
-    params.push(endDate);
-    paramIdx++;
+    query = query.lte('payment_date', endDate);
   }
 
-  const result = await query(
-    `SELECT f.type, fc.name as category, f.amount, f.description, f.payment_date, f.payment_method
-     FROM finances f
-     LEFT JOIN finance_categories fc ON f.category_id = fc.id
-     ${whereClause}
-     ORDER BY f.payment_date DESC`,
-    params
-  );
-  return result.rows;
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data || []).map(row => {
+    const { finance_categories, ...rest } = row;
+    return {
+      ...rest,
+      category: finance_categories?.name || null,
+    };
+  });
 };
 
 module.exports = {

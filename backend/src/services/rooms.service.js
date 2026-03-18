@@ -1,4 +1,4 @@
-const { query } = require('../config/database');
+const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const getAll = async (queryParams) => {
@@ -8,89 +8,137 @@ const getAll = async (queryParams) => {
   const facilityId = queryParams.facility_id || null;
   const statusFilter = queryParams.status || null;
 
-  let whereClause = 'WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
+  // Count query
+  let countQuery = supabase.from('rooms').select('id', { count: 'exact', head: true });
+  if (search) {
+    countQuery = countQuery.or(`name.ilike.%${search}%,equipment.ilike.%${search}%`);
+  }
+  if (facilityId) {
+    countQuery = countQuery.eq('facility_id', facilityId);
+  }
+  if (statusFilter) {
+    countQuery = countQuery.eq('status', statusFilter);
+  }
+  const { count: total, error: countError } = await countQuery;
+  if (countError) throw countError;
+
+  // Data query
+  let dataQuery = supabase
+    .from('rooms')
+    .select(`
+      *,
+      facilities(name)
+    `);
 
   if (search) {
-    whereClause += ` AND (r.name ILIKE $${paramIdx} OR r.equipment ILIKE $${paramIdx})`;
-    params.push(`%${search}%`);
-    paramIdx++;
+    dataQuery = dataQuery.or(`name.ilike.%${search}%,equipment.ilike.%${search}%`);
   }
-
   if (facilityId) {
-    whereClause += ` AND r.facility_id = $${paramIdx}`;
-    params.push(facilityId);
-    paramIdx++;
+    dataQuery = dataQuery.eq('facility_id', facilityId);
   }
-
   if (statusFilter) {
-    whereClause += ` AND r.status = $${paramIdx}`;
-    params.push(statusFilter);
-    paramIdx++;
+    dataQuery = dataQuery.eq('status', statusFilter);
   }
 
-  const countResult = await query(`SELECT COUNT(*) FROM rooms r ${whereClause}`, params);
-  const total = parseInt(countResult.rows[0].count);
+  dataQuery = dataQuery
+    .order(sort, { ascending: sortOrder === 'ASC' })
+    .range(offset, offset + limit - 1);
 
-  const dataResult = await query(
-    `SELECT r.*, f.name as facility_name
-     FROM rooms r
-     JOIN facilities f ON r.facility_id = f.id
-     ${whereClause}
-     ORDER BY r.${sort} ${sortOrder}
-     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
-    [...params, limit, offset]
-  );
+  const { data, error } = await dataQuery;
+  if (error) throw error;
+
+  const rows = (data || []).map(row => {
+    const { facilities, ...rest } = row;
+    return {
+      ...rest,
+      facility_name: facilities?.name || null,
+    };
+  });
 
   return {
-    data: dataResult.rows,
-    pagination: buildPaginationResponse(total, page, limit),
+    data: rows,
+    pagination: buildPaginationResponse(total || 0, page, limit),
   };
 };
 
 const getById = async (id) => {
-  const result = await query(
-    `SELECT r.*, f.name as facility_name
-     FROM rooms r
-     JOIN facilities f ON r.facility_id = f.id
-     WHERE r.id = $1`,
-    [id]
-  );
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('rooms')
+    .select(`
+      *,
+      facilities(name)
+    `)
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+
+  const { facilities, ...rest } = data;
+  return {
+    ...rest,
+    facility_name: facilities?.name || null,
+  };
 };
 
 const create = async (data) => {
   const { facility_id, name, capacity, equipment, status } = data;
-  const result = await query(
-    `INSERT INTO rooms (facility_id, name, capacity, equipment, status)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING *`,
-    [facility_id, name, capacity, equipment, status || 'available']
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('rooms')
+    .insert({
+      facility_id,
+      name,
+      capacity,
+      equipment,
+      status: status || 'available',
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const update = async (id, data) => {
   const { facility_id, name, capacity, equipment, status } = data;
-  const result = await query(
-    `UPDATE rooms SET
-       facility_id = COALESCE($1, facility_id),
-       name = COALESCE($2, name),
-       capacity = COALESCE($3, capacity),
-       equipment = COALESCE($4, equipment),
-       status = COALESCE($5, status),
-       updated_at = NOW()
-     WHERE id = $6
-     RETURNING *`,
-    [facility_id, name, capacity, equipment, status, id]
-  );
-  return result.rows[0] || null;
+
+  const updateObj = {};
+  if (facility_id !== undefined) updateObj.facility_id = facility_id;
+  if (name !== undefined) updateObj.name = name;
+  if (capacity !== undefined) updateObj.capacity = capacity;
+  if (equipment !== undefined) updateObj.equipment = equipment;
+  if (status !== undefined) updateObj.status = status;
+  updateObj.updated_at = new Date().toISOString();
+
+  const { data: row, error } = await supabase
+    .from('rooms')
+    .update(updateObj)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const remove = async (id) => {
-  const result = await query('DELETE FROM rooms WHERE id = $1 RETURNING id', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('rooms')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 module.exports = { getAll, getById, create, update, remove };

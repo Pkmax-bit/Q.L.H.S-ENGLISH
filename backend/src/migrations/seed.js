@@ -1,52 +1,56 @@
-const bcrypt = require('bcryptjs');
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
-const { pool } = require('../config/database');
+const { createClient } = require('@supabase/supabase-js');
+const bcrypt = require('bcryptjs');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY
+);
 
 async function seed() {
-  const client = await pool.connect();
-  try {
-    // Check if admin exists
-    const { rows } = await client.query("SELECT id FROM users WHERE email = 'admin@edu.com'");
-    if (rows.length > 0) {
-      console.log('Admin user already exists, skipping seed.');
-      return;
-    }
+  // Check if admin exists
+  const { data: existing } = await supabase
+    .from('users')
+    .select('id')
+    .eq('email', 'admin@edu.com')
+    .single();
 
-    const passwordHash = await bcrypt.hash('admin123', 12);
-    await client.query(
-      `INSERT INTO users (email, password_hash, role, full_name, phone)
-       VALUES ($1, $2, $3, $4, $5)`,
-      ['admin@edu.com', passwordHash, 'admin', 'Administrator', '0900000000']
-    );
-
-    // Seed some finance categories
-    const categories = [
-      ['Học phí', 'income'],
-      ['Phí tài liệu', 'income'],
-      ['Phí khác', 'income'],
-      ['Lương giáo viên', 'expense'],
-      ['Thuê mặt bằng', 'expense'],
-      ['Điện nước', 'expense'],
-      ['Vật tư văn phòng', 'expense'],
-      ['Chi phí khác', 'expense'],
-    ];
-
-    for (const [name, type] of categories) {
-      await client.query(
-        `INSERT INTO finance_categories (name, type) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [name, type]
-      );
-    }
-
-    console.log('🌱 Seed completed!');
-    console.log('Admin account: admin@edu.com / admin123');
-  } finally {
-    client.release();
-    await pool.end();
+  if (existing) {
+    console.log('Admin already exists, skipping.');
+    return;
   }
+
+  const passwordHash = await bcrypt.hash('admin123', 12);
+
+  const { error: userError } = await supabase.from('users').insert({
+    email: 'admin@edu.com',
+    password_hash: passwordHash,
+    role: 'admin',
+    full_name: 'Administrator',
+    phone: '0900000000',
+  });
+  if (userError) {
+    console.error('Failed to create admin:', userError.message);
+    return;
+  }
+
+  // Seed finance categories
+  const categories = [
+    { name: 'Học phí', type: 'income' },
+    { name: 'Phí tài liệu', type: 'income' },
+    { name: 'Phí khác', type: 'income' },
+    { name: 'Lương giáo viên', type: 'expense' },
+    { name: 'Thuê mặt bằng', type: 'expense' },
+    { name: 'Điện nước', type: 'expense' },
+    { name: 'Vật tư văn phòng', type: 'expense' },
+    { name: 'Chi phí khác', type: 'expense' },
+  ];
+
+  const { error: catError } = await supabase.from('finance_categories').insert(categories);
+  if (catError) console.error('Category seed error:', catError.message);
+
+  console.log('🌱 Seed completed!');
+  console.log('Admin: admin@edu.com / admin123');
 }
 
-seed().catch(err => {
-  console.error('Seed failed:', err);
-  process.exit(1);
-});
+seed().catch(console.error);

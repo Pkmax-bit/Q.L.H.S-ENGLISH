@@ -1,4 +1,4 @@
-const { query } = require('../config/database');
+const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const getAll = async (queryParams) => {
@@ -7,134 +7,198 @@ const getAll = async (queryParams) => {
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
   const statusFilter = queryParams.status || null;
 
-  let whereClause = 'WHERE 1=1';
-  const params = [];
-  let paramIdx = 1;
+  // Count query
+  let countQuery = supabase.from('teachers').select('id', { count: 'exact', head: true });
+  if (search) {
+    countQuery = countQuery.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,specialization.ilike.%${search}%`);
+  }
+  if (statusFilter) {
+    countQuery = countQuery.eq('status', statusFilter);
+  }
+  const { count: total, error: countError } = await countQuery;
+  if (countError) throw countError;
+
+  // Data query
+  let dataQuery = supabase
+    .from('teachers')
+    .select('*, users(email)');
 
   if (search) {
-    whereClause += ` AND (t.full_name ILIKE $${paramIdx} OR t.email ILIKE $${paramIdx} OR t.phone ILIKE $${paramIdx} OR t.specialization ILIKE $${paramIdx})`;
-    params.push(`%${search}%`);
-    paramIdx++;
+    dataQuery = dataQuery.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,specialization.ilike.%${search}%`);
   }
-
   if (statusFilter) {
-    whereClause += ` AND t.status = $${paramIdx}`;
-    params.push(statusFilter);
-    paramIdx++;
+    dataQuery = dataQuery.eq('status', statusFilter);
   }
 
-  const countResult = await query(`SELECT COUNT(*) FROM teachers t ${whereClause}`, params);
-  const total = parseInt(countResult.rows[0].count);
+  dataQuery = dataQuery
+    .order(sort, { ascending: sortOrder === 'ASC' })
+    .range(offset, offset + limit - 1);
 
-  const dataResult = await query(
-    `SELECT t.*, u.email as user_email
-     FROM teachers t
-     LEFT JOIN users u ON t.user_id = u.id
-     ${whereClause}
-     ORDER BY t.${sort} ${sortOrder}
-     LIMIT $${paramIdx} OFFSET $${paramIdx + 1}`,
-    [...params, limit, offset]
-  );
+  const { data, error } = await dataQuery;
+  if (error) throw error;
+
+  // Flatten user_email
+  const rows = (data || []).map(row => {
+    const { users, ...rest } = row;
+    return { ...rest, user_email: users?.email || null };
+  });
 
   return {
-    data: dataResult.rows,
-    pagination: buildPaginationResponse(total, page, limit),
+    data: rows,
+    pagination: buildPaginationResponse(total || 0, page, limit),
   };
 };
 
 const getById = async (id) => {
-  const result = await query(
-    `SELECT t.*, u.email as user_email
-     FROM teachers t
-     LEFT JOIN users u ON t.user_id = u.id
-     WHERE t.id = $1`,
-    [id]
-  );
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('teachers')
+    .select('*, users(email)')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+
+  const { users, ...rest } = data;
+  return { ...rest, user_email: users?.email || null };
 };
 
 const create = async (data) => {
   const { full_name, phone, email, specialization, status, salary, hire_date, notes, user_id } = data;
-  const result = await query(
-    `INSERT INTO teachers (full_name, phone, email, specialization, status, salary, hire_date, notes, user_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING *`,
-    [full_name, phone, email, specialization, status || 'active', salary, hire_date, notes, user_id]
-  );
-  return result.rows[0];
+  const { data: row, error } = await supabase
+    .from('teachers')
+    .insert({
+      full_name,
+      phone,
+      email,
+      specialization,
+      status: status || 'active',
+      salary,
+      hire_date,
+      notes,
+      user_id,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return row;
 };
 
 const update = async (id, data) => {
   const { full_name, phone, email, specialization, status, salary, hire_date, notes } = data;
-  const result = await query(
-    `UPDATE teachers SET
-       full_name = COALESCE($1, full_name),
-       phone = COALESCE($2, phone),
-       email = COALESCE($3, email),
-       specialization = COALESCE($4, specialization),
-       status = COALESCE($5, status),
-       salary = COALESCE($6, salary),
-       hire_date = COALESCE($7, hire_date),
-       notes = COALESCE($8, notes),
-       updated_at = NOW()
-     WHERE id = $9
-     RETURNING *`,
-    [full_name, phone, email, specialization, status, salary, hire_date, notes, id]
-  );
-  return result.rows[0] || null;
+
+  // Build update object with only provided fields (COALESCE equivalent)
+  const updateObj = {};
+  if (full_name !== undefined) updateObj.full_name = full_name;
+  if (phone !== undefined) updateObj.phone = phone;
+  if (email !== undefined) updateObj.email = email;
+  if (specialization !== undefined) updateObj.specialization = specialization;
+  if (status !== undefined) updateObj.status = status;
+  if (salary !== undefined) updateObj.salary = salary;
+  if (hire_date !== undefined) updateObj.hire_date = hire_date;
+  if (notes !== undefined) updateObj.notes = notes;
+  updateObj.updated_at = new Date().toISOString();
+
+  const { data: row, error } = await supabase
+    .from('teachers')
+    .update(updateObj)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return row;
 };
 
 const remove = async (id) => {
-  const result = await query('DELETE FROM teachers WHERE id = $1 RETURNING id', [id]);
-  return result.rows[0] || null;
+  const { data, error } = await supabase
+    .from('teachers')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  return data;
 };
 
 const getClasses = async (teacherId) => {
-  const result = await query(
-    `SELECT c.*, ct.role as teacher_role, s.name as subject_name
-     FROM class_teachers ct
-     JOIN classes c ON ct.class_id = c.id
-     LEFT JOIN subjects s ON c.subject_id = s.id
-     WHERE ct.teacher_id = $1
-     ORDER BY c.created_at DESC`,
-    [teacherId]
-  );
-  return result.rows;
+  const { data, error } = await supabase
+    .from('class_teachers')
+    .select(`
+      role,
+      classes(
+        *,
+        subjects(name)
+      )
+    `)
+    .eq('teacher_id', teacherId);
+
+  if (error) throw error;
+
+  // Flatten the result
+  return (data || []).map(row => {
+    const cls = row.classes || {};
+    return {
+      ...cls,
+      teacher_role: row.role,
+      subject_name: cls.subjects?.name || null,
+    };
+  });
 };
 
 const getSchedule = async (teacherId) => {
-  const result = await query(
-    `SELECT ss.*, s.name as schedule_name, r.name as room_name,
-            sub.name as subject_name, sc.name as class_name
-     FROM schedule_slots ss
-     JOIN schedules s ON ss.schedule_id = s.id
-     JOIN classes sc ON s.class_id = sc.id
-     LEFT JOIN rooms r ON ss.room_id = r.id
-     LEFT JOIN subjects sub ON ss.subject_id = sub.id
-     WHERE ss.teacher_id = $1 AND s.is_active = true
-     ORDER BY ss.day_of_week, ss.start_time`,
-    [teacherId]
-  );
-  return result.rows;
+  const { data, error } = await supabase
+    .from('schedule_slots')
+    .select(`
+      *,
+      schedules!inner(name, is_active, classes(name)),
+      rooms(name),
+      subjects(name)
+    `)
+    .eq('teacher_id', teacherId)
+    .eq('schedules.is_active', true)
+    .order('day_of_week', { ascending: true })
+    .order('start_time', { ascending: true });
+
+  if (error) throw error;
+
+  return (data || []).map(row => {
+    const { schedules, rooms, subjects, ...rest } = row;
+    return {
+      ...rest,
+      schedule_name: schedules?.name || null,
+      room_name: rooms?.name || null,
+      subject_name: subjects?.name || null,
+      class_name: schedules?.classes?.name || null,
+    };
+  });
 };
 
 const getAllForExport = async (queryParams) => {
   const { search } = parsePagination(queryParams);
-  let whereClause = 'WHERE 1=1';
-  const params = [];
+
+  let query = supabase
+    .from('teachers')
+    .select('full_name, email, phone, specialization, status, salary, hire_date')
+    .order('full_name', { ascending: true });
 
   if (search) {
-    whereClause += ` AND (t.full_name ILIKE $1 OR t.email ILIKE $1 OR t.specialization ILIKE $1)`;
-    params.push(`%${search}%`);
+    query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,specialization.ilike.%${search}%`);
   }
 
-  const result = await query(
-    `SELECT t.full_name, t.email, t.phone, t.specialization, t.status, t.salary, t.hire_date
-     FROM teachers t ${whereClause}
-     ORDER BY t.full_name`,
-    params
-  );
-  return result.rows;
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
 };
 
 module.exports = { getAll, getById, create, update, remove, getClasses, getSchedule, getAllForExport };
