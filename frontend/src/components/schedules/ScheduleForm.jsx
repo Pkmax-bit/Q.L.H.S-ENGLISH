@@ -21,8 +21,7 @@ const ALL_DAYS = [
   { value: 0, label: 'Chủ nhật', short: 'CN' },
 ]
 
-// Map our day_of_week (1=Mon..6=Sat, 0=Sun) to JS getDay() (0=Sun, 1=Mon..6=Sat)
-function toJsDay(d) { return d; } // 0=Sun,1=Mon matches JS
+// Map our day_of_week (1=Mon..6=Sat, 0=Sun) matches JS getDay()
 
 const TIME_OPTIONS = Array.from({ length: 30 }, (_, i) => {
   const hour = Math.floor(i / 2) + 7
@@ -39,21 +38,30 @@ const TIME_OPTIONS = Array.from({ length: 30 }, (_, i) => {
  * daysOfWeek: array of our day codes (1=Mon..6=Sat, 0=Sun)
  * Returns: array of Date objects
  */
+/**
+ * Parse a 'YYYY-MM-DD' string into a local-timezone Date at noon
+ * to avoid any UTC midnight → previous-day bugs.
+ */
+function parseLocalDate(str) {
+  const [y, m, d] = str.split('-').map(Number)
+  return new Date(y, m - 1, d, 12, 0, 0) // noon local time, safe from timezone shifts
+}
+
 function generateSessionDates(startDateStr, daysOfWeek, sessionsCount) {
   if (!startDateStr || !daysOfWeek.length || !sessionsCount) return []
   const count = Number(sessionsCount)
   if (count <= 0) return []
 
-  // Convert our day codes to JS getDay() values (they match: 0=Sun,1=Mon..6=Sat)
-  const jsDays = new Set(daysOfWeek.map(d => toJsDay(d)))
+  // Our day codes match JS getDay(): 0=Sun, 1=Mon, ..., 6=Sat
+  const jsDays = new Set(daysOfWeek)
 
   const dates = []
-  const current = new Date(startDateStr + 'T00:00:00')
+  const current = parseLocalDate(startDateStr)
 
-  // Safety: max 365 iterations
+  // Walk day-by-day from start_date, pick matching weekdays, stop at count
   for (let i = 0; i < 365 && dates.length < count; i++) {
     if (jsDays.has(current.getDay())) {
-      dates.push(new Date(current))
+      dates.push(new Date(current.getFullYear(), current.getMonth(), current.getDate()))
     }
     current.setDate(current.getDate() + 1)
   }
@@ -65,8 +73,9 @@ function formatDateVN(d) {
 }
 
 function getDayShort(d) {
+  const dayOfWeek = d.getDay()
   const map = { 0: 'CN', 1: 'T2', 2: 'T3', 3: 'T4', 4: 'T5', 5: 'T6', 6: 'T7' }
-  return map[d.getDay()] || ''
+  return map[dayOfWeek] || ''
 }
 
 export default function ScheduleForm({
