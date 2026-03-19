@@ -13,6 +13,7 @@ import AssignmentsPage from '../pages/AssignmentsPage'
 import SchedulesPage from '../pages/SchedulesPage'
 import FacilitiesPage from '../pages/FacilitiesPage'
 import FinancesPage from '../pages/FinancesPage'
+import TemplatesPage from '../pages/TemplatesPage'
 import ProfilePage from '../pages/ProfilePage'
 import NotFoundPage from '../pages/NotFoundPage'
 
@@ -36,6 +37,7 @@ export default function AppRouter() {
         <Route path="classes" element={<ClassesPage />} />
         <Route path="lessons" element={<LessonsPage />} />
         <Route path="assignments" element={<AssignmentsPage />} />
+        <Route path="templates" element={<TemplatesPage />} />
         <Route path="schedules" element={<SchedulesPage />} />
         <Route path="facilities" element={<FacilitiesPage />} />
         <Route

@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, GraduationCap, BookOpen, School,
   FileText, ClipboardList, CalendarDays, Building2, Wallet,
-  ChevronLeft, ChevronRight, X
+  ChevronLeft, ChevronRight, X, BookCopy
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -15,6 +15,7 @@ const menuItems = [
   { path: '/classes', icon: School, label: 'Lớp học' },
   { path: '/lessons', icon: FileText, label: 'Bài học' },
   { path: '/assignments', icon: ClipboardList, label: 'Bài tập' },
+  { path: '/templates', icon: BookCopy, label: 'Mẫu bài giảng' },
   { path: '/schedules', icon: CalendarDays, label: 'Thời khóa biểu' },
   { path: '/facilities', icon: Building2, label: 'Cơ sở & Phòng học' },
   { path: '/finances', icon: Wallet, label: 'Tài chính' },

@@ -1,5 +1,5 @@
 import { useState, useContext, useCallback } from 'react'
-import { Plus, Download } from 'lucide-react'
+import { Plus, Download, BookCopy } from 'lucide-react'
 import Table from '../common/Table'
 import Button from '../common/Button'
 import StatusBadge from '../common/StatusBadge'
@@ -10,6 +10,7 @@ import { useFetch } from '../../hooks/useFetch'
 import { useExcelExport } from '../../hooks/useExcelExport'
 import { ToastContext } from '../../context/ToastContext'
 import lessonsService from '../../services/lessons.service'
+import templatesService from '../../services/templates.service'
 import { formatDate } from '../../utils/formatDate'
 
 const contentTypeMap = {
@@ -24,6 +25,7 @@ export default function LessonList() {
   const [showDelete, setShowDelete] = useState(false)
   const [selected, setSelected] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [toggling, setToggling] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
   const { exportToExcel } = useExcelExport()
 
@@ -47,12 +49,17 @@ export default function LessonList() {
     { key: 'order_index', label: 'Thứ tự', accessor: (row) => row.order_index ?? '—' },
     {
       key: 'is_published',
-      label: 'Xuất bản',
+      label: 'Trạng thái',
       render: (row) => (
-        <StatusBadge
-          status={row.is_published ? 'active' : 'inactive'}
-          label={row.is_published ? 'Đã xuất bản' : 'Nháp'}
-        />
+        <div className="flex items-center gap-1.5">
+          <StatusBadge
+            status={row.is_published ? 'active' : 'inactive'}
+            label={row.is_published ? 'Đã xuất bản' : 'Nháp'}
+          />
+          {row.is_template && (
+            <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">Mẫu</span>
+          )}
+        </div>
       ),
     },
     {
@@ -65,6 +72,18 @@ export default function LessonList() {
   const handleEdit = (lesson) => { setSelected(lesson); setShowForm(true) }
   const handleDelete = (lesson) => { setSelected(lesson); setShowDelete(true) }
   const handleView = (lesson) => { setSelected(lesson); setShowDetail(true) }
+
+  const toggleTemplate = async (lesson) => {
+    setToggling(true)
+    try {
+      const fn = lesson.is_template ? templatesService.unmarkTemplate : templatesService.markAsTemplate
+      await fn({ type: 'lesson', ids: [lesson.id] })
+      success(lesson.is_template ? 'Đã bỏ đánh dấu mẫu' : 'Đã đánh dấu làm mẫu')
+      reload()
+    } catch (err) {
+      showError(err.response?.data?.message || 'Có lỗi xảy ra')
+    } finally { setToggling(false) }
+  }
 
   const confirmDelete = async () => {
     setDeleting(true)
@@ -116,6 +135,20 @@ export default function LessonList() {
         onEdit={handleEdit}
         onDelete={handleDelete}
         onView={handleView}
+        actions={(row) => (
+          <button
+            onClick={() => toggleTemplate(row)}
+            disabled={toggling}
+            className={`p-1 rounded-lg transition-colors ${
+              row.is_template
+                ? 'text-blue-600 hover:bg-blue-50'
+                : 'text-gray-400 hover:bg-gray-100 hover:text-blue-500'
+            }`}
+            title={row.is_template ? 'Bỏ đánh dấu mẫu' : 'Đánh dấu làm mẫu'}
+          >
+            <BookCopy className="h-4 w-4" />
+          </button>
+        )}
         searchPlaceholder="Tìm bài học..."
         emptyMessage="Chưa có bài học nào"
       />

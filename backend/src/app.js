@@ -20,6 +20,7 @@ const facilitiesRoutes = require('./routes/facilities.routes');
 const roomsRoutes = require('./routes/rooms.routes');
 const financesRoutes = require('./routes/finances.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const templatesRoutes = require('./routes/templates.routes');
 
 const app = express();
 
@@ -67,6 +68,7 @@ app.use('/api/facilities', facilitiesRoutes);
 app.use('/api/rooms', roomsRoutes);
 app.use('/api/finances', financesRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/templates', templatesRoutes);
 
 // 404 handler
 app.use((req, res) => {
