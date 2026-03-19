@@ -9,7 +9,7 @@ import schedulesService from '../../services/schedules.service'
 import classesService from '../../services/classes.service'
 import facilitiesService from '../../services/facilities.service'
 import { validateForm, required } from '../../utils/validators'
-import { Building2, DoorOpen, Repeat, CalendarPlus, CalendarDays } from 'lucide-react'
+import { Building2, DoorOpen, Repeat, CalendarPlus, CalendarDays, AlertTriangle, CheckCircle, User } from 'lucide-react'
 
 const ALL_DAYS = [
   { value: 1, label: 'Thứ 2', short: 'T2' },
@@ -21,8 +21,6 @@ const ALL_DAYS = [
   { value: 0, label: 'Chủ nhật', short: 'CN' },
 ]
 
-// Map our day_of_week (1=Mon..6=Sat, 0=Sun) matches JS getDay()
-
 const TIME_OPTIONS = Array.from({ length: 30 }, (_, i) => {
   const hour = Math.floor(i / 2) + 7
   const min = i % 2 === 0 ? '00' : '30'
@@ -30,35 +28,18 @@ const TIME_OPTIONS = Array.from({ length: 30 }, (_, i) => {
   return { value: label, label }
 })
 
-/**
- * Generate concrete session dates starting from startDate,
- * picking only dates that fall on the selected daysOfWeek,
- * until we have sessionsCount dates.
- *
- * daysOfWeek: array of our day codes (1=Mon..6=Sat, 0=Sun)
- * Returns: array of Date objects
- */
-/**
- * Parse a 'YYYY-MM-DD' string into a local-timezone Date at noon
- * to avoid any UTC midnight → previous-day bugs.
- */
 function parseLocalDate(str) {
   const [y, m, d] = str.split('-').map(Number)
-  return new Date(y, m - 1, d, 12, 0, 0) // noon local time, safe from timezone shifts
+  return new Date(y, m - 1, d, 12, 0, 0)
 }
 
 function generateSessionDates(startDateStr, daysOfWeek, sessionsCount) {
   if (!startDateStr || !daysOfWeek.length || !sessionsCount) return []
   const count = Number(sessionsCount)
   if (count <= 0) return []
-
-  // Our day codes match JS getDay(): 0=Sun, 1=Mon, ..., 6=Sat
   const jsDays = new Set(daysOfWeek)
-
   const dates = []
   const current = parseLocalDate(startDateStr)
-
-  // Walk day-by-day from start_date, pick matching weekdays, stop at count
   for (let i = 0; i < 365 && dates.length < count; i++) {
     if (jsDays.has(current.getDay())) {
       dates.push(new Date(current.getFullYear(), current.getMonth(), current.getDate()))
@@ -73,35 +54,25 @@ function formatDateVN(d) {
 }
 
 function getDayShort(d) {
-  const dayOfWeek = d.getDay()
   const map = { 0: 'CN', 1: 'T2', 2: 'T3', 3: 'T4', 4: 'T5', 5: 'T6', 6: 'T7' }
-  return map[dayOfWeek] || ''
+  return map[d.getDay()] || ''
 }
 
 export default function ScheduleForm({
-  isOpen,
-  onClose,
-  schedule,
-  defaultDay,
-  defaultHour,
-  existingSlots = [],
-  onSuccess,
+  isOpen, onClose, schedule, defaultDay, defaultHour, existingSlots = [], onSuccess,
 }) {
   const [mode, setMode] = useState('single')
   const [form, setForm] = useState({
-    class_id: '',
-    facility_id: '',
-    room_id: '',
-    days_of_week: [],
-    day_of_week: '',
-    start_time: '',
-    end_time: '',
-    start_date: '',
-    sessions_count: '',
+    class_id: '', facility_id: '', room_id: '',
+    days_of_week: [], day_of_week: '',
+    start_time: '', end_time: '',
+    start_date: '', sessions_count: '',
   })
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [conflictData, setConflictData] = useState([])
+  const [conflictLoading, setConflictLoading] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
   const isEdit = !!schedule
 
@@ -113,53 +84,77 @@ export default function ScheduleForm({
   const classes = Array.isArray(classesData) ? classesData : classesData?.classes || []
   const facilities = Array.isArray(facilitiesData) ? facilitiesData : facilitiesData?.facilities || []
 
-  const buildings = facilities.filter((f) => f.type === 'building' || (!f.parent_id && f.type !== 'classroom' && f.type !== 'lab'))
-  const allRooms = facilities.filter((f) => f.parent_id || f.type === 'classroom' || f.type === 'lab')
-  const filteredRooms = form.facility_id ? allRooms.filter((r) => r.parent_id === form.facility_id) : allRooms
+  const buildings = facilities.filter(f => f.type === 'building' || (!f.parent_id && f.type !== 'classroom' && f.type !== 'lab'))
+  const allRooms = facilities.filter(f => f.parent_id || f.type === 'classroom' || f.type === 'lab')
+  const filteredRooms = form.facility_id ? allRooms.filter(r => r.parent_id === form.facility_id) : allRooms
 
-  const buildingOptions = buildings.map((b) => ({ value: b.id, label: `🏢 ${b.name}` }))
-  const roomOptions = filteredRooms.map((r) => ({
+  const buildingOptions = buildings.map(b => ({ value: b.id, label: `🏢 ${b.name}` }))
+  const roomOptions = filteredRooms.map(r => ({
     value: r.id,
     label: `${r.type === 'lab' ? '🔬' : '🚪'} ${r.name}${r.capacity ? ` (${r.capacity} chỗ)` : ''}`,
   }))
-  const classOptions = classes.map((c) => ({ value: c.id, label: c.name }))
+  const classOptions = classes.map(c => ({ value: c.id, label: c.name }))
 
-  const selectedClass = useMemo(() => classes.find((c) => c.id === form.class_id), [classes, form.class_id])
+  const selectedClass = useMemo(() => classes.find(c => c.id === form.class_id), [classes, form.class_id])
 
-  // Calculate preview sessions
   const previewSessions = useMemo(() => {
     return generateSessionDates(form.start_date, form.days_of_week, form.sessions_count)
   }, [form.start_date, form.days_of_week, form.sessions_count])
+
+  // Fetch conflict preview when day/time changes
+  useEffect(() => {
+    const days = mode === 'single' ? (form.day_of_week !== '' ? [Number(form.day_of_week)] : []) : form.days_of_week
+    if (days.length === 0 || !form.start_time || !form.end_time || form.end_time <= form.start_time) {
+      setConflictData([])
+      return
+    }
+    let cancelled = false
+    const fetchConflicts = async () => {
+      setConflictLoading(true)
+      try {
+        const allConflicts = []
+        for (const day of days) {
+          const res = await schedulesService.getConflictPreview({
+            day_of_week: day, start_time: form.start_time, end_time: form.end_time,
+          })
+          const items = res.data || res
+          if (Array.isArray(items)) {
+            items.forEach(s => { if (!allConflicts.find(x => x.id === s.id)) allConflicts.push(s) })
+          }
+        }
+        if (!cancelled) setConflictData(allConflicts)
+      } catch (e) {
+        console.error('Conflict preview error:', e)
+      } finally {
+        if (!cancelled) setConflictLoading(false)
+      }
+    }
+    const timer = setTimeout(fetchConflicts, 300)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [mode, form.day_of_week, form.days_of_week, form.start_time, form.end_time])
 
   useEffect(() => {
     if (schedule) {
       setMode('single')
       const roomId = schedule.room_id || ''
-      const room = facilities.find((f) => f.id === roomId)
+      const room = facilities.find(f => f.id === roomId)
       setForm({
-        class_id: schedule.class_id || '',
-        facility_id: room?.parent_id || '',
-        room_id: roomId,
-        days_of_week: [],
+        class_id: schedule.class_id || '', facility_id: room?.parent_id || '',
+        room_id: roomId, days_of_week: [],
         day_of_week: String(schedule.day_of_week ?? ''),
         start_time: schedule.start_time ? schedule.start_time.substring(0, 5) : '',
         end_time: schedule.end_time ? schedule.end_time.substring(0, 5) : '',
-        start_date: '',
-        sessions_count: '',
+        start_date: '', sessions_count: '',
       })
     } else {
       const startHour = defaultHour != null ? `${String(defaultHour).padStart(2, '0')}:00` : ''
       const endHour = defaultHour != null ? `${String(defaultHour + 1).padStart(2, '0')}:00` : ''
       setForm({
-        class_id: '',
-        facility_id: '',
-        room_id: '',
+        class_id: '', facility_id: '', room_id: '',
         days_of_week: defaultDay != null ? [defaultDay] : [],
         day_of_week: defaultDay != null ? String(defaultDay) : '',
-        start_time: startHour,
-        end_time: endHour,
-        start_date: '',
-        sessions_count: '',
+        start_time: startHour, end_time: endHour,
+        start_date: '', sessions_count: '',
       })
     }
     setErrors({})
@@ -167,27 +162,25 @@ export default function ScheduleForm({
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setForm((prev) => {
+    setForm(prev => {
       const next = { ...prev, [name]: value }
       if (name === 'facility_id') next.room_id = ''
       return next
     })
-    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }))
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: null }))
   }
 
   const toggleDay = (dayValue) => {
-    setForm((prev) => {
+    setForm(prev => {
       const days = [...prev.days_of_week]
       const idx = days.indexOf(dayValue)
-      if (idx >= 0) days.splice(idx, 1)
-      else days.push(dayValue)
+      if (idx >= 0) days.splice(idx, 1); else days.push(dayValue)
       return { ...prev, days_of_week: days }
     })
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-
     if (mode === 'bulk') {
       if (!form.class_id) { setErrors({ class_id: 'Chọn lớp học' }); return }
       if (form.days_of_week.length === 0) { showError('Chọn ít nhất 1 ngày trong tuần'); return }
@@ -195,17 +188,12 @@ export default function ScheduleForm({
       if (form.end_time <= form.start_time) { setErrors({ end_time: 'Giờ kết thúc phải sau giờ bắt đầu' }); return }
       if (!form.start_date) { showError('Chọn ngày bắt đầu'); return }
       if (!form.sessions_count || Number(form.sessions_count) <= 0) { showError('Nhập số buổi học'); return }
-
       setLoading(true)
       try {
         const payload = {
-          class_id: form.class_id,
-          room_id: form.room_id || undefined,
-          days_of_week: form.days_of_week,
-          start_time: form.start_time,
-          end_time: form.end_time,
-          start_date: form.start_date,
-          sessions_count: Number(form.sessions_count),
+          class_id: form.class_id, room_id: form.room_id || undefined,
+          days_of_week: form.days_of_week, start_time: form.start_time, end_time: form.end_time,
+          start_date: form.start_date, sessions_count: Number(form.sessions_count),
         }
         const result = await schedulesService.bulkCreate(payload)
         const created = result.data?.created || result.created || form.days_of_week.length
@@ -213,12 +201,9 @@ export default function ScheduleForm({
         onSuccess()
       } catch (err) {
         showError(err.response?.data?.message || 'Có lỗi xảy ra')
-      } finally {
-        setLoading(false)
-      }
+      } finally { setLoading(false) }
       return
     }
-
     // Single mode
     const errs = validateForm({
       class_id: [() => required(form.class_id, 'Lớp học')],
@@ -229,14 +214,11 @@ export default function ScheduleForm({
     setErrors(errs)
     if (Object.keys(errs).length > 0) return
     if (form.end_time <= form.start_time) { setErrors({ end_time: 'Giờ kết thúc phải sau giờ bắt đầu' }); return }
-
     setLoading(true)
     try {
       const payload = {
-        class_id: form.class_id,
-        day_of_week: Number(form.day_of_week),
-        start_time: form.start_time,
-        end_time: form.end_time,
+        class_id: form.class_id, day_of_week: Number(form.day_of_week),
+        start_time: form.start_time, end_time: form.end_time,
         room_id: form.room_id || undefined,
       }
       if (isEdit) {
@@ -249,9 +231,7 @@ export default function ScheduleForm({
       onSuccess()
     } catch (err) {
       showError(err.response?.data?.message || 'Có lỗi xảy ra')
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
 
   const handleDelete = async () => {
@@ -263,247 +243,247 @@ export default function ScheduleForm({
       onSuccess()
     } catch (err) {
       showError(err.response?.data?.message || 'Xóa lịch học thất bại')
-    } finally {
-      setDeleteLoading(false)
-    }
+    } finally { setDeleteLoading(false) }
   }
 
-  const DAY_OPTIONS_SINGLE = ALL_DAYS.map((d) => ({ value: String(d.value), label: d.label }))
+  const DAY_OPTIONS_SINGLE = ALL_DAYS.map(d => ({ value: String(d.value), label: d.label }))
+
+  // Check if selected room has conflict
+  const roomConflict = form.room_id && conflictData.some(s => s.room_id === form.room_id && s.id !== schedule?.id)
+  // Check if selected class's teacher has conflict
+  const teacherConflict = selectedClass?.teacher_id && conflictData.some(s =>
+    s.teacher_id === selectedClass.teacher_id && s.class_id !== form.class_id && s.id !== schedule?.id
+  )
 
   return (
     <Modal
-      isOpen={isOpen}
-      onClose={onClose}
+      isOpen={isOpen} onClose={onClose}
       title={isEdit ? 'Chỉnh sửa lịch học' : mode === 'bulk' ? 'Tạo lịch học lặp lại' : 'Thêm lịch học mới'}
-      size="lg"
-      footer={
-        <>
-          {isEdit && (
-            <Button variant="danger" onClick={handleDelete} loading={deleteLoading} className="mr-auto">
-              Xóa
-            </Button>
-          )}
-          <Button variant="outline" onClick={onClose} disabled={loading}>
-            Hủy
-          </Button>
-          <Button onClick={handleSubmit} loading={loading} icon={mode === 'bulk' ? Repeat : CalendarPlus}>
-            {isEdit ? 'Cập nhật' : mode === 'bulk' ? `Tạo lịch (${form.days_of_week.length} ngày/tuần)` : 'Thêm mới'}
-          </Button>
-        </>
-      }
+      size="2xl"
+      footer={<>
+        {isEdit && (
+          <Button variant="danger" onClick={handleDelete} loading={deleteLoading} className="mr-auto">Xóa</Button>
+        )}
+        <Button variant="outline" onClick={onClose} disabled={loading}>Hủy</Button>
+        <Button onClick={handleSubmit} loading={loading} icon={mode === 'bulk' ? Repeat : CalendarPlus}>
+          {isEdit ? 'Cập nhật' : mode === 'bulk' ? `Tạo lịch (${form.days_of_week.length} ngày/tuần)` : 'Thêm mới'}
+        </Button>
+      </>}
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Mode toggle */}
-        {!isEdit && (
-          <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
-            <button
-              type="button"
-              onClick={() => setMode('single')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                mode === 'single' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <CalendarPlus className="h-4 w-4" /> Thêm đơn
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('bulk')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                mode === 'bulk' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Repeat className="h-4 w-4" /> Lặp lại hàng tuần
-            </button>
-          </div>
-        )}
-
-        {/* Class */}
-        <Select
-          label="Lớp học"
-          name="class_id"
-          value={form.class_id}
-          onChange={handleChange}
-          options={classOptions}
-          placeholder="Chọn lớp học"
-          error={errors.class_id}
-          required
-        />
-        {selectedClass && (selectedClass.start_date || selectedClass.end_date) && (
-          <div className="text-xs text-gray-500 bg-blue-50 rounded-lg px-3 py-2 -mt-2">
-            📅 Thời gian lớp: {selectedClass.start_date || '?'} → {selectedClass.end_date || '?'}
-          </div>
-        )}
-
-        {/* Day selection */}
-        {mode === 'single' ? (
-          <Select
-            label="Ngày trong tuần"
-            name="day_of_week"
-            value={form.day_of_week}
-            onChange={handleChange}
-            options={DAY_OPTIONS_SINGLE}
-            placeholder="Chọn ngày"
-            error={errors.day_of_week}
-            required
-          />
-        ) : (
-          <div className="space-y-1.5">
-            <label className="block text-sm font-medium text-gray-700">
-              Chọn các ngày học trong tuần <span className="text-red-500">*</span>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {ALL_DAYS.map((day) => {
-                const selected = form.days_of_week.includes(day.value)
-                return (
-                  <button
-                    key={day.value}
-                    type="button"
-                    onClick={() => toggleDay(day.value)}
-                    className={`px-4 py-2.5 rounded-lg text-sm font-medium border-2 transition-all ${
-                      selected
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:bg-blue-50'
-                    }`}
-                  >
-                    {day.short}
-                  </button>
-                )
-              })}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        {/* Left: Form (3 cols) */}
+        <form onSubmit={handleSubmit} className="lg:col-span-3 space-y-4">
+          {/* Mode toggle */}
+          {!isEdit && (
+            <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+              <button type="button" onClick={() => setMode('single')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                  mode === 'single' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                <CalendarPlus className="h-4 w-4" /> Thêm đơn
+              </button>
+              <button type="button" onClick={() => setMode('bulk')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+                  mode === 'bulk' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                <Repeat className="h-4 w-4" /> Lặp lại hàng tuần
+              </button>
             </div>
-            {form.days_of_week.length > 0 && (
-              <p className="text-xs text-blue-600 mt-1">
-                ✅ Đã chọn: {form.days_of_week.sort((a,b) => (a||7) - (b||7)).map((d) => ALL_DAYS.find((a) => a.value === d)?.short).join(', ')}
+          )}
+
+          {/* Class */}
+          <Select label="Lớp học" name="class_id" value={form.class_id} onChange={handleChange}
+            options={classOptions} placeholder="Chọn lớp học" error={errors.class_id} required />
+          {teacherConflict && (
+            <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 -mt-2">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span>Giáo viên của lớp này đã có lịch dạy trong khung giờ đã chọn!</span>
+            </div>
+          )}
+
+          {/* Day selection */}
+          {mode === 'single' ? (
+            <Select label="Ngày trong tuần" name="day_of_week" value={form.day_of_week} onChange={handleChange}
+              options={DAY_OPTIONS_SINGLE} placeholder="Chọn ngày" error={errors.day_of_week} required />
+          ) : (
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">
+                Chọn các ngày học trong tuần <span className="text-red-500">*</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {ALL_DAYS.map(day => {
+                  const selected = form.days_of_week.includes(day.value)
+                  return (
+                    <button key={day.value} type="button" onClick={() => toggleDay(day.value)}
+                      className={`px-4 py-2.5 rounded-lg text-sm font-medium border-2 transition-all ${
+                        selected ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:bg-blue-50'}`}>
+                      {day.short}
+                    </button>
+                  )
+                })}
+              </div>
+              {form.days_of_week.length > 0 && (
+                <p className="text-xs text-blue-600 mt-1">
+                  ✅ Đã chọn: {form.days_of_week.sort((a,b) => (a||7) - (b||7)).map(d => ALL_DAYS.find(a => a.value === d)?.short).join(', ')}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Time */}
+          <div className="grid grid-cols-2 gap-4">
+            <Select label="Giờ bắt đầu" name="start_time" value={form.start_time} onChange={handleChange}
+              options={TIME_OPTIONS} placeholder="Chọn giờ" error={errors.start_time} required />
+            <Select label="Giờ kết thúc" name="end_time" value={form.end_time} onChange={handleChange}
+              options={TIME_OPTIONS} placeholder="Chọn giờ" error={errors.end_time} required />
+          </div>
+
+          {/* Bulk: start date + sessions count */}
+          {mode === 'bulk' && (
+            <div className="border border-purple-200 rounded-lg p-4 space-y-3 bg-purple-50/50">
+              <p className="text-sm font-medium text-purple-700 flex items-center gap-2">
+                <Repeat className="h-4 w-4" /> Thông tin lặp lại
               </p>
-            )}
-          </div>
-        )}
-
-        {/* Time */}
-        <div className="grid grid-cols-2 gap-4">
-          <Select
-            label="Giờ bắt đầu"
-            name="start_time"
-            value={form.start_time}
-            onChange={handleChange}
-            options={TIME_OPTIONS}
-            placeholder="Chọn giờ"
-            error={errors.start_time}
-            required
-          />
-          <Select
-            label="Giờ kết thúc"
-            name="end_time"
-            value={form.end_time}
-            onChange={handleChange}
-            options={TIME_OPTIONS}
-            placeholder="Chọn giờ"
-            error={errors.end_time}
-            required
-          />
-        </div>
-
-        {/* Bulk: start date + sessions count + preview */}
-        {mode === 'bulk' && (
-          <div className="border border-purple-200 rounded-lg p-4 space-y-3 bg-purple-50/50">
-            <p className="text-sm font-medium text-purple-700 flex items-center gap-2">
-              <Repeat className="h-4 w-4" /> Thông tin lặp lại
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Ngày bắt đầu"
-                name="start_date"
-                type="date"
-                value={form.start_date}
-                onChange={handleChange}
-                required
-              />
-              <Input
-                label="Số buổi học"
-                name="sessions_count"
-                type="number"
-                value={form.sessions_count}
-                onChange={handleChange}
-                placeholder="VD: 24"
-                required
-              />
-            </div>
-
-            {/* Preview: list of concrete dates */}
-            {previewSessions.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium text-purple-700 flex items-center gap-1">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    Lịch {previewSessions.length} buổi học cụ thể:
-                  </p>
-                  <span className="text-xs text-purple-500">
-                    {formatDateVN(previewSessions[0])} → {formatDateVN(previewSessions[previewSessions.length - 1])}
-                  </span>
-                </div>
-                <div className="max-h-[180px] overflow-y-auto rounded-lg border border-purple-200 bg-white">
-                  <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-purple-50">
-                      <tr>
-                        <th className="px-2 py-1.5 text-left text-purple-600 font-medium w-10">#</th>
-                        <th className="px-2 py-1.5 text-left text-purple-600 font-medium">Thứ</th>
-                        <th className="px-2 py-1.5 text-left text-purple-600 font-medium">Ngày</th>
-                        <th className="px-2 py-1.5 text-left text-purple-600 font-medium">Giờ</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-purple-100">
-                      {previewSessions.map((date, i) => (
-                        <tr key={i} className="hover:bg-purple-50/50">
-                          <td className="px-2 py-1 text-gray-400">{i + 1}</td>
-                          <td className="px-2 py-1 font-medium text-gray-700">{getDayShort(date)}</td>
-                          <td className="px-2 py-1 text-gray-600">{formatDateVN(date)}</td>
-                          <td className="px-2 py-1 text-gray-500">{form.start_time} - {form.end_time}</td>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Ngày bắt đầu" name="start_date" type="date" value={form.start_date} onChange={handleChange} required />
+                <Input label="Số buổi học" name="sessions_count" type="number" value={form.sessions_count} onChange={handleChange} placeholder="VD: 24" required />
+              </div>
+              {previewSessions.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-purple-700 flex items-center gap-1">
+                      <CalendarDays className="h-3.5 w-3.5" /> {previewSessions.length} buổi học:
+                    </p>
+                    <span className="text-xs text-purple-500">
+                      {formatDateVN(previewSessions[0])} → {formatDateVN(previewSessions[previewSessions.length - 1])}
+                    </span>
+                  </div>
+                  <div className="max-h-[140px] overflow-y-auto rounded-lg border border-purple-200 bg-white">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-purple-50">
+                        <tr>
+                          <th className="px-2 py-1 text-left text-purple-600 font-medium w-8">#</th>
+                          <th className="px-2 py-1 text-left text-purple-600 font-medium">Thứ</th>
+                          <th className="px-2 py-1 text-left text-purple-600 font-medium">Ngày</th>
+                          <th className="px-2 py-1 text-left text-purple-600 font-medium">Giờ</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-purple-100">
+                        {previewSessions.map((date, i) => (
+                          <tr key={i} className="hover:bg-purple-50/50">
+                            <td className="px-2 py-1 text-gray-400">{i + 1}</td>
+                            <td className="px-2 py-1 font-medium text-gray-700">{getDayShort(date)}</td>
+                            <td className="px-2 py-1 text-gray-600">{formatDateVN(date)}</td>
+                            <td className="px-2 py-1 text-gray-500">{form.start_time} - {form.end_time}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <div className="flex gap-4 text-xs text-purple-600">
-                  <span>📊 {form.days_of_week.length} buổi/tuần</span>
-                  <span>📅 {Math.ceil(previewSessions.length / form.days_of_week.length)} tuần</span>
-                  <span>🏁 Kết thúc: {formatDateVN(previewSessions[previewSessions.length - 1])}</span>
-                </div>
+              )}
+            </div>
+          )}
+
+          {/* Location */}
+          <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50/50">
+            <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <Building2 className="h-4 w-4" /> Địa điểm
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="flex items-start gap-2">
+                <Building2 className="h-5 w-5 text-blue-500 mt-7 flex-shrink-0" />
+                <Select label="Cơ sở" name="facility_id" value={form.facility_id} onChange={handleChange}
+                  options={buildingOptions} placeholder="Chọn cơ sở..." />
+              </div>
+              <div className="flex items-start gap-2">
+                <DoorOpen className="h-5 w-5 text-green-500 mt-7 flex-shrink-0" />
+                <Select label="Phòng học" name="room_id" value={form.room_id} onChange={handleChange}
+                  options={roomOptions} placeholder={form.facility_id ? 'Chọn phòng...' : 'Chọn cơ sở trước'}
+                  disabled={!form.facility_id && buildings.length > 0} />
+              </div>
+            </div>
+            {roomConflict && (
+              <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span>Phòng này đã có lịch trong khung giờ đã chọn! Xem bên phải ↗</span>
               </div>
             )}
           </div>
-        )}
+        </form>
 
-        {/* Location */}
-        <div className="border border-gray-200 rounded-lg p-4 space-y-3 bg-gray-50/50">
-          <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
-            <Building2 className="h-4 w-4" /> Địa điểm
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="flex items-start gap-2">
-              <Building2 className="h-5 w-5 text-blue-500 mt-7 flex-shrink-0" />
-              <Select
-                label="Cơ sở"
-                name="facility_id"
-                value={form.facility_id}
-                onChange={handleChange}
-                options={buildingOptions}
-                placeholder="Chọn cơ sở..."
-              />
-            </div>
-            <div className="flex items-start gap-2">
-              <DoorOpen className="h-5 w-5 text-green-500 mt-7 flex-shrink-0" />
-              <Select
-                label="Phòng học"
-                name="room_id"
-                value={form.room_id}
-                onChange={handleChange}
-                options={roomOptions}
-                placeholder={form.facility_id ? 'Chọn phòng...' : 'Chọn cơ sở trước'}
-                disabled={!form.facility_id && buildings.length > 0}
-              />
-            </div>
+        {/* Right: Conflict preview panel (2 cols) */}
+        <div className="lg:col-span-2 space-y-3">
+          <div className="border border-gray-200 rounded-xl bg-white p-4 sticky top-0">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+              <CalendarDays className="h-4 w-4" /> Lịch đã có trong khung giờ
+            </h3>
+
+            {(!form.start_time || !form.end_time || (mode === 'single' && form.day_of_week === '') || (mode === 'bulk' && form.days_of_week.length === 0)) ? (
+              <p className="text-xs text-gray-400 py-4 text-center">Chọn ngày và giờ để xem lịch hiện tại</p>
+            ) : conflictLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : conflictData.length === 0 ? (
+              <div className="text-center py-4">
+                <CheckCircle className="h-8 w-8 text-green-400 mx-auto mb-2" />
+                <p className="text-sm text-green-600 font-medium">Khung giờ trống!</p>
+                <p className="text-xs text-gray-400 mt-1">Không có lịch nào trùng</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {conflictData.map(s => {
+                  const dayMap = { 0: 'CN', 1: 'T2', 2: 'T3', 3: 'T4', 4: 'T5', 5: 'T6', 6: 'T7' }
+                  const isRoomConflict = form.room_id && s.room_id === form.room_id
+                  const isTeacherConflict = selectedClass?.teacher_id && s.teacher_id === selectedClass.teacher_id && s.class_id !== form.class_id
+                  const isSelf = s.id === schedule?.id
+
+                  if (isSelf) return null
+
+                  return (
+                    <div key={s.id}
+                      className={`rounded-lg p-3 text-xs border ${
+                        isRoomConflict ? 'border-red-200 bg-red-50' :
+                        isTeacherConflict ? 'border-amber-200 bg-amber-50' :
+                        'border-gray-100 bg-gray-50'
+                      }`}>
+                      <div className="flex items-start justify-between mb-1">
+                        <span className="font-semibold text-gray-800">{s.class_name || '?'}</span>
+                        <span className="text-gray-400">{dayMap[s.day_of_week]}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <span>🕐 {s.start_time?.substring(0,5)}-{s.end_time?.substring(0,5)}</span>
+                        {s.room_name && <span>🚪 {s.room_name}</span>}
+                      </div>
+                      {s.teacher_name && (
+                        <div className="flex items-center gap-1 mt-1 text-gray-500">
+                          <User className="h-3 w-3" />
+                          <span>{s.teacher_name}</span>
+                        </div>
+                      )}
+                      {isRoomConflict && (
+                        <span className="inline-block mt-1 px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-medium">
+                          🔴 Trùng phòng
+                        </span>
+                      )}
+                      {isTeacherConflict && (
+                        <span className="inline-block mt-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium">
+                          🟡 Trùng giáo viên
+                        </span>
+                      )}
+                      {!isRoomConflict && !isTeacherConflict && (
+                        <span className="inline-block mt-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
+                          🟢 Không xung đột
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
-      </form>
+      </div>
     </Modal>
   )
 }

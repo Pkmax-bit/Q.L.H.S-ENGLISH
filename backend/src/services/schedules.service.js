@@ -181,39 +181,149 @@ const remove = async (id) => {
 };
 
 /**
- * Check for room conflicts on the schedules table.
- * Each schedule row IS a slot (day_of_week, start_time, end_time, room_id).
+ * Check for schedule conflicts: room + teacher.
+ * 
+ * Rules:
+ * 1. ROOM conflict: same room + same day + overlapping time
+ * 2. TEACHER conflict: same teacher (via class.teacher_id) + same day + overlapping time
+ *    → one teacher cannot teach two classes at the same time on the same day
+ * 3. OK: different teacher + different room + same time + same day → allowed
  */
 const checkScheduleConflict = async (roomId, classId, dayOfWeek, startTime, endTime, excludeId = null) => {
   const conflicts = [];
+  const dayNames = { 0: 'CN', 1: 'T2', 2: 'T3', 3: 'T4', 4: 'T5', 5: 'T6', 6: 'T7' };
 
+  // 1. Room conflict
   if (roomId) {
     let query = supabase
       .from('schedules')
-      .select('*, facilities(name)')
+      .select('*, facilities(name), classes(name)')
       .eq('room_id', roomId)
       .eq('day_of_week', dayOfWeek)
       .lt('start_time', endTime)
       .gt('end_time', startTime)
       .eq('is_active', true);
 
-    if (excludeId) {
-      query = query.neq('id', excludeId);
-    }
+    if (excludeId) query = query.neq('id', excludeId);
 
     const { data: roomConflicts, error } = await query;
     if (error) throw error;
 
     if (roomConflicts && roomConflicts.length > 0) {
-      conflicts.push({
-        type: 'room',
-        message: `Room "${roomConflicts[0].facilities?.name || 'Unknown'}" is already booked at this time`,
-        conflictingSchedules: roomConflicts,
-      });
+      for (const rc of roomConflicts) {
+        conflicts.push({
+          type: 'room',
+          message: `Phòng "${rc.facilities?.name || '?'}" đã có lớp "${rc.classes?.name || '?'}" vào ${dayNames[dayOfWeek]} ${rc.start_time?.substring(0,5)}-${rc.end_time?.substring(0,5)}`,
+          schedule: rc,
+        });
+      }
+    }
+  }
+
+  // 2. Teacher conflict — get teacher_id of the class being scheduled
+  if (classId) {
+    const { data: targetClass } = await supabase
+      .from('classes')
+      .select('teacher_id, name')
+      .eq('id', classId)
+      .single();
+
+    if (targetClass?.teacher_id) {
+      // Find all other classes taught by same teacher
+      const { data: teacherClasses } = await supabase
+        .from('classes')
+        .select('id, name')
+        .eq('teacher_id', targetClass.teacher_id)
+        .neq('id', classId);
+
+      if (teacherClasses && teacherClasses.length > 0) {
+        const otherClassIds = teacherClasses.map(c => c.id);
+        const classNameMap = {};
+        teacherClasses.forEach(c => { classNameMap[c.id] = c.name; });
+
+        let query = supabase
+          .from('schedules')
+          .select('*, facilities(name)')
+          .in('class_id', otherClassIds)
+          .eq('day_of_week', dayOfWeek)
+          .lt('start_time', endTime)
+          .gt('end_time', startTime)
+          .eq('is_active', true);
+
+        if (excludeId) query = query.neq('id', excludeId);
+
+        const { data: teacherConflicts, error: tErr } = await query;
+        if (tErr) throw tErr;
+
+        if (teacherConflicts && teacherConflicts.length > 0) {
+          // Get teacher name
+          const { data: teacherProfile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', targetClass.teacher_id)
+            .single();
+
+          const teacherName = teacherProfile?.full_name || 'Giáo viên';
+
+          for (const tc of teacherConflicts) {
+            conflicts.push({
+              type: 'teacher',
+              message: `${teacherName} đã có lịch dạy "${classNameMap[tc.class_id] || '?'}" vào ${dayNames[dayOfWeek]} ${tc.start_time?.substring(0,5)}-${tc.end_time?.substring(0,5)}`,
+              schedule: tc,
+            });
+          }
+        }
+      }
     }
   }
 
   return conflicts;
+};
+
+/**
+ * Get existing schedules for a specific day + time range.
+ * Used by frontend to show "what's already scheduled" when creating.
+ */
+const getConflictPreview = async (dayOfWeek, startTime, endTime) => {
+  const { data, error } = await supabase
+    .from('schedules')
+    .select(`
+      *,
+      classes(id, name, teacher_id),
+      facilities(id, name, parent_id)
+    `)
+    .eq('day_of_week', dayOfWeek)
+    .lt('start_time', endTime)
+    .gt('end_time', startTime)
+    .eq('is_active', true)
+    .order('start_time', { ascending: true });
+
+  if (error) throw error;
+
+  // Enrich with teacher names
+  const teacherIds = [...new Set((data || []).map(s => s.classes?.teacher_id).filter(Boolean))];
+  let teacherMap = {};
+  if (teacherIds.length > 0) {
+    const { data: teachers } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', teacherIds);
+    if (teachers) teachers.forEach(t => { teacherMap[t.id] = t.full_name; });
+  }
+
+  return (data || []).map(s => ({
+    id: s.id,
+    class_id: s.class_id,
+    class_name: s.classes?.name || null,
+    teacher_id: s.classes?.teacher_id || null,
+    teacher_name: teacherMap[s.classes?.teacher_id] || null,
+    day_of_week: s.day_of_week,
+    start_time: s.start_time,
+    end_time: s.end_time,
+    room_id: s.room_id,
+    room_name: s.facilities?.name || null,
+    facility_parent_id: s.facilities?.parent_id || null,
+  }));
 };
 
 /**
@@ -264,4 +374,4 @@ const bulkCreate = async (data) => {
   };
 };
 
-module.exports = { getAll, getById, create, update, remove, bulkCreate };
+module.exports = { getAll, getById, create, update, remove, bulkCreate, getConflictPreview };

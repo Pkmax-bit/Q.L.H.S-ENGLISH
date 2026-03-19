@@ -7,6 +7,7 @@ const schedulesService = {
   bulkCreate: (data) => api.post('/schedules/bulk', data),
   update: (id, data) => api.put(`/schedules/${id}`, data),
   delete: (id) => api.delete(`/schedules/${id}`),
+  getConflictPreview: (params) => api.get('/schedules/conflicts', { params }),
 }
 
 export default schedulesService

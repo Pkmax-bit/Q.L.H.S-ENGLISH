@@ -6,6 +6,7 @@ const authorize = require('../middleware/authorize');
 const router = Router();
 
 router.get('/', auth, schedulesController.getAll);
+router.get('/conflicts', auth, schedulesController.conflictPreview);
 router.get('/:id', auth, schedulesController.getById);
 router.post('/', auth, authorize('admin'), schedulesController.create);
 router.post('/bulk', auth, authorize('admin'), schedulesController.bulkCreate);

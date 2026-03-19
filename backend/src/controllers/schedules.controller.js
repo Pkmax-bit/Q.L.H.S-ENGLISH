@@ -78,4 +78,17 @@ const bulkCreate = async (req, res, next) => {
   }
 };
 
-module.exports = { getAll, getById, create, update, remove, bulkCreate };
+const conflictPreview = async (req, res, next) => {
+  try {
+    const { day_of_week, start_time, end_time } = req.query;
+    if (day_of_week === undefined || !start_time || !end_time) {
+      return response.error(res, 'day_of_week, start_time, end_time là bắt buộc', 400);
+    }
+    const data = await schedulesService.getConflictPreview(
+      Number(day_of_week), start_time, end_time
+    );
+    return response.success(res, data, 'Conflict preview');
+  } catch (error) { next(error); }
+};
+
+module.exports = { getAll, getById, create, update, remove, bulkCreate, conflictPreview };
