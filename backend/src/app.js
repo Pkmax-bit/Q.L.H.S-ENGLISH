@@ -76,22 +76,24 @@ app.use('/api/submissions', submissionsRoutes);
 
 // Serve frontend static files in production
 const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
-app.use(express.static(frontendDist));
+const fs = require('fs');
+if (fs.existsSync(frontendDist)) {
+  console.log(`[SPA] Serving frontend from: ${frontendDist}`);
+  app.use(express.static(frontendDist));
 
-// SPA fallback: any non-API route → index.html
-app.get('{*path}', (req, res, next) => {
-  // Don't serve index.html for /api/* routes
-  if (req.url.startsWith('/api/')) {
-    return next();
-  }
-  const indexPath = path.join(frontendDist, 'index.html');
-  res.sendFile(indexPath, (err) => {
-    if (err) {
-      // Frontend not built yet, return API 404
-      next();
+  // SPA fallback: any non-API route → index.html
+  app.get('{*path}', (req, res, next) => {
+    if (req.url.startsWith('/api/')) {
+      return next();
     }
+    const indexPath = path.join(frontendDist, 'index.html');
+    res.sendFile(indexPath, (err) => {
+      if (err) next();
+    });
   });
-});
+} else {
+  console.log(`[SPA] Frontend dist not found at: ${frontendDist} — skipping static serve`);
+}
 
 // 404 handler (only for /api/* routes or when frontend not available)
 app.use((req, res) => {
