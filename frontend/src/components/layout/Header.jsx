@@ -2,6 +2,13 @@ import { Menu, Bell, User, LogOut, Settings } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import clsx from 'clsx'
+
+const roleLabelMap = {
+  admin: { label: 'Quản trị viên', color: 'bg-red-100 text-red-700' },
+  teacher: { label: 'Giáo viên', color: 'bg-green-100 text-green-700' },
+  student: { label: 'Học sinh', color: 'bg-blue-100 text-blue-700' },
+}
 
 export default function Header({ onMenuClick }) {
   const { user, logout } = useAuth()
@@ -23,6 +30,8 @@ export default function Header({ onMenuClick }) {
     await logout()
     navigate('/login')
   }
+
+  const roleInfo = roleLabelMap[user?.role] || { label: user?.role, color: 'bg-gray-100 text-gray-700' }
 
   return (
     <header className="sticky top-0 z-20 bg-white border-b border-gray-200 px-4 lg:px-6">
@@ -53,9 +62,14 @@ export default function Header({ onMenuClick }) {
               <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
                 <User className="h-4 w-4 text-primary-600" />
               </div>
-              <span className="hidden sm:block text-sm font-medium text-gray-700">
-                {user?.name || 'Người dùng'}
-              </span>
+              <div className="hidden sm:flex sm:flex-col sm:items-start">
+                <span className="text-sm font-medium text-gray-700 leading-tight">
+                  {user?.name || 'Người dùng'}
+                </span>
+                <span className={clsx('text-xs px-1.5 py-0.5 rounded-full font-medium leading-tight', roleInfo.color)}>
+                  {roleInfo.label}
+                </span>
+              </div>
             </button>
 
             {dropdownOpen && (
@@ -63,6 +77,9 @@ export default function Header({ onMenuClick }) {
                 <div className="px-4 py-2 border-b border-gray-100">
                   <p className="text-sm font-medium text-gray-900">{user?.name}</p>
                   <p className="text-xs text-gray-500">{user?.email}</p>
+                  <span className={clsx('inline-block mt-1 text-xs px-2 py-0.5 rounded-full font-medium', roleInfo.color)}>
+                    {roleInfo.label}
+                  </span>
                 </div>
                 <button
                   onClick={() => {

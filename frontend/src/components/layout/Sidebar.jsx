@@ -6,23 +6,91 @@ import {
   ChevronLeft, ChevronRight, X, BookCopy
 } from 'lucide-react'
 import clsx from 'clsx'
+import { useAuth } from '../../hooks/useAuth'
 
+/**
+ * Menu items with role-based access control.
+ * `roles` defines which roles can see the item.
+ * If `roles` is omitted/empty, all authenticated users can see it.
+ */
 const menuItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Tổng quan' },
-  { path: '/teachers', icon: Users, label: 'Giáo viên' },
-  { path: '/students', icon: GraduationCap, label: 'Học sinh' },
-  { path: '/subjects', icon: BookOpen, label: 'Môn học' },
-  { path: '/classes', icon: School, label: 'Lớp học' },
-  { path: '/lessons', icon: FileText, label: 'Bài học' },
-  { path: '/assignments', icon: ClipboardList, label: 'Bài tập' },
-  { path: '/templates', icon: BookCopy, label: 'Mẫu bài giảng' },
-  { path: '/schedules', icon: CalendarDays, label: 'Thời khóa biểu' },
-  { path: '/facilities', icon: Building2, label: 'Cơ sở & Phòng học' },
-  { path: '/finances', icon: Wallet, label: 'Tài chính' },
+  {
+    path: '/',
+    icon: LayoutDashboard,
+    label: 'Tổng quan',
+    roles: ['admin', 'teacher', 'student'],
+  },
+  {
+    path: '/teachers',
+    icon: Users,
+    label: 'Giáo viên',
+    roles: ['admin'],
+  },
+  {
+    path: '/students',
+    icon: GraduationCap,
+    label: 'Học sinh',
+    roles: ['admin'],
+  },
+  {
+    path: '/subjects',
+    icon: BookOpen,
+    label: 'Môn học',
+    roles: ['admin'],
+  },
+  {
+    path: '/classes',
+    icon: School,
+    label: 'Lớp học',
+    roles: ['admin', 'teacher', 'student'],
+  },
+  {
+    path: '/lessons',
+    icon: FileText,
+    label: 'Bài học',
+    roles: ['admin', 'teacher', 'student'],
+  },
+  {
+    path: '/assignments',
+    icon: ClipboardList,
+    label: 'Bài tập',
+    roles: ['admin', 'teacher', 'student'],
+  },
+  {
+    path: '/templates',
+    icon: BookCopy,
+    label: 'Mẫu bài giảng',
+    roles: ['admin', 'teacher'],
+  },
+  {
+    path: '/schedules',
+    icon: CalendarDays,
+    label: 'Thời khóa biểu',
+    roles: ['admin', 'teacher', 'student'],
+  },
+  {
+    path: '/facilities',
+    icon: Building2,
+    label: 'Cơ sở & Phòng học',
+    roles: ['admin'],
+  },
+  {
+    path: '/finances',
+    icon: Wallet,
+    label: 'Tài chính',
+    roles: ['admin'],
+  },
 ]
 
 export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
   const location = useLocation()
+  const { user } = useAuth()
+
+  // Filter menu items based on user role
+  const visibleMenuItems = menuItems.filter((item) => {
+    if (!item.roles || item.roles.length === 0) return true
+    return user && item.roles.includes(user.role)
+  })
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
@@ -39,9 +107,27 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
         )}
       </div>
 
+      {/* User role badge */}
+      {!collapsed && user && (
+        <div className="px-4 py-3 border-b border-blue-800/30">
+          <div className="flex items-center gap-2">
+            <span className={clsx(
+              'px-2 py-0.5 rounded-full text-xs font-medium',
+              user.role === 'admin' && 'bg-red-500/20 text-red-200',
+              user.role === 'teacher' && 'bg-green-500/20 text-green-200',
+              user.role === 'student' && 'bg-yellow-500/20 text-yellow-200',
+            )}>
+              {user.role === 'admin' && '🔑 Quản trị viên'}
+              {user.role === 'teacher' && '👨‍🏫 Giáo viên'}
+              {user.role === 'student' && '🎓 Học sinh'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Menu */}
       <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-        {menuItems.map((item) => {
+        {visibleMenuItems.map((item) => {
           const Icon = item.icon
           const isActive = item.path === '/'
             ? location.pathname === '/'

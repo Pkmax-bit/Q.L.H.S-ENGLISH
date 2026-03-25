@@ -1,12 +1,15 @@
-import { Users, GraduationCap, School, Wallet } from 'lucide-react'
+import { Users, GraduationCap, School, Wallet, BookOpen, ClipboardList } from 'lucide-react'
 import clsx from 'clsx'
 import { formatCurrency } from '../../utils/formatCurrency'
+import { useAuth } from '../../hooks/useAuth'
 
-const defaultStats = [
-  { key: 'teachers', label: 'Giáo viên', icon: Users, color: 'blue', value: 0 },
-  { key: 'students', label: 'Học sinh', icon: GraduationCap, color: 'green', value: 0 },
-  { key: 'classes', label: 'Lớp học', icon: School, color: 'purple', value: 0 },
-  { key: 'revenue', label: 'Doanh thu tháng', icon: Wallet, color: 'amber', value: 0 },
+const allStats = [
+  { key: 'teachers', label: 'Giáo viên', icon: Users, color: 'blue', value: 0, roles: ['admin'] },
+  { key: 'students', label: 'Học sinh', icon: GraduationCap, color: 'green', value: 0, roles: ['admin'] },
+  { key: 'classes', label: 'Lớp học', icon: School, color: 'purple', value: 0, roles: ['admin', 'teacher', 'student'] },
+  { key: 'revenue', label: 'Doanh thu tháng', icon: Wallet, color: 'amber', value: 0, roles: ['admin'] },
+  { key: 'lessons', label: 'Bài học', icon: BookOpen, color: 'blue', value: 0, roles: ['teacher', 'student'] },
+  { key: 'assignments', label: 'Bài tập', icon: ClipboardList, color: 'amber', value: 0, roles: ['teacher', 'student'] },
 ]
 
 const colorClasses = {
@@ -17,13 +20,27 @@ const colorClasses = {
 }
 
 export default function DashboardStats({ stats }) {
-  const items = defaultStats.map((d) => ({
+  const { user } = useAuth()
+  const userRole = user?.role || 'student'
+
+  const visibleStats = allStats.filter(
+    (item) => item.roles.includes(userRole)
+  )
+
+  const items = visibleStats.map((d) => ({
     ...d,
     value: stats?.[d.key] ?? d.value,
   }))
 
+  // Dynamic grid columns based on visible items count
+  const gridCols = items.length <= 2
+    ? 'grid-cols-1 sm:grid-cols-2'
+    : items.length === 3
+      ? 'grid-cols-1 sm:grid-cols-3'
+      : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className={clsx('grid gap-4', gridCols)}>
       {items.map((item) => {
         const Icon = item.icon
         const colors = colorClasses[item.color]

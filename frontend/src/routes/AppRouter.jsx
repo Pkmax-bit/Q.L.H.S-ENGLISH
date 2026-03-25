@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import MainLayout from '../components/layout/MainLayout'
 import ProtectedRoute from '../components/auth/ProtectedRoute'
-import AdminRoute from '../components/auth/AdminRoute'
+import RoleRoute from '../components/auth/RoleRoute'
 import LoginPage from '../pages/LoginPage'
 import DashboardPage from '../pages/DashboardPage'
 import TeachersPage from '../pages/TeachersPage'
@@ -29,25 +29,97 @@ export default function AppRouter() {
           </ProtectedRoute>
         }
       >
+        {/* Dashboard - all roles */}
         <Route index element={<DashboardPage />} />
         <Route path="dashboard" element={<Navigate to="/" replace />} />
-        <Route path="teachers" element={<TeachersPage />} />
-        <Route path="students" element={<StudentsPage />} />
-        <Route path="subjects" element={<SubjectsPage />} />
-        <Route path="classes" element={<ClassesPage />} />
-        <Route path="lessons" element={<LessonsPage />} />
-        <Route path="assignments" element={<AssignmentsPage />} />
-        <Route path="templates" element={<TemplatesPage />} />
-        <Route path="schedules" element={<SchedulesPage />} />
-        <Route path="facilities" element={<FacilitiesPage />} />
+
+        {/* Admin only */}
+        <Route
+          path="teachers"
+          element={
+            <RoleRoute roles={['admin']}>
+              <TeachersPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="students"
+          element={
+            <RoleRoute roles={['admin']}>
+              <StudentsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="subjects"
+          element={
+            <RoleRoute roles={['admin']}>
+              <SubjectsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="facilities"
+          element={
+            <RoleRoute roles={['admin']}>
+              <FacilitiesPage />
+            </RoleRoute>
+          }
+        />
         <Route
           path="finances"
           element={
-            <AdminRoute>
+            <RoleRoute roles={['admin']}>
               <FinancesPage />
-            </AdminRoute>
+            </RoleRoute>
           }
         />
+
+        {/* Admin + Teacher + Student */}
+        <Route
+          path="classes"
+          element={
+            <RoleRoute roles={['admin', 'teacher', 'student']}>
+              <ClassesPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="lessons"
+          element={
+            <RoleRoute roles={['admin', 'teacher', 'student']}>
+              <LessonsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="assignments"
+          element={
+            <RoleRoute roles={['admin', 'teacher', 'student']}>
+              <AssignmentsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="schedules"
+          element={
+            <RoleRoute roles={['admin', 'teacher', 'student']}>
+              <SchedulesPage />
+            </RoleRoute>
+          }
+        />
+
+        {/* Admin + Teacher */}
+        <Route
+          path="templates"
+          element={
+            <RoleRoute roles={['admin', 'teacher']}>
+              <TemplatesPage />
+            </RoleRoute>
+          }
+        />
+
+        {/* Profile - all roles */}
         <Route path="profile" element={<ProfilePage />} />
       </Route>
 
