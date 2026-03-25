@@ -15,6 +15,7 @@ import FacilitiesPage from '../pages/FacilitiesPage'
 import FinancesPage from '../pages/FinancesPage'
 import TemplatesPage from '../pages/TemplatesPage'
 import EnrollmentRequestsPage from '../pages/EnrollmentRequestsPage'
+import StudentLearningPage from '../pages/StudentLearningPage'
 import ProfilePage from '../pages/ProfilePage'
 import NotFoundPage from '../pages/NotFoundPage'
 
@@ -126,6 +127,16 @@ export default function AppRouter() {
           element={
             <RoleRoute roles={['admin', 'teacher']}>
               <EnrollmentRequestsPage />
+            </RoleRoute>
+          }
+        />
+
+        {/* Student - Learning portal */}
+        <Route
+          path="learning"
+          element={
+            <RoleRoute roles={['student']}>
+              <StudentLearningPage />
             </RoleRoute>
           }
         />
