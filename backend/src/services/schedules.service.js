@@ -118,7 +118,7 @@ const getById = async (id) => {
 };
 
 const create = async (data) => {
-  const { class_id, day_of_week, start_time, end_time, room_id, is_active } = data;
+  const { class_id, day_of_week, start_time, end_time, room_id, is_active, start_date, end_date } = data;
 
   // Check for conflicts
   const conflicts = await checkScheduleConflict(room_id, class_id, day_of_week, start_time, end_time);
@@ -135,6 +135,8 @@ const create = async (data) => {
       end_time,
       room_id,
       is_active: is_active !== undefined ? is_active : true,
+      start_date: start_date || null,
+      end_date: end_date || null,
     })
     .select()
     .single();
@@ -179,6 +181,8 @@ const update = async (id, data) => {
   if (end_time !== undefined) updateObj.end_time = end_time;
   if (room_id !== undefined) updateObj.room_id = room_id;
   if (is_active !== undefined) updateObj.is_active = is_active;
+  if (data.start_date !== undefined) updateObj.start_date = data.start_date;
+  if (data.end_date !== undefined) updateObj.end_date = data.end_date;
   updateObj.updated_at = new Date().toISOString();
 
   const { data: row, error } = await supabase
@@ -358,15 +362,34 @@ const getConflictPreview = async (dayOfWeek, startTime, endTime) => {
 
 /**
  * Bulk create schedules — repeat weekly within a date range.
- * Input: { class_id, room_id, days_of_week: [1,3,5], start_time, end_time, start_date, end_date }
- * Creates one schedule row per day_of_week (each row IS a recurring weekly slot).
- * If sessions_count is provided instead of end_date, calculate end_date.
+ * Input: { class_id, room_id, days_of_week: [1,3,5], start_time, end_time, start_date, sessions_count }
+ * Creates one schedule row per day_of_week with start_date and end_date.
+ * end_date is calculated by generating all session dates and taking the last one.
  */
 const bulkCreate = async (data) => {
   const { class_id, room_id, days_of_week, start_time, end_time, start_date, end_date, sessions_count } = data;
 
   if (!days_of_week || !Array.isArray(days_of_week) || days_of_week.length === 0) {
     throw { statusCode: 400, message: 'Phải chọn ít nhất 1 ngày trong tuần' };
+  }
+
+  // Calculate end_date from sessions_count if provided
+  let calculatedEndDate = end_date || null;
+  if (start_date && sessions_count && !end_date) {
+    const count = Number(sessions_count);
+    const jsDays = new Set(days_of_week);
+    const dates = [];
+    const current = new Date(start_date + 'T12:00:00');
+    for (let i = 0; i < 365 && dates.length < count; i++) {
+      if (jsDays.has(current.getDay())) {
+        dates.push(new Date(current));
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    if (dates.length > 0) {
+      const lastDate = dates[dates.length - 1];
+      calculatedEndDate = lastDate.toISOString().split('T')[0];
+    }
   }
 
   const rows = [];
@@ -389,6 +412,8 @@ const bulkCreate = async (data) => {
       end_time,
       room_id: room_id || null,
       is_active: true,
+      start_date: start_date || null,
+      end_date: calculatedEndDate,
     });
   }
 
@@ -399,7 +424,7 @@ const bulkCreate = async (data) => {
     created: inserted.length,
     schedules: inserted,
     start_date: start_date || null,
-    end_date: end_date || null,
+    end_date: calculatedEndDate,
     sessions_count: sessions_count || null,
   };
 };

@@ -35,6 +35,10 @@ function formatDateShort(d) {
   return `${d.getDate()}/${d.getMonth() + 1}`
 }
 
+function formatDateFull(d) {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+}
+
 function getWeekDates(monday) {
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday)
@@ -66,23 +70,37 @@ function parseTimeHour(timeStr) {
   return parseInt(parts[0]) || 0
 }
 
-function parseTimeMinutes(timeStr) {
-  if (!timeStr) return 0
-  const parts = String(timeStr).split(':')
-  return (parseInt(parts[0]) || 0) * 60 + (parseInt(parts[1]) || 0)
-}
-
 function formatTime(timeStr) {
   if (!timeStr) return ''
   return String(timeStr).substring(0, 5)
 }
 
+/**
+ * Check if a schedule slot is active on a given date.
+ * A slot matches if:
+ * 1. The date's day-of-week matches slot.day_of_week
+ * 2. If slot has start_date → date >= start_date
+ * 3. If slot has end_date → date <= end_date
+ */
+function isSlotActiveOnDate(slot, date) {
+  // Day of week must match
+  if (slot.day_of_week !== date.getDay()) return false
+
+  // Check date range
+  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+
+  if (slot.start_date && dateStr < slot.start_date) return false
+  if (slot.end_date && dateStr > slot.end_date) return false
+
+  return true
+}
+
 export default function ScheduleView() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
-  const canEdit = isAdmin // Only admin can create/edit/delete schedules
+  const canEdit = isAdmin
 
-  const [viewMode, setViewMode] = useState('week') // 'week' | 'month' | 'list'
+  const [viewMode, setViewMode] = useState('week')
   const [currentDate, setCurrentDate] = useState(new Date())
   const [showForm, setShowForm] = useState(false)
   const [selectedSlot, setSelectedSlot] = useState(null)
@@ -127,15 +145,18 @@ export default function ScheduleView() {
 
   const goToday = () => setCurrentDate(new Date())
 
-  const handleCellClick = (dayKey, hour) => {
-    if (!canEdit) return // Non-admin cannot create new schedules
-    const existing = schedules.find((s) => s.day_of_week === dayKey && parseTimeHour(s.start_time) === hour)
+  const handleCellClick = (dayKey, hour, date) => {
+    if (!canEdit) return
+    // Find existing slot at this specific date + hour
+    const existing = schedules.find((s) =>
+      isSlotActiveOnDate(s, date) && parseTimeHour(s.start_time) === hour
+    )
     if (existing) { setSelectedSlot(existing) } else { setSelectedSlot(null); setSelectedDay(dayKey); setSelectedHour(hour) }
     setShowForm(true)
   }
 
   const handleSlotClick = (slot) => {
-    if (!canEdit) return // Non-admin cannot edit schedules
+    if (!canEdit) return
     setSelectedSlot(slot)
     setShowForm(true)
   }
@@ -152,7 +173,6 @@ export default function ScheduleView() {
     } finally { setDeleting(false); setShowDelete(false); setSelectedSlot(null) }
   }
 
-  // Header with navigation
   const weekLabel = `${formatDateShort(weekDates[0])} — ${formatDateShort(weekDates[6])}`
   const monthLabel = currentDate.toLocaleString('vi-VN', { month: 'long', year: 'numeric' })
 
@@ -164,7 +184,6 @@ export default function ScheduleView() {
 
   return (
     <div>
-      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Thời khóa biểu</h1>
@@ -177,9 +196,7 @@ export default function ScheduleView() {
         )}
       </div>
 
-      {/* Toolbar: view mode + navigation */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3 bg-white rounded-xl border border-gray-200 px-4 py-3 shadow-sm">
-        {/* View mode tabs */}
         <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
           {[
             { key: 'week', label: 'Tuần', icon: Calendar },
@@ -198,7 +215,6 @@ export default function ScheduleView() {
           ))}
         </div>
 
-        {/* Navigation */}
         <div className="flex items-center gap-2">
           <button onClick={() => (viewMode === 'month' ? navigateMonth(-1) : navigateWeek(-1))} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
             <ChevronLeft className="h-5 w-5" />
@@ -225,11 +241,6 @@ export default function ScheduleView() {
              user?.role === 'teacher' ? 'Bạn chưa có lịch dạy nào' :
              'Chưa có lịch học nào'}
           </p>
-          <p className="text-gray-400 text-sm mt-1">
-            {user?.role === 'student' ? 'Liên hệ giáo viên hoặc quản trị viên để được xếp lịch' :
-             user?.role === 'teacher' ? 'Liên hệ quản trị viên để được xếp lịch dạy' :
-             'Bấm "Thêm lịch học" để tạo mới'}
-          </p>
         </div>
       ) : viewMode === 'week' ? (
         <WeekView
@@ -252,11 +263,10 @@ export default function ScheduleView() {
         <ListView schedules={schedules} colorMap={colorMap} onSlotClick={canEdit ? handleSlotClick : undefined} interactive={canEdit} />
       )}
 
-      {/* Legend */}
       {schedules.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-3">
           {Object.entries(colorMap).map(([classId, color]) => {
-            const slot = schedules.find((s) => s.class_id === classId || s.class?.id === classId)
+            const slot = schedules.find((s) => s.class_id === classId)
             return (
               <div key={classId} className="flex items-center gap-1.5 text-xs text-gray-600">
                 <div className={`w-3 h-3 rounded-full ${color.dot}`} />
@@ -278,7 +288,6 @@ export default function ScheduleView() {
             existingSlots={schedules}
             onSuccess={() => { setShowForm(false); setSelectedSlot(null); reload() }}
           />
-
           <ConfirmDialog isOpen={showDelete} onClose={() => setShowDelete(false)} onConfirm={handleDeleteSlot} loading={deleting} title="Xóa lịch học" message="Bạn có chắc chắn muốn xóa?" />
         </>
       )}
@@ -288,18 +297,20 @@ export default function ScheduleView() {
 
 /* ========== WEEK VIEW ========== */
 function WeekView({ schedules, weekDates, colorMap, onCellClick, onSlotClick, interactive = true }) {
-  const getSlotAt = (dayKey, hour) => {
-    return schedules.filter((s) => {
-      return s.day_of_week === dayKey && parseTimeHour(s.start_time) <= hour && parseTimeHour(s.end_time) > hour
-    })
-  }
-
-  const getSlotStartsAt = (dayKey, hour) => {
-    return schedules.find((s) => s.day_of_week === dayKey && parseTimeHour(s.start_time) === hour)
-  }
-
   const today = new Date()
-  const todayDay = today.getDay() === 0 ? 0 : today.getDay()
+
+  // For each cell (date + hour), find which slots are active
+  const getSlotStartsAt = (date, hour) => {
+    return schedules.find((s) =>
+      isSlotActiveOnDate(s, date) && parseTimeHour(s.start_time) === hour
+    )
+  }
+
+  const getSlotAt = (date, hour) => {
+    return schedules.filter((s) =>
+      isSlotActiveOnDate(s, date) && parseTimeHour(s.start_time) <= hour && parseTimeHour(s.end_time) > hour
+    )
+  }
 
   return (
     <div className="overflow-x-auto bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -308,7 +319,7 @@ function WeekView({ schedules, weekDates, colorMap, onCellClick, onSlotClick, in
           <tr>
             <th className="border border-gray-200 px-2 py-2.5 bg-gray-50 text-gray-500 w-16 text-xs">Giờ</th>
             {DAY_KEYS.map((dayKey, i) => {
-              const isToday = dayKey === todayDay
+              const isToday = weekDates[i].toDateString() === today.toDateString()
               return (
                 <th key={i} className={`border border-gray-200 px-2 py-2.5 text-xs min-w-[100px] ${isToday ? 'bg-blue-50 text-blue-700' : 'bg-gray-50 text-gray-600'}`}>
                   <div>{DAYS[i]}</div>
@@ -327,8 +338,9 @@ function WeekView({ schedules, weekDates, colorMap, onCellClick, onSlotClick, in
                 {String(hour).padStart(2, '0')}:00
               </td>
               {DAY_KEYS.map((dayKey, dayIdx) => {
-                const startSlot = getSlotStartsAt(dayKey, hour)
-                const cellSlots = getSlotAt(dayKey, hour)
+                const date = weekDates[dayIdx]
+                const startSlot = getSlotStartsAt(date, hour)
+                const cellSlots = getSlotAt(date, hour)
                 const isCovered = cellSlots.length > 0 && !startSlot
 
                 if (isCovered) return null
@@ -361,7 +373,7 @@ function WeekView({ schedules, weekDates, colorMap, onCellClick, onSlotClick, in
                   <td
                     key={dayIdx}
                     className={`border border-gray-200 p-0.5 ${interactive ? 'cursor-pointer hover:bg-blue-50/50' : ''} transition-colors`}
-                    onClick={() => onCellClick && onCellClick(dayKey, hour)}
+                    onClick={() => onCellClick && onCellClick(dayKey, hour, date)}
                   />
                 )
               })}
@@ -380,13 +392,15 @@ function MonthView({ schedules, currentDate, colorMap, onSlotClick, interactive 
   const weeks = getMonthWeeks(year, month)
   const today = new Date()
 
-  const getSlotsForDay = (dayKey) => {
-    return schedules.filter((s) => s.day_of_week === dayKey).sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
+  // Get active slots for a specific date
+  const getSlotsForDate = (date) => {
+    return schedules
+      .filter((s) => isSlotActiveOnDate(s, date))
+      .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
   }
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      {/* Day headers */}
       <div className="grid grid-cols-7 border-b border-gray-200">
         {DAYS.map((day, i) => (
           <div key={i} className="px-2 py-2 text-center text-xs font-semibold text-gray-500 bg-gray-50 border-r border-gray-200 last:border-r-0">
@@ -395,7 +409,6 @@ function MonthView({ schedules, currentDate, colorMap, onSlotClick, interactive 
         ))}
       </div>
 
-      {/* Week rows */}
       {weeks.map((weekStart, wIdx) => {
         const dates = getWeekDates(weekStart)
         return (
@@ -403,8 +416,7 @@ function MonthView({ schedules, currentDate, colorMap, onSlotClick, interactive 
             {dates.map((date, dIdx) => {
               const isCurrentMonth = date.getMonth() === month
               const isToday = date.toDateString() === today.toDateString()
-              const dayKey = DAY_KEYS[dIdx]
-              const daySlots = getSlotsForDay(dayKey)
+              const daySlots = getSlotsForDate(date)
 
               return (
                 <div
@@ -416,9 +428,7 @@ function MonthView({ schedules, currentDate, colorMap, onSlotClick, interactive 
                   <div className={`text-xs font-medium mb-1 ${
                     isToday
                       ? 'bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center'
-                      : isCurrentMonth
-                        ? 'text-gray-700'
-                        : 'text-gray-300'
+                      : isCurrentMonth ? 'text-gray-700' : 'text-gray-300'
                   }`}>
                     {date.getDate()}
                   </div>
@@ -433,7 +443,7 @@ function MonthView({ schedules, currentDate, colorMap, onSlotClick, interactive 
                           title={`${slot.class_name || ''} ${formatTime(slot.start_time)}-${formatTime(slot.end_time)}`}
                         >
                           <span className="font-medium">{formatTime(slot.start_time)}</span>{' '}
-                          <span className="opacity-75">{slot.class_name || slot.class?.name || ''}</span>
+                          <span className="opacity-75">{slot.class_name || ''}</span>
                         </div>
                       )
                     })}
@@ -453,12 +463,15 @@ function MonthView({ schedules, currentDate, colorMap, onSlotClick, interactive 
 
 /* ========== LIST VIEW ========== */
 function ListView({ schedules, colorMap, onSlotClick, interactive = true }) {
+  const dayNames = { 0: 'Chủ nhật', 1: 'Thứ 2', 2: 'Thứ 3', 3: 'Thứ 4', 4: 'Thứ 5', 5: 'Thứ 6', 6: 'Thứ 7' }
+
   const sorted = [...schedules].sort((a, b) => {
-    if (a.day_of_week !== b.day_of_week) return a.day_of_week - b.day_of_week
+    const da = (a.day_of_week === 0 ? 7 : a.day_of_week)
+    const db = (b.day_of_week === 0 ? 7 : b.day_of_week)
+    if (da !== db) return da - db
     return (a.start_time || '').localeCompare(b.start_time || '')
   })
 
-  const dayNames = { 0: 'Chủ nhật', 1: 'Thứ 2', 2: 'Thứ 3', 3: 'Thứ 4', 4: 'Thứ 5', 5: 'Thứ 6', 6: 'Thứ 7' }
   const grouped = {}
   sorted.forEach((s) => {
     const key = s.day_of_week
@@ -466,38 +479,68 @@ function ListView({ schedules, colorMap, onSlotClick, interactive = true }) {
     grouped[key].push(s)
   })
 
+  // Sort group keys so Monday comes first
+  const sortedKeys = Object.keys(grouped).sort((a, b) => {
+    const va = a == 0 ? 7 : Number(a)
+    const vb = b == 0 ? 7 : Number(b)
+    return va - vb
+  })
+
+  const formatDateRange = (slot) => {
+    if (!slot.start_date && !slot.end_date) return null
+    const parts = []
+    if (slot.start_date) {
+      const [y, m, d] = slot.start_date.split('-')
+      parts.push(`${d}/${m}/${y}`)
+    }
+    if (slot.end_date) {
+      const [y, m, d] = slot.end_date.split('-')
+      parts.push(`${d}/${m}/${y}`)
+    }
+    return parts.join(' → ')
+  }
+
   return (
     <div className="space-y-4">
-      {Object.entries(grouped).map(([dayKey, slots]) => (
-        <div key={dayKey} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-700">{dayNames[dayKey] || `Ngày ${dayKey}`}</h3>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {slots.map((slot) => {
-              const color = colorMap[slot.class_id] || SLOT_COLORS[0]
-              return (
-                <div
-                  key={slot.id}
-                  onClick={() => onSlotClick && onSlotClick(slot)}
-                  className={`flex items-center gap-4 px-4 py-3 ${interactive ? 'cursor-pointer hover:bg-gray-50' : ''} transition-colors`}
-                >
-                  <div className={`w-1.5 h-10 rounded-full ${color.dot}`} />
-                  <div className="text-sm font-mono text-gray-500 w-28">
-                    {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
+      {sortedKeys.map((dayKey) => {
+        const slots = grouped[dayKey]
+        return (
+          <div key={dayKey} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+              <h3 className="text-sm font-semibold text-gray-700">{dayNames[dayKey] || `Ngày ${dayKey}`}</h3>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {slots.map((slot) => {
+                const color = colorMap[slot.class_id] || SLOT_COLORS[0]
+                const dateRange = formatDateRange(slot)
+                return (
+                  <div
+                    key={slot.id}
+                    onClick={() => onSlotClick && onSlotClick(slot)}
+                    className={`flex items-center gap-4 px-4 py-3 ${interactive ? 'cursor-pointer hover:bg-gray-50' : ''} transition-colors`}
+                  >
+                    <div className={`w-1.5 h-10 rounded-full ${color.dot}`} />
+                    <div className="text-sm font-mono text-gray-500 w-28">
+                      {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-gray-800">{slot.class_name || slot.class?.name || '—'}</p>
+                      <div className="flex items-center gap-3 text-xs text-gray-400 mt-0.5">
+                        {(slot.room_name || slot.facility?.name) && (
+                          <span>📍 {slot.room_name || slot.facility?.name}</span>
+                        )}
+                        {dateRange && (
+                          <span>📅 {dateRange}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-gray-800">{slot.class_name || slot.class?.name || '—'}</p>
-                    {(slot.room_name || slot.facility?.name) && (
-                      <p className="text-xs text-gray-400">📍 {slot.room_name || slot.facility?.name}</p>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
