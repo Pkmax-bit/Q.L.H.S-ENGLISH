@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, GraduationCap, BookOpen, School,
   FileText, ClipboardList, CalendarDays, Building2, Wallet,
-  ChevronLeft, ChevronRight, X, BookCopy
+  ChevronLeft, ChevronRight, X, BookCopy, UserCheck
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../hooks/useAuth'
@@ -43,6 +43,12 @@ const menuItems = [
     icon: School,
     label: 'Lớp học',
     roles: ['admin', 'teacher', 'student'],
+  },
+  {
+    path: '/enrollment-requests',
+    icon: UserCheck,
+    label: 'Yêu cầu thêm HS',
+    roles: ['admin', 'teacher'],
   },
   {
     path: '/lessons',

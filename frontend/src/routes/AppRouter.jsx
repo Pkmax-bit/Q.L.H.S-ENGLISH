@@ -14,6 +14,7 @@ import SchedulesPage from '../pages/SchedulesPage'
 import FacilitiesPage from '../pages/FacilitiesPage'
 import FinancesPage from '../pages/FinancesPage'
 import TemplatesPage from '../pages/TemplatesPage'
+import EnrollmentRequestsPage from '../pages/EnrollmentRequestsPage'
 import ProfilePage from '../pages/ProfilePage'
 import NotFoundPage from '../pages/NotFoundPage'
 
@@ -115,6 +116,16 @@ export default function AppRouter() {
           element={
             <RoleRoute roles={['admin', 'teacher']}>
               <TemplatesPage />
+            </RoleRoute>
+          }
+        />
+
+        {/* Admin + Teacher - Enrollment requests */}
+        <Route
+          path="enrollment-requests"
+          element={
+            <RoleRoute roles={['admin', 'teacher']}>
+              <EnrollmentRequestsPage />
             </RoleRoute>
           }
         />

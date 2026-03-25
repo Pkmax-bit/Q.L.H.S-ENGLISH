@@ -6,6 +6,7 @@ const variants = {
   secondary: 'bg-gray-100 hover:bg-gray-200 text-gray-700',
   danger: 'bg-red-500 hover:bg-red-600 text-white shadow-sm',
   success: 'bg-green-500 hover:bg-green-600 text-white shadow-sm',
+  warning: 'bg-amber-500 hover:bg-amber-600 text-white shadow-sm',
   outline: 'border border-gray-300 hover:bg-gray-50 text-gray-700',
   ghost: 'hover:bg-gray-100 text-gray-700',
 }

@@ -21,6 +21,7 @@ const roomsRoutes = require('./routes/rooms.routes');
 const financesRoutes = require('./routes/finances.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const templatesRoutes = require('./routes/templates.routes');
+const enrollmentRequestsRoutes = require('./routes/enrollmentRequests.routes');
 
 const app = express();
 
@@ -69,6 +70,7 @@ app.use('/api/rooms', roomsRoutes);
 app.use('/api/finances', financesRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/templates', templatesRoutes);
+app.use('/api/enrollment-requests', enrollmentRequestsRoutes);
 
 // 404 handler
 app.use((req, res) => {
