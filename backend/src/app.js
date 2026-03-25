@@ -72,7 +72,26 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/templates', templatesRoutes);
 app.use('/api/enrollment-requests', enrollmentRequestsRoutes);
 
-// 404 handler
+// Serve frontend static files in production
+const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
+app.use(express.static(frontendDist));
+
+// SPA fallback: any non-API route → index.html
+app.get('*', (req, res, next) => {
+  // Don't serve index.html for /api/* routes
+  if (req.url.startsWith('/api/')) {
+    return next();
+  }
+  const indexPath = path.join(frontendDist, 'index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      // Frontend not built yet, return API 404
+      next();
+    }
+  });
+});
+
+// 404 handler (only for /api/* routes or when frontend not available)
 app.use((req, res) => {
   res.status(404).json({
     success: false,
