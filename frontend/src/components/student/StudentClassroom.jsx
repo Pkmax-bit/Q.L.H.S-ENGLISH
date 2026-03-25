@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react'
 import {
   ArrowLeft, BookOpen, ClipboardList, Clock, AlertTriangle,
   Sparkles, FileText, Youtube, FolderOpen, Link, ExternalLink,
-  ChevronRight, Calendar, CheckCircle, Timer
+  ChevronRight, Calendar, CheckCircle, CheckCircle2, Timer
 } from 'lucide-react'
 import Button from '../common/Button'
 import LoadingSpinner from '../common/LoadingSpinner'
@@ -10,6 +10,7 @@ import RichContentViewer from '../common/RichContentViewer'
 import { useFetch } from '../../hooks/useFetch'
 import lessonsService from '../../services/lessons.service'
 import assignmentsService from '../../services/assignments.service'
+import submissionsService from '../../services/submissions.service'
 import { formatDate } from '../../utils/formatDate'
 
 function extractYoutubeId(url) {
@@ -37,7 +38,7 @@ function getDueDateLabel(dateStr) {
   return { text: `Còn ${days} ngày`, color: 'text-gray-500', bg: 'bg-gray-50 border-gray-200' }
 }
 
-export default function StudentClassroom({ classData, onBack }) {
+export default function StudentClassroom({ classData, onBack, onTakeAssignment, onViewResult }) {
   const [selectedLesson, setSelectedLesson] = useState(null)
   const [activeTab, setActiveTab] = useState('lessons')
 
@@ -49,12 +50,25 @@ export default function StudentClassroom({ classData, onBack }) {
     () => assignmentsService.getAll({ class_id: classData.id, is_published: 'true', limit: 100 }),
     [classData.id]
   )
+  const fetchMySubmissions = useCallback(
+    () => submissionsService.getMy({ class_id: classData.id, limit: 100 }),
+    [classData.id]
+  )
 
   const { data: lessonsData, loading: lessonsLoading } = useFetch(fetchLessons)
   const { data: assignmentsData, loading: assignmentsLoading } = useFetch(fetchAssignments)
+  const { data: submissionsData } = useFetch(fetchMySubmissions)
 
   const lessons = Array.isArray(lessonsData) ? lessonsData : lessonsData?.lessons || []
   const assignments = Array.isArray(assignmentsData) ? assignmentsData : assignmentsData?.assignments || []
+  const mySubmissions = Array.isArray(submissionsData) ? submissionsData : submissionsData?.submissions || []
+
+  // Build submission status map: assignmentId -> submission
+  const submissionMap = useMemo(() => {
+    const map = {}
+    mySubmissions.forEach(s => { map[s.assignment_id] = s })
+    return map
+  }, [mySubmissions])
 
   // Sort lessons by order_index
   const sortedLessons = useMemo(() => {
@@ -371,6 +385,39 @@ export default function StudentClassroom({ classData, onBack }) {
                           {assignment.description && (
                             <p className="text-sm text-gray-500 mt-2 line-clamp-2">{assignment.description}</p>
                           )}
+                        </div>
+
+                        {/* Action button */}
+                        <div className="flex-shrink-0">
+                          {(() => {
+                            const sub = submissionMap[assignment.id]
+                            if (sub && (sub.status === 'graded' || sub.status === 'submitted')) {
+                              return (
+                                <button
+                                  onClick={() => onViewResult?.(sub.id)}
+                                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                    sub.status === 'graded'
+                                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                      : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                                  }`}
+                                >
+                                  {sub.status === 'graded' ? (
+                                    <><CheckCircle2 className="h-4 w-4" /> {sub.score ?? '—'}/{assignment.total_points}</>
+                                  ) : (
+                                    <><Clock className="h-4 w-4" /> Chờ chấm</>
+                                  )}
+                                </button>
+                              )
+                            }
+                            return (
+                              <button
+                                onClick={() => onTakeAssignment?.(assignment.id)}
+                                className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                              >
+                                <ClipboardList className="h-4 w-4" /> Làm bài
+                              </button>
+                            )
+                          })()}
                         </div>
                       </div>
                     </div>

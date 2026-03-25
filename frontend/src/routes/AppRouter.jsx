@@ -16,6 +16,8 @@ import FinancesPage from '../pages/FinancesPage'
 import TemplatesPage from '../pages/TemplatesPage'
 import EnrollmentRequestsPage from '../pages/EnrollmentRequestsPage'
 import StudentLearningPage from '../pages/StudentLearningPage'
+import SubmissionsPage from '../pages/SubmissionsPage'
+import GradeBookPage from '../pages/GradeBookPage'
 import ProfilePage from '../pages/ProfilePage'
 import NotFoundPage from '../pages/NotFoundPage'
 
@@ -137,6 +139,24 @@ export default function AppRouter() {
           element={
             <RoleRoute roles={['student']}>
               <StudentLearningPage />
+            </RoleRoute>
+          }
+        />
+
+        {/* Admin + Teacher - Submissions & Grading */}
+        <Route
+          path="submissions"
+          element={
+            <RoleRoute roles={['admin', 'teacher']}>
+              <SubmissionsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="gradebook"
+          element={
+            <RoleRoute roles={['admin', 'teacher']}>
+              <GradeBookPage />
             </RoleRoute>
           }
         />

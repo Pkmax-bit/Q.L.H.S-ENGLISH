@@ -22,6 +22,7 @@ const financesRoutes = require('./routes/finances.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const templatesRoutes = require('./routes/templates.routes');
 const enrollmentRequestsRoutes = require('./routes/enrollmentRequests.routes');
+const submissionsRoutes = require('./routes/submissions.routes');
 
 const app = express();
 
@@ -71,6 +72,7 @@ app.use('/api/finances', financesRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/templates', templatesRoutes);
 app.use('/api/enrollment-requests', enrollmentRequestsRoutes);
+app.use('/api/submissions', submissionsRoutes);
 
 // Serve frontend static files in production
 const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
