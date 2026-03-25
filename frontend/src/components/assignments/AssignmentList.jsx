@@ -8,6 +8,7 @@ import AssignmentForm from './AssignmentForm'
 import AssignmentDetail from './AssignmentDetail'
 import { useFetch } from '../../hooks/useFetch'
 import { useExcelExport } from '../../hooks/useExcelExport'
+import { useAuth } from '../../hooks/useAuth'
 import { ToastContext } from '../../context/ToastContext'
 import assignmentsService from '../../services/assignments.service'
 import { formatDate } from '../../utils/formatDate'
@@ -35,6 +36,10 @@ export default function AssignmentList() {
   const [deleting, setDeleting] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
   const { exportToExcel } = useExcelExport()
+  const { user } = useAuth()
+
+  const isAdmin = user?.role === 'admin'
+  const isTeacher = user?.role === 'teacher'
 
   const fetchAssignments = useCallback(() => assignmentsService.getAll(), [])
   const { data: assignments, loading, execute: reload } = useFetch(fetchAssignments)
@@ -46,7 +51,12 @@ export default function AssignmentList() {
     {
       key: 'class',
       label: 'Lớp học',
-      accessor: (row) => row.class?.name || '—',
+      accessor: (row) => row.class?.name || row.class_name || '—',
+    },
+    {
+      key: 'lesson',
+      label: 'Bài học',
+      accessor: (row) => row.lesson?.title || row.lesson_title || '—',
     },
     {
       key: 'assignment_type',
@@ -97,7 +107,8 @@ export default function AssignmentList() {
   const handleExport = () => {
     const exportCols = [
       { key: 'title', header: 'Tiêu đề' },
-      { key: 'class', header: 'Lớp học', accessor: (r) => r.class?.name || '' },
+      { key: 'class', header: 'Lớp học', accessor: (r) => r.class?.name || r.class_name || '' },
+      { key: 'lesson', header: 'Bài học', accessor: (r) => r.lesson?.title || r.lesson_title || '' },
       { key: 'assignment_type', header: 'Loại' },
       { key: 'total_points', header: 'Tổng điểm' },
       { key: 'due_date', header: 'Hạn nộp', accessor: (r) => formatDate(r.due_date) || '' },
@@ -110,7 +121,9 @@ export default function AssignmentList() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Bài tập</h1>
-          <p className="text-sm text-gray-500 mt-1">Quản lý bài tập và câu hỏi</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {isTeacher ? 'Bài tập các lớp bạn phụ trách' : 'Quản lý bài tập và câu hỏi'}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" icon={Download} onClick={handleExport}>
@@ -127,7 +140,7 @@ export default function AssignmentList() {
         data={assignmentList}
         loading={loading}
         onEdit={handleEdit}
-        onDelete={handleDelete}
+        onDelete={isAdmin ? handleDelete : undefined}
         onView={handleView}
         searchPlaceholder="Tìm bài tập..."
         emptyMessage="Chưa có bài tập nào"
@@ -146,14 +159,16 @@ export default function AssignmentList() {
         assignment={selected}
       />
 
-      <ConfirmDialog
-        isOpen={showDelete}
-        onClose={() => { setShowDelete(false); setSelected(null) }}
-        onConfirm={confirmDelete}
-        loading={deleting}
-        title="Xóa bài tập"
-        message={`Bạn có chắc chắn muốn xóa bài tập "${selected?.title}"?`}
-      />
+      {isAdmin && (
+        <ConfirmDialog
+          isOpen={showDelete}
+          onClose={() => { setShowDelete(false); setSelected(null) }}
+          onConfirm={confirmDelete}
+          loading={deleting}
+          title="Xóa bài tập"
+          message={`Bạn có chắc chắn muốn xóa bài tập "${selected?.title}"?`}
+        />
+      )}
     </div>
   )
 }

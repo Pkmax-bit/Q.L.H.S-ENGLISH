@@ -8,6 +8,7 @@ import LessonForm from './LessonForm'
 import LessonDetail from './LessonDetail'
 import { useFetch } from '../../hooks/useFetch'
 import { useExcelExport } from '../../hooks/useExcelExport'
+import { useAuth } from '../../hooks/useAuth'
 import { ToastContext } from '../../context/ToastContext'
 import lessonsService from '../../services/lessons.service'
 import templatesService from '../../services/templates.service'
@@ -28,6 +29,10 @@ export default function LessonList() {
   const [toggling, setToggling] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
   const { exportToExcel } = useExcelExport()
+  const { user } = useAuth()
+
+  const isAdmin = user?.role === 'admin'
+  const isTeacher = user?.role === 'teacher'
 
   const fetchLessons = useCallback(() => lessonsService.getAll(), [])
   const { data: lessons, loading, execute: reload } = useFetch(fetchLessons)
@@ -39,7 +44,7 @@ export default function LessonList() {
     {
       key: 'class',
       label: 'Lớp học',
-      accessor: (row) => row.class?.name || '—',
+      accessor: (row) => row.class?.name || row.class_name || '—',
     },
     {
       key: 'content_type',
@@ -103,7 +108,7 @@ export default function LessonList() {
   const handleExport = () => {
     const exportCols = [
       { key: 'title', header: 'Tiêu đề' },
-      { key: 'class', header: 'Lớp học', accessor: (r) => r.class?.name || '' },
+      { key: 'class', header: 'Lớp học', accessor: (r) => r.class?.name || r.class_name || '' },
       { key: 'content_type', header: 'Loại nội dung', accessor: (r) => contentTypeMap[r.content_type] || '' },
       { key: 'order_index', header: 'Thứ tự' },
       { key: 'is_published', header: 'Xuất bản', accessor: (r) => r.is_published ? 'Có' : 'Không' },
@@ -116,7 +121,9 @@ export default function LessonList() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Bài học</h1>
-          <p className="text-sm text-gray-500 mt-1">Quản lý danh sách bài học</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {isTeacher ? 'Bài học các lớp bạn phụ trách' : 'Quản lý danh sách bài học'}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" icon={Download} onClick={handleExport}>
@@ -133,9 +140,9 @@ export default function LessonList() {
         data={lessonList}
         loading={loading}
         onEdit={handleEdit}
-        onDelete={handleDelete}
+        onDelete={isAdmin ? handleDelete : undefined}
         onView={handleView}
-        actions={(row) => (
+        actions={isAdmin ? (row) => (
           <button
             onClick={() => toggleTemplate(row)}
             disabled={toggling}
@@ -148,7 +155,7 @@ export default function LessonList() {
           >
             <BookCopy className="h-4 w-4" />
           </button>
-        )}
+        ) : undefined}
         searchPlaceholder="Tìm bài học..."
         emptyMessage="Chưa có bài học nào"
       />
@@ -166,14 +173,16 @@ export default function LessonList() {
         lesson={selected}
       />
 
-      <ConfirmDialog
-        isOpen={showDelete}
-        onClose={() => { setShowDelete(false); setSelected(null) }}
-        onConfirm={confirmDelete}
-        loading={deleting}
-        title="Xóa bài học"
-        message={`Bạn có chắc chắn muốn xóa bài học "${selected?.title}"?`}
-      />
+      {isAdmin && (
+        <ConfirmDialog
+          isOpen={showDelete}
+          onClose={() => { setShowDelete(false); setSelected(null) }}
+          onConfirm={confirmDelete}
+          loading={deleting}
+          title="Xóa bài học"
+          message={`Bạn có chắc chắn muốn xóa bài học "${selected?.title}"?`}
+        />
+      )}
     </div>
   )
 }
