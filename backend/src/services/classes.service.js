@@ -1,11 +1,29 @@
 const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
-const getAll = async (queryParams) => {
+const getAll = async (queryParams, currentUser = null) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
   const allowedSort = ['name', 'status', 'start_date', 'created_at'];
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
   const statusFilter = queryParams.status || null;
+
+  // If student, get their enrolled class IDs first
+  let enrolledClassIds = null;
+  if (currentUser && currentUser.role === 'student') {
+    const { data: enrollments, error: enrollError } = await supabase
+      .from('class_students')
+      .select('class_id')
+      .eq('student_id', currentUser.id);
+    if (enrollError) throw enrollError;
+    enrolledClassIds = (enrollments || []).map(e => e.class_id);
+    // If student has no classes, return empty
+    if (enrolledClassIds.length === 0) {
+      return {
+        data: [],
+        pagination: buildPaginationResponse(0, page, limit),
+      };
+    }
+  }
 
   // Count query
   let countQuery = supabase.from('classes').select('id', { count: 'exact', head: true });
@@ -15,6 +33,14 @@ const getAll = async (queryParams) => {
   if (statusFilter) {
     countQuery = countQuery.eq('status', statusFilter);
   }
+  // Role-based filtering
+  if (currentUser && currentUser.role === 'teacher') {
+    countQuery = countQuery.eq('teacher_id', currentUser.id);
+  }
+  if (enrolledClassIds) {
+    countQuery = countQuery.in('id', enrolledClassIds);
+  }
+
   const { count: total, error: countError } = await countQuery;
   if (countError) throw countError;
 
@@ -32,6 +58,13 @@ const getAll = async (queryParams) => {
   }
   if (statusFilter) {
     dataQuery = dataQuery.eq('status', statusFilter);
+  }
+  // Role-based filtering
+  if (currentUser && currentUser.role === 'teacher') {
+    dataQuery = dataQuery.eq('teacher_id', currentUser.id);
+  }
+  if (enrolledClassIds) {
+    dataQuery = dataQuery.in('id', enrolledClassIds);
   }
 
   dataQuery = dataQuery

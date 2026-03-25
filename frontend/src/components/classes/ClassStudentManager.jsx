@@ -9,7 +9,7 @@ import { useDebounce } from '../../hooks/useDebounce'
 import classesService from '../../services/classes.service'
 import studentsService from '../../services/students.service'
 
-export default function ClassStudentManager({ classId, students = [], loading, onReload }) {
+export default function ClassStudentManager({ classId, students = [], loading, onReload, readOnly = false }) {
   const [searchMode, setSearchMode] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [adding, setAdding] = useState(false)
@@ -19,7 +19,10 @@ export default function ClassStudentManager({ classId, students = [], loading, o
   const { success, error: showError } = useContext(ToastContext)
   const debouncedSearch = useDebounce(searchQuery, 300)
 
-  const fetchAllStudents = useCallback(() => studentsService.getAll(), [])
+  const fetchAllStudents = useCallback(() => {
+    if (readOnly) return Promise.resolve({ data: [] })
+    return studentsService.getAll()
+  }, [readOnly])
   const { data: allStudentsData } = useFetch(fetchAllStudents)
   const allStudents = Array.isArray(allStudentsData) ? allStudentsData : allStudentsData?.students || []
 
@@ -78,18 +81,20 @@ export default function ClassStudentManager({ classId, students = [], loading, o
         <h4 className="text-sm font-semibold text-gray-700">
           Danh sách học sinh ({students.length})
         </h4>
-        <Button
-          size="sm"
-          icon={UserPlus}
-          onClick={() => setSearchMode(!searchMode)}
-          variant={searchMode ? 'secondary' : 'primary'}
-        >
-          {searchMode ? 'Đóng' : 'Thêm học sinh'}
-        </Button>
+        {!readOnly && (
+          <Button
+            size="sm"
+            icon={UserPlus}
+            onClick={() => setSearchMode(!searchMode)}
+            variant={searchMode ? 'secondary' : 'primary'}
+          >
+            {searchMode ? 'Đóng' : 'Thêm học sinh'}
+          </Button>
+        )}
       </div>
 
-      {/* Search to add */}
-      {searchMode && (
+      {/* Search to add (only for admin/teacher) */}
+      {!readOnly && searchMode && (
         <div className="border border-gray-200 rounded-lg p-3 bg-gray-50">
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -149,26 +154,30 @@ export default function ClassStudentManager({ classId, students = [], loading, o
                   <p className="text-xs text-gray-500">{student.email || student.phone || ''}</p>
                 </div>
               </div>
-              <button
-                onClick={() => handleRemoveClick(student)}
-                className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors"
-                title="Xóa khỏi lớp"
-              >
-                <UserMinus className="h-4 w-4" />
-              </button>
+              {!readOnly && (
+                <button
+                  onClick={() => handleRemoveClick(student)}
+                  className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors"
+                  title="Xóa khỏi lớp"
+                >
+                  <UserMinus className="h-4 w-4" />
+                </button>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      <ConfirmDialog
-        isOpen={showRemove}
-        onClose={() => { setShowRemove(false); setSelectedStudent(null) }}
-        onConfirm={confirmRemove}
-        loading={removing}
-        title="Xóa học sinh khỏi lớp"
-        message={`Bạn có chắc chắn muốn xóa học sinh "${selectedStudent?.full_name}" khỏi lớp?`}
-      />
+      {!readOnly && (
+        <ConfirmDialog
+          isOpen={showRemove}
+          onClose={() => { setShowRemove(false); setSelectedStudent(null) }}
+          onConfirm={confirmRemove}
+          loading={removing}
+          title="Xóa học sinh khỏi lớp"
+          message={`Bạn có chắc chắn muốn xóa học sinh "${selectedStudent?.full_name}" khỏi lớp?`}
+        />
+      )}
     </div>
   )
 }

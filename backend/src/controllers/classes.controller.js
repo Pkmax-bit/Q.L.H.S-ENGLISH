@@ -4,7 +4,8 @@ const { emitNotification } = require('../socket');
 
 const getAll = async (req, res, next) => {
   try {
-    const result = await classesService.getAll(req.query);
+    // Pass user info so service can filter by role
+    const result = await classesService.getAll(req.query, req.user);
     return response.success(res, result.data, 'Classes retrieved', 200, result.pagination);
   } catch (error) {
     next(error);

@@ -8,6 +8,7 @@ import ClassForm from './ClassForm'
 import ClassDetail from './ClassDetail'
 import { useFetch } from '../../hooks/useFetch'
 import { useExcelExport } from '../../hooks/useExcelExport'
+import { useAuth } from '../../hooks/useAuth'
 import { ToastContext } from '../../context/ToastContext'
 import classesService from '../../services/classes.service'
 import { formatDate } from '../../utils/formatDate'
@@ -20,6 +21,11 @@ export default function ClassList() {
   const [deleting, setDeleting] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
   const { exportToExcel } = useExcelExport()
+  const { user } = useAuth()
+
+  const isAdmin = user?.role === 'admin'
+  const isTeacher = user?.role === 'teacher'
+  const isStudent = user?.role === 'student'
 
   const fetchClasses = useCallback(() => classesService.getAll(), [])
   const { data: classes, loading, execute: reload } = useFetch(fetchClasses)
@@ -28,7 +34,7 @@ export default function ClassList() {
 
   const columns = [
     { key: 'name', label: 'Tên lớp' },
-    { key: 'teacher', label: 'Giáo viên', accessor: (row) => row.teacher?.full_name || '—' },
+    { key: 'teacher', label: 'Giáo viên', accessor: (row) => row.teacher?.full_name || row.teacher_name || '—' },
     { key: 'student_count', label: 'Sĩ số', accessor: (row) => row.student_count ?? row.students?.length ?? 0 },
     { key: 'start_date', label: 'Ngày bắt đầu', accessor: (row) => formatDate(row.start_date) },
     {
@@ -60,11 +66,17 @@ export default function ClassList() {
   const handleExport = () => {
     const exportCols = [
       { key: 'name', header: 'Tên lớp' },
-      { key: 'teacher', header: 'Giáo viên', accessor: (r) => r.teacher?.full_name || '' },
+      { key: 'teacher', header: 'Giáo viên', accessor: (r) => r.teacher?.full_name || r.teacher_name || '' },
       { key: 'student_count', header: 'Sĩ số', accessor: (r) => r.student_count ?? 0 },
       { key: 'status', header: 'Trạng thái' },
     ]
     exportToExcel(classList, exportCols, 'danh-sach-lop-hoc')
+  }
+
+  const roleDescriptions = {
+    admin: 'Quản lý danh sách lớp học',
+    teacher: 'Các lớp bạn đang phụ trách',
+    student: 'Các lớp bạn đang tham gia',
   }
 
   return (
@@ -72,11 +84,15 @@ export default function ClassList() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Lớp học</h1>
-          <p className="text-sm text-gray-500 mt-1">Quản lý danh sách lớp học</p>
+          <p className="text-sm text-gray-500 mt-1">{roleDescriptions[user?.role] || 'Quản lý lớp học'}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" icon={Download} onClick={handleExport}>Xuất Excel</Button>
-          <Button icon={Plus} onClick={() => { setSelected(null); setShowForm(true) }}>Thêm lớp học</Button>
+          {(isAdmin || isTeacher) && (
+            <Button variant="outline" icon={Download} onClick={handleExport}>Xuất Excel</Button>
+          )}
+          {isAdmin && (
+            <Button icon={Plus} onClick={() => { setSelected(null); setShowForm(true) }}>Thêm lớp học</Button>
+          )}
         </div>
       </div>
 
@@ -84,19 +100,21 @@ export default function ClassList() {
         columns={columns}
         data={classList}
         loading={loading}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
+        onEdit={isAdmin ? handleEdit : undefined}
+        onDelete={isAdmin ? handleDelete : undefined}
         onView={handleView}
         searchPlaceholder="Tìm lớp học..."
-        emptyMessage="Chưa có lớp học nào"
+        emptyMessage={isStudent ? 'Bạn chưa được xếp vào lớp nào' : isTeacher ? 'Bạn chưa được phân công lớp nào' : 'Chưa có lớp học nào'}
       />
 
-      <ClassForm
-        isOpen={showForm}
-        onClose={() => { setShowForm(false); setSelected(null) }}
-        classData={selected}
-        onSuccess={() => { setShowForm(false); setSelected(null); reload() }}
-      />
+      {isAdmin && (
+        <ClassForm
+          isOpen={showForm}
+          onClose={() => { setShowForm(false); setSelected(null) }}
+          classData={selected}
+          onSuccess={() => { setShowForm(false); setSelected(null); reload() }}
+        />
+      )}
 
       <ClassDetail
         isOpen={showDetail}
@@ -104,14 +122,16 @@ export default function ClassList() {
         classData={selected}
       />
 
-      <ConfirmDialog
-        isOpen={showDelete}
-        onClose={() => { setShowDelete(false); setSelected(null) }}
-        onConfirm={confirmDelete}
-        loading={deleting}
-        title="Xóa lớp học"
-        message={`Bạn có chắc chắn muốn xóa lớp học "${selected?.name}"?`}
-      />
+      {isAdmin && (
+        <ConfirmDialog
+          isOpen={showDelete}
+          onClose={() => { setShowDelete(false); setSelected(null) }}
+          onConfirm={confirmDelete}
+          loading={deleting}
+          title="Xóa lớp học"
+          message={`Bạn có chắc chắn muốn xóa lớp học "${selected?.name}"?`}
+        />
+      )}
     </div>
   )
 }

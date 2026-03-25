@@ -1,12 +1,36 @@
 const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
-const getAll = async (queryParams) => {
+const getAll = async (queryParams, currentUser = null) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
   const allowedSort = ['day_of_week', 'start_time', 'created_at'];
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
   const classId = queryParams.class_id || null;
   const roomId = queryParams.room_id || null;
+
+  // Role-based: get relevant class IDs for teacher/student
+  let roleClassIds = null;
+  if (currentUser && currentUser.role === 'teacher') {
+    const { data: teacherClasses, error: tcError } = await supabase
+      .from('classes')
+      .select('id')
+      .eq('teacher_id', currentUser.id);
+    if (tcError) throw tcError;
+    roleClassIds = (teacherClasses || []).map(c => c.id);
+    if (roleClassIds.length === 0) {
+      return { data: [], pagination: buildPaginationResponse(0, page, limit) };
+    }
+  } else if (currentUser && currentUser.role === 'student') {
+    const { data: enrollments, error: enError } = await supabase
+      .from('class_students')
+      .select('class_id')
+      .eq('student_id', currentUser.id);
+    if (enError) throw enError;
+    roleClassIds = (enrollments || []).map(e => e.class_id);
+    if (roleClassIds.length === 0) {
+      return { data: [], pagination: buildPaginationResponse(0, page, limit) };
+    }
+  }
 
   // Count query
   let countQuery = supabase.from('schedules').select('id', { count: 'exact', head: true });
@@ -18,6 +42,9 @@ const getAll = async (queryParams) => {
   }
   if (queryParams.is_active !== undefined) {
     countQuery = countQuery.eq('is_active', queryParams.is_active === 'true');
+  }
+  if (roleClassIds) {
+    countQuery = countQuery.in('class_id', roleClassIds);
   }
   const { count: total, error: countError } = await countQuery;
   if (countError) throw countError;
@@ -39,6 +66,9 @@ const getAll = async (queryParams) => {
   }
   if (queryParams.is_active !== undefined) {
     dataQuery = dataQuery.eq('is_active', queryParams.is_active === 'true');
+  }
+  if (roleClassIds) {
+    dataQuery = dataQuery.in('class_id', roleClassIds);
   }
 
   dataQuery = dataQuery

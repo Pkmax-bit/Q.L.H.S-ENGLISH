@@ -5,6 +5,7 @@ import LoadingSpinner from '../common/LoadingSpinner'
 import ConfirmDialog from '../common/ConfirmDialog'
 import ScheduleForm from './ScheduleForm'
 import { useFetch } from '../../hooks/useFetch'
+import { useAuth } from '../../hooks/useAuth'
 import { ToastContext } from '../../context/ToastContext'
 import schedulesService from '../../services/schedules.service'
 
@@ -77,6 +78,10 @@ function formatTime(timeStr) {
 }
 
 export default function ScheduleView() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
+  const canEdit = isAdmin // Only admin can create/edit/delete schedules
+
   const [viewMode, setViewMode] = useState('week') // 'week' | 'month' | 'list'
   const [currentDate, setCurrentDate] = useState(new Date())
   const [showForm, setShowForm] = useState(false)
@@ -123,12 +128,14 @@ export default function ScheduleView() {
   const goToday = () => setCurrentDate(new Date())
 
   const handleCellClick = (dayKey, hour) => {
+    if (!canEdit) return // Non-admin cannot create new schedules
     const existing = schedules.find((s) => s.day_of_week === dayKey && parseTimeHour(s.start_time) === hour)
     if (existing) { setSelectedSlot(existing) } else { setSelectedSlot(null); setSelectedDay(dayKey); setSelectedHour(hour) }
     setShowForm(true)
   }
 
   const handleSlotClick = (slot) => {
+    if (!canEdit) return // Non-admin cannot edit schedules
     setSelectedSlot(slot)
     setShowForm(true)
   }
@@ -149,17 +156,25 @@ export default function ScheduleView() {
   const weekLabel = `${formatDateShort(weekDates[0])} — ${formatDateShort(weekDates[6])}`
   const monthLabel = currentDate.toLocaleString('vi-VN', { month: 'long', year: 'numeric' })
 
+  const roleDescriptions = {
+    admin: 'Quản lý lịch học hàng tuần',
+    teacher: 'Lịch dạy của bạn',
+    student: 'Lịch học của bạn',
+  }
+
   return (
     <div>
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Thời khóa biểu</h1>
-          <p className="text-sm text-gray-500 mt-1">Quản lý lịch học hàng tuần</p>
+          <p className="text-sm text-gray-500 mt-1">{roleDescriptions[user?.role] || 'Lịch học'}</p>
         </div>
-        <Button icon={Plus} onClick={() => { setSelectedSlot(null); setSelectedDay(null); setSelectedHour(null); setShowForm(true) }}>
-          Thêm lịch học
-        </Button>
+        {canEdit && (
+          <Button icon={Plus} onClick={() => { setSelectedSlot(null); setSelectedDay(null); setSelectedHour(null); setShowForm(true) }}>
+            Thêm lịch học
+          </Button>
+        )}
       </div>
 
       {/* Toolbar: view mode + navigation */}
@@ -202,27 +217,39 @@ export default function ScheduleView() {
 
       {loading ? (
         <LoadingSpinner />
-      ) : schedules.length === 0 && viewMode !== 'week' ? (
-        <div className="text-center py-12 text-gray-400">
-          <p>Chưa có lịch học nào.</p>
+      ) : schedules.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500 font-medium">
+            {user?.role === 'student' ? 'Bạn chưa có lịch học nào' :
+             user?.role === 'teacher' ? 'Bạn chưa có lịch dạy nào' :
+             'Chưa có lịch học nào'}
+          </p>
+          <p className="text-gray-400 text-sm mt-1">
+            {user?.role === 'student' ? 'Liên hệ giáo viên hoặc quản trị viên để được xếp lịch' :
+             user?.role === 'teacher' ? 'Liên hệ quản trị viên để được xếp lịch dạy' :
+             'Bấm "Thêm lịch học" để tạo mới'}
+          </p>
         </div>
       ) : viewMode === 'week' ? (
         <WeekView
           schedules={schedules}
           weekDates={weekDates}
           colorMap={colorMap}
-          onCellClick={handleCellClick}
-          onSlotClick={handleSlotClick}
+          onCellClick={canEdit ? handleCellClick : undefined}
+          onSlotClick={canEdit ? handleSlotClick : undefined}
+          interactive={canEdit}
         />
       ) : viewMode === 'month' ? (
         <MonthView
           schedules={schedules}
           currentDate={currentDate}
           colorMap={colorMap}
-          onSlotClick={handleSlotClick}
+          onSlotClick={canEdit ? handleSlotClick : undefined}
+          interactive={canEdit}
         />
       ) : (
-        <ListView schedules={schedules} colorMap={colorMap} onSlotClick={handleSlotClick} />
+        <ListView schedules={schedules} colorMap={colorMap} onSlotClick={canEdit ? handleSlotClick : undefined} interactive={canEdit} />
       )}
 
       {/* Legend */}
@@ -240,23 +267,27 @@ export default function ScheduleView() {
         </div>
       )}
 
-      <ScheduleForm
-        isOpen={showForm}
-        onClose={() => { setShowForm(false); setSelectedSlot(null) }}
-        schedule={selectedSlot}
-        defaultDay={selectedDay}
-        defaultHour={selectedHour}
-        existingSlots={schedules}
-        onSuccess={() => { setShowForm(false); setSelectedSlot(null); reload() }}
-      />
+      {canEdit && (
+        <>
+          <ScheduleForm
+            isOpen={showForm}
+            onClose={() => { setShowForm(false); setSelectedSlot(null) }}
+            schedule={selectedSlot}
+            defaultDay={selectedDay}
+            defaultHour={selectedHour}
+            existingSlots={schedules}
+            onSuccess={() => { setShowForm(false); setSelectedSlot(null); reload() }}
+          />
 
-      <ConfirmDialog isOpen={showDelete} onClose={() => setShowDelete(false)} onConfirm={handleDeleteSlot} loading={deleting} title="Xóa lịch học" message="Bạn có chắc chắn muốn xóa?" />
+          <ConfirmDialog isOpen={showDelete} onClose={() => setShowDelete(false)} onConfirm={handleDeleteSlot} loading={deleting} title="Xóa lịch học" message="Bạn có chắc chắn muốn xóa?" />
+        </>
+      )}
     </div>
   )
 }
 
 /* ========== WEEK VIEW ========== */
-function WeekView({ schedules, weekDates, colorMap, onCellClick, onSlotClick }) {
+function WeekView({ schedules, weekDates, colorMap, onCellClick, onSlotClick, interactive = true }) {
   const getSlotAt = (dayKey, hour) => {
     return schedules.filter((s) => {
       return s.day_of_week === dayKey && parseTimeHour(s.start_time) <= hour && parseTimeHour(s.end_time) > hour
@@ -309,7 +340,12 @@ function WeekView({ schedules, weekDates, colorMap, onCellClick, onSlotClick }) 
                   const color = colorMap[startSlot.class_id] || SLOT_COLORS[0]
 
                   return (
-                    <td key={dayIdx} rowSpan={span} className="border border-gray-200 p-0.5 cursor-pointer" onClick={() => onSlotClick(startSlot)}>
+                    <td
+                      key={dayIdx}
+                      rowSpan={span}
+                      className={`border border-gray-200 p-0.5 ${interactive ? 'cursor-pointer' : ''}`}
+                      onClick={() => onSlotClick && onSlotClick(startSlot)}
+                    >
                       <div className={`rounded-lg p-2 h-full border ${color.bg} ${color.border} ${color.text}`}>
                         <p className="font-semibold text-xs leading-tight">{startSlot.class_name || startSlot.class?.name || '—'}</p>
                         <p className="text-xs opacity-70 mt-0.5">{formatTime(startSlot.start_time)} - {formatTime(startSlot.end_time)}</p>
@@ -322,7 +358,11 @@ function WeekView({ schedules, weekDates, colorMap, onCellClick, onSlotClick }) 
                 }
 
                 return (
-                  <td key={dayIdx} className="border border-gray-200 p-0.5 cursor-pointer hover:bg-blue-50/50 transition-colors" onClick={() => onCellClick(dayKey, hour)} />
+                  <td
+                    key={dayIdx}
+                    className={`border border-gray-200 p-0.5 ${interactive ? 'cursor-pointer hover:bg-blue-50/50' : ''} transition-colors`}
+                    onClick={() => onCellClick && onCellClick(dayKey, hour)}
+                  />
                 )
               })}
             </tr>
@@ -334,7 +374,7 @@ function WeekView({ schedules, weekDates, colorMap, onCellClick, onSlotClick }) 
 }
 
 /* ========== MONTH VIEW ========== */
-function MonthView({ schedules, currentDate, colorMap, onSlotClick }) {
+function MonthView({ schedules, currentDate, colorMap, onSlotClick, interactive = true }) {
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
   const weeks = getMonthWeeks(year, month)
@@ -388,8 +428,8 @@ function MonthView({ schedules, currentDate, colorMap, onSlotClick }) {
                       return (
                         <div
                           key={slot.id}
-                          onClick={() => onSlotClick(slot)}
-                          className={`text-xs px-1.5 py-0.5 rounded cursor-pointer truncate ${color.bg} ${color.text} hover:opacity-80`}
+                          onClick={() => onSlotClick && onSlotClick(slot)}
+                          className={`text-xs px-1.5 py-0.5 rounded truncate ${color.bg} ${color.text} ${interactive ? 'cursor-pointer hover:opacity-80' : ''}`}
                           title={`${slot.class_name || ''} ${formatTime(slot.start_time)}-${formatTime(slot.end_time)}`}
                         >
                           <span className="font-medium">{formatTime(slot.start_time)}</span>{' '}
@@ -412,7 +452,7 @@ function MonthView({ schedules, currentDate, colorMap, onSlotClick }) {
 }
 
 /* ========== LIST VIEW ========== */
-function ListView({ schedules, colorMap, onSlotClick }) {
+function ListView({ schedules, colorMap, onSlotClick, interactive = true }) {
   const sorted = [...schedules].sort((a, b) => {
     if (a.day_of_week !== b.day_of_week) return a.day_of_week - b.day_of_week
     return (a.start_time || '').localeCompare(b.start_time || '')
@@ -439,8 +479,8 @@ function ListView({ schedules, colorMap, onSlotClick }) {
               return (
                 <div
                   key={slot.id}
-                  onClick={() => onSlotClick(slot)}
-                  className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => onSlotClick && onSlotClick(slot)}
+                  className={`flex items-center gap-4 px-4 py-3 ${interactive ? 'cursor-pointer hover:bg-gray-50' : ''} transition-colors`}
                 >
                   <div className={`w-1.5 h-10 rounded-full ${color.dot}`} />
                   <div className="text-sm font-mono text-gray-500 w-28">

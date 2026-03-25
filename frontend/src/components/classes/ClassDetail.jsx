@@ -4,6 +4,7 @@ import StatusBadge from '../common/StatusBadge'
 import LoadingSpinner from '../common/LoadingSpinner'
 import ClassStudentManager from './ClassStudentManager'
 import { useFetch } from '../../hooks/useFetch'
+import { useAuth } from '../../hooks/useAuth'
 import { ToastContext } from '../../context/ToastContext'
 import classesService from '../../services/classes.service'
 import { formatDate } from '../../utils/formatDate'
@@ -12,6 +13,11 @@ import { Calendar, Users, User, FileText } from 'lucide-react'
 export default function ClassDetail({ isOpen, onClose, classData }) {
   const [activeTab, setActiveTab] = useState('info')
   const { success, error: showError } = useContext(ToastContext)
+  const { user } = useAuth()
+
+  const isAdmin = user?.role === 'admin'
+  const isTeacher = user?.role === 'teacher'
+  const canManageStudents = isAdmin || isTeacher
 
   const fetchStudents = useCallback(() => {
     if (classData?.id) {
@@ -69,7 +75,7 @@ export default function ClassDetail({ isOpen, onClose, classData }) {
             <div className="flex items-center gap-3 text-sm">
               <User className="h-4 w-4 text-gray-400" />
               <span className="text-gray-700">
-                Giáo viên: {classData.teacher?.full_name || '—'}
+                Giáo viên: {classData.teacher?.full_name || classData.teacher_name || '—'}
               </span>
             </div>
             <div className="flex items-center gap-3 text-sm">
@@ -106,6 +112,7 @@ export default function ClassDetail({ isOpen, onClose, classData }) {
           students={students}
           loading={studentsLoading}
           onReload={reloadStudents}
+          readOnly={!canManageStudents}
         />
       )}
     </Modal>

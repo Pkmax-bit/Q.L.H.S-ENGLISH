@@ -4,7 +4,8 @@ const { emitNotification } = require('../socket');
 
 const getAll = async (req, res, next) => {
   try {
-    const result = await schedulesService.getAll(req.query);
+    // Pass user info so service can filter by role
+    const result = await schedulesService.getAll(req.query, req.user);
     return response.success(res, result.data, 'Schedules retrieved', 200, result.pagination);
   } catch (error) {
     next(error);
