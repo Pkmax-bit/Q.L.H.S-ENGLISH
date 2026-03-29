@@ -7,7 +7,7 @@ const classesService = {
   update: (id, data) => api.put(`/classes/${id}`, data),
   delete: (id) => api.delete(`/classes/${id}`),
   getStudents: (id) => api.get(`/classes/${id}/students`),
-  addStudent: (id, studentId) => api.post(`/classes/${id}/students`, { studentId }),
+  addStudent: (id, studentId) => api.post(`/classes/${id}/students`, { student_id: studentId }),
   removeStudent: (id, studentId) => api.delete(`/classes/${id}/students/${studentId}`),
 }
 
