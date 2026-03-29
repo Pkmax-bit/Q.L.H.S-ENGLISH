@@ -139,6 +139,124 @@ const getById = async (id) => {
   };
 };
 
+const getOverview = async (classId) => {
+  // 1. Class info
+  const { data: classInfo, error: classErr } = await supabase
+    .from('classes')
+    .select(`*, subjects(name, code), profiles!classes_teacher_id_fkey(full_name, email, phone)`)
+    .eq('id', classId)
+    .single();
+  if (classErr) {
+    if (classErr.code === 'PGRST116') return null;
+    throw classErr;
+  }
+
+  // 2. Students
+  const { data: studentsRaw, error: studErr } = await supabase
+    .from('class_students')
+    .select(`id, enrolled_at, status, profiles!class_students_student_id_fkey(id, full_name, email, phone, avatar_url)`)
+    .eq('class_id', classId);
+  if (studErr) throw studErr;
+  const students = (studentsRaw || []).map(r => ({
+    ...(r.profiles || {}),
+    enrollment_id: r.id,
+    enrolled_at: r.enrolled_at,
+    enrollment_status: r.status,
+  })).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+
+  // 3. Lessons
+  const { data: lessons, error: lesErr } = await supabase
+    .from('lessons')
+    .select('id, title, content_type, is_published, order_index, created_at')
+    .eq('class_id', classId)
+    .order('order_index', { ascending: true });
+  if (lesErr) throw lesErr;
+
+  // 4. Assignments with question count
+  const { data: assignments, error: assErr } = await supabase
+    .from('assignments')
+    .select('id, title, assignment_type, due_date, total_points, is_published, time_limit_minutes, created_at')
+    .eq('class_id', classId)
+    .order('created_at', { ascending: false });
+  if (assErr) throw assErr;
+
+  const assignmentIds = (assignments || []).map(a => a.id);
+  let questionCounts = {};
+  if (assignmentIds.length > 0) {
+    const { data: qData } = await supabase
+      .from('assignment_questions')
+      .select('assignment_id')
+      .in('assignment_id', assignmentIds);
+    for (const row of (qData || [])) {
+      questionCounts[row.assignment_id] = (questionCounts[row.assignment_id] || 0) + 1;
+    }
+  }
+
+  // 5. Submissions/Grades for all assignments in this class
+  let grades = [];
+  if (assignmentIds.length > 0) {
+    const { data: subs, error: subErr } = await supabase
+      .from('submissions')
+      .select('id, assignment_id, student_id, status, score, submitted_at, graded_at')
+      .in('assignment_id', assignmentIds);
+    if (subErr) throw subErr;
+    grades = subs || [];
+  }
+
+  // Build grade matrix: student → assignment → score
+  const studentIds = students.map(s => s.id);
+  const gradeMatrix = {};
+  for (const s of students) {
+    gradeMatrix[s.id] = { student: s, scores: {} };
+  }
+  for (const g of grades) {
+    if (gradeMatrix[g.student_id]) {
+      gradeMatrix[g.student_id].scores[g.assignment_id] = {
+        submission_id: g.id,
+        status: g.status,
+        score: g.score,
+        submitted_at: g.submitted_at,
+        graded_at: g.graded_at,
+      };
+    }
+  }
+
+  // Stats
+  const totalSubmissions = grades.length;
+  const gradedSubmissions = grades.filter(g => g.status === 'graded').length;
+  const avgScore = gradedSubmissions > 0
+    ? (grades.filter(g => g.status === 'graded').reduce((sum, g) => sum + (g.score || 0), 0) / gradedSubmissions).toFixed(1)
+    : null;
+
+  const { subjects, profiles, ...classRest } = classInfo;
+
+  return {
+    classInfo: {
+      ...classRest,
+      subject_name: subjects?.name || null,
+      subject_code: subjects?.code || null,
+      teacher_name: profiles?.full_name || null,
+      teacher_email: profiles?.email || null,
+      teacher_phone: profiles?.phone || null,
+    },
+    students,
+    lessons: lessons || [],
+    assignments: (assignments || []).map(a => ({
+      ...a,
+      question_count: questionCounts[a.id] || 0,
+    })),
+    gradeMatrix: Object.values(gradeMatrix),
+    stats: {
+      student_count: students.length,
+      lesson_count: (lessons || []).length,
+      assignment_count: (assignments || []).length,
+      total_submissions: totalSubmissions,
+      graded_submissions: gradedSubmissions,
+      avg_score: avgScore,
+    },
+  };
+};
+
 const create = async (data) => {
   const { name, subject_id, teacher_id, max_students, status, start_date, end_date, description } = data;
   const { data: row, error } = await supabase
@@ -353,6 +471,6 @@ const removeStudentsBatch = async (classId, studentIds) => {
 };
 
 module.exports = {
-  getAll, getById, create, update, remove,
+  getAll, getById, getOverview, create, update, remove,
   getStudents, addStudent, addStudentsBatch, removeStudent, removeStudentsBatch,
 };

@@ -3,6 +3,7 @@ import api from './api'
 const classesService = {
   getAll: (params) => api.get('/classes', { params }),
   getById: (id) => api.get(`/classes/${id}`),
+  getOverview: (id) => api.get(`/classes/${id}/overview`),
   create: (data) => api.post('/classes', data),
   update: (id, data) => api.put(`/classes/${id}`, data),
   delete: (id) => api.delete(`/classes/${id}`),

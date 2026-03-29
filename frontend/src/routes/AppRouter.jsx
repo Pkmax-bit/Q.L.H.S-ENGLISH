@@ -15,6 +15,7 @@ import FacilitiesPage from '../pages/FacilitiesPage'
 import FinancesPage from '../pages/FinancesPage'
 import TemplatesPage from '../pages/TemplatesPage'
 import EnrollmentRequestsPage from '../pages/EnrollmentRequestsPage'
+import ClassDetailPage from '../pages/ClassDetailPage'
 import StudentLearningPage from '../pages/StudentLearningPage'
 import SubmissionsPage from '../pages/SubmissionsPage'
 import GradeBookPage from '../pages/GradeBookPage'
@@ -85,6 +86,14 @@ export default function AppRouter() {
           element={
             <RoleRoute roles={['admin', 'teacher', 'student']}>
               <ClassesPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="classes/:id"
+          element={
+            <RoleRoute roles={['admin', 'teacher', 'student']}>
+              <ClassDetailPage />
             </RoleRoute>
           }
         />

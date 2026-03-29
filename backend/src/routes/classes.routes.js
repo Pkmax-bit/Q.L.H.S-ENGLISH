@@ -7,6 +7,7 @@ const router = Router();
 
 router.get('/', auth, classesController.getAll);
 router.get('/:id', auth, classesController.getById);
+router.get('/:id/overview', auth, classesController.getOverview);
 router.post('/', auth, authorize('admin'), classesController.create);
 router.put('/:id', auth, authorize('admin'), classesController.update);
 router.delete('/:id', auth, authorize('admin'), classesController.remove);

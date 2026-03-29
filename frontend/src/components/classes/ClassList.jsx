@@ -1,4 +1,5 @@
 import { useState, useContext, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Plus, Download } from 'lucide-react'
 import Table from '../common/Table'
 import Button from '../common/Button'
@@ -22,6 +23,7 @@ export default function ClassList() {
   const { success, error: showError } = useContext(ToastContext)
   const { exportToExcel } = useExcelExport()
   const { user } = useAuth()
+  const navigate = useNavigate()
 
   const isAdmin = user?.role === 'admin'
   const isTeacher = user?.role === 'teacher'
@@ -46,7 +48,7 @@ export default function ClassList() {
 
   const handleEdit = (cls) => { setSelected(cls); setShowForm(true) }
   const handleDelete = (cls) => { setSelected(cls); setShowDelete(true) }
-  const handleView = (cls) => { setSelected(cls); setShowDetail(true) }
+  const handleView = (cls) => { navigate(`/classes/${cls.id}`) }
 
   const confirmDelete = async () => {
     setDeleting(true)

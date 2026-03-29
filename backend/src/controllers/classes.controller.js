@@ -24,6 +24,18 @@ const getById = async (req, res, next) => {
   }
 };
 
+const getOverview = async (req, res, next) => {
+  try {
+    const result = await classesService.getOverview(req.params.id);
+    if (!result) {
+      return response.notFound(res, 'Class not found');
+    }
+    return response.success(res, result, 'Class overview retrieved');
+  } catch (error) {
+    next(error);
+  }
+};
+
 const create = async (req, res, next) => {
   try {
     const cls = await classesService.create(req.body);
@@ -131,6 +143,6 @@ const removeStudent = async (req, res, next) => {
 };
 
 module.exports = {
-  getAll, getById, create, update, remove,
+  getAll, getById, getOverview, create, update, remove,
   getStudents, addStudent, addStudentsBatch, removeStudent, removeStudentsBatch,
 };
