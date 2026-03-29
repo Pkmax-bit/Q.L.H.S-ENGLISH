@@ -13,6 +13,7 @@ export function AuthProvider({ children }) {
   const fetchProfile = useCallback(async () => {
     const token = localStorage.getItem('accessToken')
     if (!token) {
+      setUser(null)
       setLoading(false)
       return
     }
@@ -21,11 +22,18 @@ export function AuthProvider({ children }) {
       const userData = data.data || data
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
-    } catch {
-      localStorage.removeItem('accessToken')
-      localStorage.removeItem('refreshToken')
-      localStorage.removeItem('user')
-      setUser(null)
+    } catch (err) {
+      // If 401 and refresh also fails, the api interceptor handles it.
+      // Don't clear user here — the cached user is still valid until logout.
+      // Only clear if there's truly no valid session.
+      const cachedUser = localStorage.getItem('user')
+      if (!cachedUser) {
+        // No cached user at all — really logged out
+        localStorage.removeItem('accessToken')
+        localStorage.removeItem('refreshToken')
+        setUser(null)
+      }
+      // Otherwise keep cached user — token might have been refreshed by interceptor
     } finally {
       setLoading(false)
     }

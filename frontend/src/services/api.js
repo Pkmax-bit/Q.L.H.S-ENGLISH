@@ -39,6 +39,14 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
+    // Don't intercept login/refresh requests
+    if (
+      originalRequest.url?.includes('/auth/login') ||
+      originalRequest.url?.includes('/auth/refresh')
+    ) {
+      return Promise.reject(error)
+    }
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -60,28 +68,37 @@ api.interceptors.response.use(
           throw new Error('No refresh token')
         }
 
-        const { data } = await axios.post(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/auth/refresh`,
-          { refreshToken }
-        )
+        const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+        const { data } = await axios.post(`${baseURL}/auth/refresh`, { refreshToken })
 
-        const newToken = data.data?.accessToken || data.accessToken
-        localStorage.setItem('accessToken', newToken)
-        if (data.data?.refreshToken || data.refreshToken) {
-          localStorage.setItem('refreshToken', data.data?.refreshToken || data.refreshToken)
+        const result = data.data || data
+        const newAccessToken = result.accessToken
+        const newRefreshToken = result.refreshToken
+
+        if (newAccessToken) {
+          localStorage.setItem('accessToken', newAccessToken)
+        }
+        if (newRefreshToken) {
+          localStorage.setItem('refreshToken', newRefreshToken)
         }
 
-        api.defaults.headers.common.Authorization = `Bearer ${newToken}`
-        processQueue(null, newToken)
+        api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`
+        processQueue(null, newAccessToken)
 
-        originalRequest.headers.Authorization = `Bearer ${newToken}`
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
         return api(originalRequest)
       } catch (refreshError) {
         processQueue(refreshError, null)
+        // Only redirect to login if refresh truly failed
+        // Clear tokens but don't force redirect — let ProtectedRoute handle it
         localStorage.removeItem('accessToken')
         localStorage.removeItem('refreshToken')
         localStorage.removeItem('user')
-        window.location.href = '/login'
+        
+        // Only redirect if we're not already on login page
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login'
+        }
         return Promise.reject(refreshError)
       } finally {
         isRefreshing = false
