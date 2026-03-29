@@ -284,7 +284,75 @@ const removeStudent = async (classId, studentId) => {
   return data;
 };
 
+const addStudentsBatch = async (classId, studentIds) => {
+  // Check class capacity
+  const { data: classInfo, error: classError } = await supabase
+    .from('classes')
+    .select('max_students')
+    .eq('id', classId)
+    .single();
+
+  if (classError || !classInfo) {
+    throw { statusCode: 404, message: 'Class not found' };
+  }
+
+  const { count, error: countError } = await supabase
+    .from('class_students')
+    .select('id', { count: 'exact', head: true })
+    .eq('class_id', classId);
+  if (countError) throw countError;
+
+  const remaining = classInfo.max_students - (count || 0);
+  if (remaining <= 0) {
+    throw { statusCode: 400, message: 'Lớp đã đầy' };
+  }
+
+  // Filter out already enrolled
+  const { data: existing } = await supabase
+    .from('class_students')
+    .select('student_id')
+    .eq('class_id', classId)
+    .in('student_id', studentIds);
+
+  const existingIds = (existing || []).map(e => e.student_id);
+  const newIds = studentIds.filter(id => !existingIds.includes(id));
+
+  if (newIds.length === 0) {
+    return { added: 0, skipped: studentIds.length, message: 'Tất cả học sinh đã có trong lớp' };
+  }
+
+  // Limit to remaining capacity
+  const toAdd = newIds.slice(0, remaining);
+  const rows = toAdd.map(student_id => ({ class_id: classId, student_id }));
+
+  const { data, error } = await supabase
+    .from('class_students')
+    .insert(rows)
+    .select();
+
+  if (error) throw error;
+
+  return {
+    added: toAdd.length,
+    skipped: existingIds.length,
+    capacityExceeded: newIds.length > remaining ? newIds.length - remaining : 0,
+  };
+};
+
+const removeStudentsBatch = async (classId, studentIds) => {
+  const { data, error } = await supabase
+    .from('class_students')
+    .delete()
+    .eq('class_id', classId)
+    .in('student_id', studentIds)
+    .select();
+
+  if (error) throw error;
+
+  return { removed: (data || []).length };
+};
+
 module.exports = {
   getAll, getById, create, update, remove,
-  getStudents, addStudent, removeStudent,
+  getStudents, addStudent, addStudentsBatch, removeStudent, removeStudentsBatch,
 };

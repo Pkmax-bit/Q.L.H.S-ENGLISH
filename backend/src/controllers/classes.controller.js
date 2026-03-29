@@ -86,6 +86,37 @@ const addStudent = async (req, res, next) => {
   }
 };
 
+const addStudentsBatch = async (req, res, next) => {
+  try {
+    const { student_ids } = req.body;
+    if (!student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
+      return response.badRequest(res, 'student_ids (array) is required');
+    }
+    const result = await classesService.addStudentsBatch(req.params.id, student_ids);
+    emitNotification('class:students_added', { class_id: req.params.id, student_ids, ...result });
+    return response.created(res, result, `Đã thêm ${result.added} học sinh vào lớp`);
+  } catch (error) {
+    if (error.statusCode) {
+      return response.error(res, error.message, error.statusCode);
+    }
+    next(error);
+  }
+};
+
+const removeStudentsBatch = async (req, res, next) => {
+  try {
+    const { student_ids } = req.body;
+    if (!student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
+      return response.badRequest(res, 'student_ids (array) is required');
+    }
+    const result = await classesService.removeStudentsBatch(req.params.id, student_ids);
+    emitNotification('class:students_removed', { class_id: req.params.id, student_ids });
+    return response.success(res, result, `Đã xóa ${result.removed} học sinh khỏi lớp`);
+  } catch (error) {
+    next(error);
+  }
+};
+
 const removeStudent = async (req, res, next) => {
   try {
     const result = await classesService.removeStudent(req.params.id, req.params.studentId);
@@ -101,5 +132,5 @@ const removeStudent = async (req, res, next) => {
 
 module.exports = {
   getAll, getById, create, update, remove,
-  getStudents, addStudent, removeStudent,
+  getStudents, addStudent, addStudentsBatch, removeStudent, removeStudentsBatch,
 };
