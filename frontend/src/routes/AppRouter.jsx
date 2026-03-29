@@ -17,6 +17,8 @@ import TemplatesPage from '../pages/TemplatesPage'
 import EnrollmentRequestsPage from '../pages/EnrollmentRequestsPage'
 import ClassDetailPage from '../pages/ClassDetailPage'
 import StudentLearningPage from '../pages/StudentLearningPage'
+import MyGradesPage from '../pages/MyGradesPage'
+import MyAssignmentsPage from '../pages/MyAssignmentsPage'
 import SubmissionsPage from '../pages/SubmissionsPage'
 import GradeBookPage from '../pages/GradeBookPage'
 import ProfilePage from '../pages/ProfilePage'
@@ -148,6 +150,22 @@ export default function AppRouter() {
           element={
             <RoleRoute roles={['student']}>
               <StudentLearningPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="my-assignments"
+          element={
+            <RoleRoute roles={['student']}>
+              <MyAssignmentsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="my-grades"
+          element={
+            <RoleRoute roles={['student']}>
+              <MyGradesPage />
             </RoleRoute>
           }
         />

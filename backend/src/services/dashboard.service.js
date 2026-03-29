@@ -118,4 +118,135 @@ const getRecentActivity = async (limitCount = 20) => {
   return activities.slice(0, limitCount);
 };
 
-module.exports = { getStats, getRecentActivity };
+module.exports = { getStats, getRecentActivity, getTeacherDashboard, getStudentDashboard };
+
+/* ===== TEACHER DASHBOARD ===== */
+async function getTeacherDashboard(teacherId) {
+  // Classes I teach
+  const { data: classes, error: cErr } = await supabase
+    .from('classes').select('id, name, status, max_students')
+    .eq('teacher_id', teacherId).eq('status', 'active');
+  if (cErr) throw cErr;
+
+  const classIds = (classes || []).map(c => c.id);
+
+  // Student count
+  let studentCount = 0;
+  if (classIds.length > 0) {
+    const { count } = await supabase.from('class_students')
+      .select('id', { count: 'exact', head: true }).in('class_id', classIds);
+    studentCount = count || 0;
+  }
+
+  // Lessons & Assignments
+  let lessonCount = 0, assignmentCount = 0, pendingGrading = 0;
+  if (classIds.length > 0) {
+    const [lRes, aRes] = await Promise.all([
+      supabase.from('lessons').select('id', { count: 'exact', head: true }).in('class_id', classIds),
+      supabase.from('assignments').select('id').in('class_id', classIds),
+    ]);
+    lessonCount = lRes.count || 0;
+    const assignmentIds = (aRes.data || []).map(a => a.id);
+    assignmentCount = assignmentIds.length;
+
+    if (assignmentIds.length > 0) {
+      const { count: pCount } = await supabase.from('submissions')
+        .select('id', { count: 'exact', head: true })
+        .in('assignment_id', assignmentIds).eq('status', 'submitted');
+      pendingGrading = pCount || 0;
+    }
+  }
+
+  // Pending enrollment requests
+  let pendingRequests = 0;
+  if (classIds.length > 0) {
+    const { count } = await supabase.from('enrollment_requests')
+      .select('id', { count: 'exact', head: true })
+      .in('class_id', classIds).eq('status', 'pending');
+    pendingRequests = count || 0;
+  }
+
+  return {
+    stats: {
+      classes: classIds.length,
+      students: studentCount,
+      lessons: lessonCount,
+      assignments: assignmentCount,
+      pending_grading: pendingGrading,
+      pending_requests: pendingRequests,
+    },
+    classes: classes || [],
+  };
+}
+
+/* ===== STUDENT DASHBOARD ===== */
+async function getStudentDashboard(studentId) {
+  // My classes
+  const { data: enrollments, error: eErr } = await supabase
+    .from('class_students')
+    .select('class_id, classes(id, name, status, teacher_id, profiles!classes_teacher_id_fkey(full_name))')
+    .eq('student_id', studentId);
+  if (eErr) throw eErr;
+
+  const classes = (enrollments || []).map(e => ({
+    id: e.classes?.id || e.class_id,
+    name: e.classes?.name || '',
+    teacher_name: e.classes?.profiles?.full_name || '',
+  }));
+  const classIds = classes.map(c => c.id);
+
+  // Assignments in my classes
+  let totalAssignments = 0, todoAssignments = 0, completedAssignments = 0;
+  let avgScore = null, totalScore = 0, gradedCount = 0;
+  let upcomingDeadlines = [];
+
+  if (classIds.length > 0) {
+    const { data: assignments } = await supabase
+      .from('assignments').select('id, title, class_id, due_date, total_points, is_published')
+      .in('class_id', classIds).eq('is_published', true);
+    totalAssignments = (assignments || []).length;
+    const assignmentIds = (assignments || []).map(a => a.id);
+
+    // My submissions
+    if (assignmentIds.length > 0) {
+      const { data: subs } = await supabase
+        .from('submissions').select('id, assignment_id, status, score')
+        .eq('student_id', studentId).in('assignment_id', assignmentIds);
+
+      const subMap = {};
+      for (const s of (subs || [])) { subMap[s.assignment_id] = s; }
+
+      completedAssignments = (subs || []).filter(s => s.status === 'submitted' || s.status === 'graded').length;
+      todoAssignments = totalAssignments - completedAssignments;
+
+      for (const s of (subs || [])) {
+        if (s.status === 'graded' && s.score !== null) {
+          totalScore += parseFloat(s.score);
+          gradedCount++;
+        }
+      }
+      if (gradedCount > 0) avgScore = (totalScore / gradedCount).toFixed(1);
+
+      // Upcoming deadlines
+      const now = new Date();
+      upcomingDeadlines = (assignments || [])
+        .filter(a => a.due_date && new Date(a.due_date) > now && !subMap[a.id])
+        .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+        .slice(0, 5)
+        .map(a => ({ id: a.id, title: a.title, due_date: a.due_date }));
+    }
+  }
+
+  return {
+    stats: {
+      classes: classes.length,
+      total_assignments: totalAssignments,
+      todo_assignments: todoAssignments,
+      completed_assignments: completedAssignments,
+      avg_score: avgScore,
+      graded_count: gradedCount,
+    },
+    classes,
+    upcoming_deadlines: upcomingDeadlines,
+  };
+}

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, GraduationCap, BookOpen, School,
   FileText, ClipboardList, CalendarDays, Building2, Wallet,
   ChevronLeft, ChevronRight, X, BookCopy, UserCheck, Backpack,
-  PenLine, TableProperties
+  PenLine, TableProperties, BarChart3, ListChecks
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../hooks/useAuth'
@@ -25,6 +25,18 @@ const menuItems = [
     path: '/learning',
     icon: Backpack,
     label: 'Học tập',
+    roles: ['student'],
+  },
+  {
+    path: '/my-assignments',
+    icon: ListChecks,
+    label: 'Bài tập của tôi',
+    roles: ['student'],
+  },
+  {
+    path: '/my-grades',
+    icon: BarChart3,
+    label: 'Điểm số của tôi',
     roles: ['student'],
   },
   {

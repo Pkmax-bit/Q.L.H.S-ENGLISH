@@ -20,4 +20,22 @@ const getRecentActivity = async (req, res, next) => {
   }
 };
 
-module.exports = { getStats, getRecentActivity };
+const getTeacherDashboard = async (req, res, next) => {
+  try {
+    const result = await dashboardService.getTeacherDashboard(req.user.id);
+    return response.success(res, result, 'Teacher dashboard retrieved');
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getStudentDashboard = async (req, res, next) => {
+  try {
+    const result = await dashboardService.getStudentDashboard(req.user.id);
+    return response.success(res, result, 'Student dashboard retrieved');
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { getStats, getRecentActivity, getTeacherDashboard, getStudentDashboard };
