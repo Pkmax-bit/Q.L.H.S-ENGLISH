@@ -121,25 +121,32 @@ Stores all users (admin, teacher, student) in a single table. Replaces separate 
 | student_id    | UUID        | FK → profiles.id                 |
 | status        | TEXT        | default 'in_progress'            |
 | score         | NUMERIC     |                                  |
+| total_points  | NUMERIC     |                                  |
+| auto_score    | NUMERIC     |                                  |
+| manual_score  | NUMERIC     |                                  |
 | feedback      | TEXT        |                                  |
 | submitted_at  | TIMESTAMPTZ |                                  |
+| started_at    | TIMESTAMPTZ | default now()                    |
+| time_spent_seconds | INTEGER |                                  |
 | graded_at     | TIMESTAMPTZ |                                  |
 | graded_by     | UUID        | FK → profiles.id                 |
 | created_at    | TIMESTAMPTZ |                                  |
+| updated_at    | TIMESTAMPTZ |                                  |
 
 ### submission_answers
 
-| Column            | Type         | Constraints                          |
-|------------------|-------------|--------------------------------------|
-| id                | UUID        | PK                                   |
-| submission_id     | UUID        | FK → submissions.id                  |
-| question_id       | UUID        | FK → assignment_questions.id         |
-| answer_text       | TEXT        |                                      |
-| selected_option_id| TEXT        |                                      |
-| is_correct        | BOOLEAN     |                                      |
-| points_earned     | NUMERIC     | default 0                            |
-| feedback          | TEXT        |                                      |
-| created_at        | TIMESTAMPTZ |                                      |
+| Column              | Type         | Constraints                          |
+|---------------------|-------------|--------------------------------------|
+| id                  | UUID        | PK                                   |
+| submission_id       | UUID        | FK → submissions.id                  |
+| question_id         | UUID        | FK → assignment_questions.id         |
+| answer_text         | TEXT        |                                      |
+| selected_option_index| INTEGER    |                                      |
+| is_correct          | BOOLEAN     |                                      |
+| score               | NUMERIC     | default 0                            |
+| feedback            | TEXT        |                                      |
+| created_at          | TIMESTAMPTZ |                                      |
+| updated_at          | TIMESTAMPTZ |                                      |
 
 ### schedules
 Each row represents a single time slot (no separate schedule_slots table).
