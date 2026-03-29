@@ -113,7 +113,10 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
       <LessonViewer
         lesson={selectedLesson}
         linkedAssignments={getLinkedAssignments(selectedLesson.id)}
+        submissionMap={submissionMap}
         onBack={() => setSelectedLesson(null)}
+        onTakeAssignment={onTakeAssignment}
+        onViewResult={onViewResult}
       />
     )
   }
@@ -433,7 +436,7 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
 }
 
 /* ========== LESSON VIEWER ========== */
-function LessonViewer({ lesson, linkedAssignments = [], onBack }) {
+function LessonViewer({ lesson, linkedAssignments = [], submissionMap = {}, onBack, onTakeAssignment, onViewResult }) {
   const ytId = extractYoutubeId(lesson.youtube_url)
 
   return (
@@ -543,6 +546,9 @@ function LessonViewer({ lesson, linkedAssignments = [], onBack }) {
               <div className="space-y-2">
                 {linkedAssignments.map(a => {
                   const label = getDueDateLabel(a.due_date)
+                  const sub = submissionMap[a.id]
+                  const isDone = sub && (sub.status === 'graded' || sub.status === 'submitted')
+
                   return (
                     <div
                       key={a.id}
@@ -556,10 +562,30 @@ function LessonViewer({ lesson, linkedAssignments = [], onBack }) {
                           {label && <span className={label.color}>{label.text}</span>}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors cursor-default">
-                        <ClipboardList className="h-4 w-4" />
-                        Làm bài
-                      </div>
+                      {isDone ? (
+                        <button
+                          onClick={() => onViewResult?.(sub.id)}
+                          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            sub.status === 'graded'
+                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                              : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                          }`}
+                        >
+                          {sub.status === 'graded' ? (
+                            <><CheckCircle className="h-4 w-4" /> {sub.score ?? '—'}/{a.total_points}</>
+                          ) : (
+                            <><Clock className="h-4 w-4" /> Chờ chấm</>
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onTakeAssignment?.(a.id)}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors cursor-pointer"
+                        >
+                          <ClipboardList className="h-4 w-4" />
+                          Làm bài
+                        </button>
+                      )}
                     </div>
                   )
                 })}
