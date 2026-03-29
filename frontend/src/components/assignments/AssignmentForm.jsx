@@ -24,12 +24,12 @@ const initialForm = {
   questions: [],
 }
 
-export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess }) {
+export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess, defaultClassId }) {
   const [form, setForm] = useState(initialForm)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
-  const isEdit = !!assignment
+  const isEdit = !!(assignment && assignment.id)
 
   const fetchClasses = useCallback(() => classesService.getAll(), [])
   const { data: classesData } = useFetch(fetchClasses)
@@ -46,7 +46,7 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess 
   const lessonOptions = filteredLessons.map((l) => ({ value: l.id, label: l.title }))
 
   useEffect(() => {
-    if (assignment) {
+    if (assignment && assignment.id) {
       setForm({
         title: assignment.title || '',
         class_id: assignment.class_id || assignment.class?.id || '',
@@ -59,10 +59,10 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess 
         questions: assignment.questions || [],
       })
     } else {
-      setForm(initialForm)
+      setForm({ ...initialForm, class_id: defaultClassId || '' })
     }
     setErrors({})
-  }, [assignment, isOpen])
+  }, [assignment, isOpen, defaultClassId])
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target

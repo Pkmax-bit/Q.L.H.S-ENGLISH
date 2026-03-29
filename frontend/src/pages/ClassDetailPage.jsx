@@ -140,10 +140,10 @@ export default function ClassDetailPage() {
           />
         )}
         {activeTab === 'lessons' && (
-          <ClassLessonsTab lessons={lessons} classId={id} />
+          <ClassLessonsTab lessons={lessons} classId={id} onReload={reload} />
         )}
         {activeTab === 'assignments' && (
-          <ClassAssignmentsTab assignments={assignments} classId={id} />
+          <ClassAssignmentsTab assignments={assignments} classId={id} onReload={reload} />
         )}
         {activeTab === 'grades' && (
           <ClassGradesTab

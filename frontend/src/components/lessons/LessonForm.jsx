@@ -23,12 +23,12 @@ const initialForm = {
   order_index: '',
 }
 
-export default function LessonForm({ isOpen, onClose, lesson, onSuccess }) {
+export default function LessonForm({ isOpen, onClose, lesson, onSuccess, defaultClassId }) {
   const [form, setForm] = useState(initialForm)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
-  const isEdit = !!lesson
+  const isEdit = !!(lesson && lesson.id)
 
   const fetchClasses = useCallback(() => classesService.getAll(), [])
   const { data: classesData } = useFetch(fetchClasses)
@@ -36,7 +36,7 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess }) {
   const classOptions = classes.map((c) => ({ value: c.id, label: c.name }))
 
   useEffect(() => {
-    if (lesson) {
+    if (lesson && lesson.id) {
       setForm({
         title: lesson.title || '',
         class_id: lesson.class_id || lesson.class?.id || '',
@@ -49,10 +49,10 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess }) {
         order_index: lesson.order_index ?? '',
       })
     } else {
-      setForm(initialForm)
+      setForm({ ...initialForm, class_id: defaultClassId || '' })
     }
     setErrors({})
-  }, [lesson, isOpen])
+  }, [lesson, isOpen, defaultClassId])
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
