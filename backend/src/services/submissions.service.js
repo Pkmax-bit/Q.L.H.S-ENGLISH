@@ -74,9 +74,14 @@ const submit = async (submissionId, answers, studentId) => {
     .select('*, assignments(total_points, time_limit_minutes)')
     .eq('id', submissionId)
     .eq('student_id', studentId)
-    .single();
+    .maybeSingle();
 
-  if (sErr || !submission) {
+  if (sErr) {
+    console.error('[Submit] Error fetching submission:', sErr);
+    throw { statusCode: 500, message: 'Lỗi khi lấy thông tin bài làm' };
+  }
+
+  if (!submission) {
     throw { statusCode: 404, message: 'Bài làm không tồn tại' };
   }
 
@@ -91,7 +96,10 @@ const submit = async (submissionId, answers, studentId) => {
     .eq('assignment_id', submission.assignment_id)
     .order('order_index', { ascending: true });
 
-  if (qErr) throw qErr;
+  if (qErr) {
+    console.error('[Submit] Error fetching questions:', qErr);
+    throw { statusCode: 500, message: 'Lỗi khi lấy câu hỏi' };
+  }
 
   // Process answers + auto-grade MCQ
   let autoScore = 0;
@@ -134,10 +142,28 @@ const submit = async (submissionId, answers, studentId) => {
 
   // Insert/upsert answers
   if (answerRows.length > 0) {
+    // Try upsert first, fallback to delete+insert
     const { error: insertErr } = await supabase
       .from('submission_answers')
       .upsert(answerRows, { onConflict: 'submission_id,question_id' });
-    if (insertErr) throw insertErr;
+    
+    if (insertErr) {
+      console.error('[Submit] Upsert error, trying delete+insert:', insertErr);
+      // Fallback: delete existing answers and insert fresh
+      await supabase
+        .from('submission_answers')
+        .delete()
+        .eq('submission_id', submissionId);
+      
+      const { error: insertErr2 } = await supabase
+        .from('submission_answers')
+        .insert(answerRows);
+      
+      if (insertErr2) {
+        console.error('[Submit] Insert error:', insertErr2);
+        throw { statusCode: 500, message: 'Lỗi khi lưu câu trả lời: ' + (insertErr2.message || 'Unknown') };
+      }
+    }
   }
 
   // Calculate time spent
@@ -147,7 +173,6 @@ const submit = async (submissionId, answers, studentId) => {
 
   // Determine status: if no essay, auto-grade fully
   const finalStatus = hasEssay ? 'submitted' : 'graded';
-  const finalScore = hasEssay ? null : autoScore;
 
   const updateData = {
     status: finalStatus,
@@ -169,7 +194,10 @@ const submit = async (submissionId, answers, studentId) => {
     .select()
     .single();
 
-  if (updateErr) throw updateErr;
+  if (updateErr) {
+    console.error('[Submit] Update submission error:', updateErr);
+    throw { statusCode: 500, message: 'Lỗi khi cập nhật bài nộp' };
+  }
   return updated;
 };
 

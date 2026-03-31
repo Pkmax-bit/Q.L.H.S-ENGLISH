@@ -10,8 +10,8 @@ const supabase = createClient(
 async function seed() {
   const accounts = [
     { email: 'admin@edu.com', password: 'admin123', role: 'admin', full_name: 'Administrator', phone: '0900000000' },
-    { email: 'teacher@edu.com', password: 'teacher123', role: 'teacher', full_name: 'Giáo Viên Demo', phone: '0900000001' },
-    { email: 'student@edu.com', password: 'student123', role: 'student', full_name: 'Học Sinh Demo', phone: '0900000002' },
+    { email: 'teacher1@edu.com', password: 'Test@123', role: 'teacher', full_name: 'Nguyễn Văn An', phone: '0900000001' },
+    { email: 'student1@edu.com', password: 'Test@123', role: 'student', full_name: 'Phạm Minh Đức', phone: '0900000002' },
   ];
 
   for (const account of accounts) {

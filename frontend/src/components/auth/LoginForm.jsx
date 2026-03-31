@@ -7,8 +7,8 @@ import Button from '../common/Button'
 
 const QUICK_ACCOUNTS = [
   { label: 'Admin', email: 'admin@edu.com', password: 'admin123', icon: ShieldCheck, color: 'from-red-500 to-red-600', hoverColor: 'hover:from-red-600 hover:to-red-700' },
-  { label: 'Giáo viên', email: 'teacher@edu.com', password: 'teacher123', icon: GraduationCap, color: 'from-blue-500 to-blue-600', hoverColor: 'hover:from-blue-600 hover:to-blue-700' },
-  { label: 'Học sinh', email: 'student@edu.com', password: 'student123', icon: UserRound, color: 'from-green-500 to-green-600', hoverColor: 'hover:from-green-600 hover:to-green-700' },
+  { label: 'Giáo viên', email: 'teacher1@edu.com', password: 'Test@123', icon: GraduationCap, color: 'from-blue-500 to-blue-600', hoverColor: 'hover:from-blue-600 hover:to-blue-700' },
+  { label: 'Học sinh', email: 'student1@edu.com', password: 'Test@123', icon: UserRound, color: 'from-green-500 to-green-600', hoverColor: 'hover:from-green-600 hover:to-green-700' },
 ]
 
 export default function LoginForm() {

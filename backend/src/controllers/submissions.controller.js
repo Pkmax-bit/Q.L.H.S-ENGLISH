@@ -19,7 +19,9 @@ const submit = async (req, res, next) => {
     const result = await submissionsService.submit(req.params.id, answers, req.user.id);
     return response.success(res, result, 'Bài đã được nộp thành công');
   } catch (error) {
+    console.error('[Submit Error]', JSON.stringify(error, null, 2));
     if (error.statusCode) return response.error(res, error.message, error.statusCode);
+    if (error.code) return response.error(res, error.message || 'Database error', 400);
     next(error);
   }
 };
