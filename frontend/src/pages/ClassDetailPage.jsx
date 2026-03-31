@@ -67,9 +67,13 @@ export default function ClassDetailPage() {
         <span className={`px-3 py-1 rounded-full text-xs font-medium ${
           classInfo.status === 'active'
             ? 'bg-green-100 text-green-700'
-            : 'bg-gray-100 text-gray-600'
+            : classInfo.status === 'upcoming'
+              ? 'bg-indigo-100 text-indigo-700'
+              : classInfo.status === 'completed'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-600'
         }`}>
-          {classInfo.status === 'active' ? 'Đang hoạt động' : classInfo.status}
+          {classInfo.status === 'active' ? 'Đang học' : classInfo.status === 'upcoming' ? 'Sắp mở' : classInfo.status === 'completed' ? 'Đã hoàn thành' : classInfo.status}
         </span>
       </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, useMemo } from 'react'
+import { useState, useEffect, useContext, useMemo, useRef, useCallback } from 'react'
 import {
   ArrowLeft, Clock, CheckCircle, AlertTriangle, Send,
   ChevronLeft, ChevronRight, FileText, HelpCircle
@@ -57,7 +57,14 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
         if (cancelled) return
         setSubmission(subData)
 
-        // 4. If resuming, recalculate timer
+        // 4a. Restore draft answers from localStorage
+        const draftKey = `draft_answers_${subData.id}`
+        try {
+          const saved = localStorage.getItem(draftKey)
+          if (saved) setAnswers(JSON.parse(saved))
+        } catch {}
+
+        // 4b. If resuming, recalculate timer
         if (subData.started_at && assignmentData.time_limit_minutes) {
           const elapsed = Math.floor((Date.now() - new Date(subData.started_at).getTime()) / 1000)
           const remaining = assignmentData.time_limit_minutes * 60 - elapsed
@@ -80,6 +87,20 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
     init()
     return () => { cancelled = true }
   }, [assignmentId])
+
+  // Save answers to localStorage on change
+  useEffect(() => {
+    if (!submission?.id || Object.keys(answers).length === 0) return
+    try {
+      localStorage.setItem(`draft_answers_${submission.id}`, JSON.stringify(answers))
+    } catch {}
+  }, [answers, submission?.id])
+
+  // Scroll to top when switching questions
+  const questionRef = useRef(null)
+  useEffect(() => {
+    questionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [currentQ])
 
   // Countdown timer
   useEffect(() => {
@@ -149,6 +170,8 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
 
       const result = await submissionsService.submit(submission.id, { answers: answerPayload })
       const resultData = result.data?.data ?? result.data ?? result
+      // Clear draft from localStorage
+      try { localStorage.removeItem(`draft_answers_${submission.id}`) } catch {}
       success('🎉 Nộp bài thành công!')
       onComplete?.({ id: resultData.id || submission.id, ...resultData })
     } catch (err) {
@@ -262,7 +285,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
 
       {/* Question content */}
       {currentQuestion && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+        <div ref={questionRef} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
             <span className="text-sm font-semibold text-blue-600">
               Câu {currentQ + 1} / {questions.length}

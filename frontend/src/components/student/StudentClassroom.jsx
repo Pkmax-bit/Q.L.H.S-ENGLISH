@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react'
 import {
   ArrowLeft, BookOpen, ClipboardList, Clock, AlertTriangle,
   Sparkles, FileText, Youtube, FolderOpen, Link, ExternalLink,
-  ChevronRight, Calendar, CheckCircle, CheckCircle2, Timer
+  ChevronLeft, ChevronRight, Calendar, CheckCircle, CheckCircle2, Timer, Trophy
 } from 'lucide-react'
 import Button from '../common/Button'
 import LoadingSpinner from '../common/LoadingSpinner'
@@ -105,6 +105,29 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
     return assignments.filter(a => a.lesson_id === lessonId)
   }
 
+  // Stats calculation
+  const classStats = useMemo(() => {
+    const graded = assignments.filter(a => {
+      const sub = submissionMap[a.id]
+      return sub && sub.status === 'graded'
+    })
+    const completed = assignments.filter(a => {
+      const sub = submissionMap[a.id]
+      return sub && (sub.status === 'graded' || sub.status === 'submitted')
+    })
+    const totalScore = graded.reduce((sum, a) => sum + (submissionMap[a.id]?.score || 0), 0)
+    const totalMaxScore = graded.reduce((sum, a) => sum + (a.total_points || 0), 0)
+    const avgPercent = totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : null
+
+    return {
+      completedCount: completed.length,
+      totalCount: assignments.length,
+      totalScore,
+      totalMaxScore,
+      avgPercent,
+    }
+  }, [assignments, submissionMap])
+
   const loading = lessonsLoading || assignmentsLoading
 
   // If viewing a specific lesson
@@ -117,6 +140,9 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
         onBack={() => setSelectedLesson(null)}
         onTakeAssignment={onTakeAssignment}
         onViewResult={onViewResult}
+        allLessons={sortedLessons}
+        currentIndex={sortedLessons.findIndex(l => l.id === selectedLesson.id)}
+        onNavigate={(lesson) => setSelectedLesson(lesson)}
       />
     )
   }
@@ -142,6 +168,54 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
         <LoadingSpinner message="Đang tải nội dung lớp học..." />
       ) : (
         <>
+          {/* Student stats banner */}
+          {assignments.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+                <Trophy className="h-5 w-5 text-amber-500 mx-auto mb-1" />
+                <div className="text-xl font-bold text-gray-900">
+                  {classStats.totalScore}<span className="text-sm text-gray-400">/{classStats.totalMaxScore}</span>
+                </div>
+                <div className="text-xs text-gray-500">Tổng điểm</div>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+                <CheckCircle2 className="h-5 w-5 text-green-500 mx-auto mb-1" />
+                <div className="text-xl font-bold text-gray-900">
+                  {classStats.completedCount}<span className="text-sm text-gray-400">/{classStats.totalCount}</span>
+                </div>
+                <div className="text-xs text-gray-500">Bài đã làm</div>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+                <ClipboardList className="h-5 w-5 text-blue-500 mx-auto mb-1" />
+                <div className="text-xl font-bold text-gray-900">
+                  {classStats.totalCount - classStats.completedCount}
+                </div>
+                <div className="text-xs text-gray-500">Bài chưa làm</div>
+              </div>
+              <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+                <div className={`text-xl font-bold mx-auto mb-0.5 ${
+                  classStats.avgPercent === null ? 'text-gray-400'
+                    : classStats.avgPercent >= 80 ? 'text-green-600'
+                    : classStats.avgPercent >= 50 ? 'text-amber-600'
+                    : 'text-red-600'
+                }`}>
+                  {classStats.avgPercent !== null ? `${classStats.avgPercent}%` : '—'}
+                </div>
+                <div className="text-xs text-gray-500">Điểm TB</div>
+                {classStats.avgPercent !== null && (
+                  <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                    <div
+                      className={`h-1.5 rounded-full ${
+                        classStats.avgPercent >= 80 ? 'bg-green-500' : classStats.avgPercent >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${classStats.avgPercent}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Alert banners */}
           <div className="space-y-3 mb-6">
             {/* New assignments */}
@@ -436,8 +510,10 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
 }
 
 /* ========== LESSON VIEWER ========== */
-function LessonViewer({ lesson, linkedAssignments = [], submissionMap = {}, onBack, onTakeAssignment, onViewResult }) {
+function LessonViewer({ lesson, linkedAssignments = [], submissionMap = {}, onBack, onTakeAssignment, onViewResult, allLessons = [], currentIndex = 0, onNavigate }) {
   const ytId = extractYoutubeId(lesson.youtube_url)
+  const hasPrev = currentIndex > 0
+  const hasNext = currentIndex < allLessons.length - 1
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -593,12 +669,49 @@ function LessonViewer({ lesson, linkedAssignments = [], submissionMap = {}, onBa
             </div>
           )}
 
-          {/* Completion marker */}
-          <div className="pt-4 border-t border-gray-200 flex items-center justify-center">
-            <div className="flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-full text-sm font-medium">
-              <CheckCircle className="h-4 w-4" />
-              Đã xem bài học
+          {/* Completion marker + Navigation */}
+          <div className="pt-4 border-t border-gray-200 space-y-4">
+            <div className="flex items-center justify-center">
+              <div className="flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-full text-sm font-medium">
+                <CheckCircle className="h-4 w-4" />
+                Đã xem bài học
+              </div>
             </div>
+
+            {/* Lesson navigation */}
+            {allLessons.length > 1 && (
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => hasPrev && onNavigate?.(allLessons[currentIndex - 1])}
+                  disabled={!hasPrev}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    hasPrev
+                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                  }`}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Bài trước
+                </button>
+
+                <span className="text-xs text-gray-400 font-medium">
+                  Bài {currentIndex + 1} / {allLessons.length}
+                </span>
+
+                <button
+                  onClick={() => hasNext && onNavigate?.(allLessons[currentIndex + 1])}
+                  disabled={!hasNext}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    hasNext
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                  }`}
+                >
+                  Bài tiếp theo
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

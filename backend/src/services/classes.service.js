@@ -89,10 +89,25 @@ const getAll = async (queryParams, currentUser = null) => {
     }
   }
 
+  const now = new Date();
   const rows = (data || []).map(row => {
     const { subjects, profiles, ...rest } = row;
+    // Auto-compute display status from dates
+    let displayStatus = rest.status || 'active';
+    if (rest.start_date && rest.end_date) {
+      const start = new Date(rest.start_date);
+      const end = new Date(rest.end_date);
+      if (now < start) displayStatus = 'upcoming';
+      else if (now > end) displayStatus = 'completed';
+      else displayStatus = 'active';
+    } else if (rest.end_date && now > new Date(rest.end_date)) {
+      displayStatus = 'completed';
+    } else if (rest.start_date && now < new Date(rest.start_date)) {
+      displayStatus = 'upcoming';
+    }
     return {
       ...rest,
+      status: displayStatus,
       subject_name: subjects?.name || null,
       subject_code: subjects?.code || null,
       teacher_name: profiles?.full_name || null,
@@ -230,9 +245,25 @@ const getOverview = async (classId) => {
 
   const { subjects, profiles, ...classRest } = classInfo;
 
+  // Auto-compute display status from dates
+  const now2 = new Date();
+  let displayStatus = classRest.status || 'active';
+  if (classRest.start_date && classRest.end_date) {
+    const start = new Date(classRest.start_date);
+    const end = new Date(classRest.end_date);
+    if (now2 < start) displayStatus = 'upcoming';
+    else if (now2 > end) displayStatus = 'completed';
+    else displayStatus = 'active';
+  } else if (classRest.end_date && now2 > new Date(classRest.end_date)) {
+    displayStatus = 'completed';
+  } else if (classRest.start_date && now2 < new Date(classRest.start_date)) {
+    displayStatus = 'upcoming';
+  }
+
   return {
     classInfo: {
       ...classRest,
+      status: displayStatus,
       subject_name: subjects?.name || null,
       subject_code: subjects?.code || null,
       teacher_name: profiles?.full_name || null,

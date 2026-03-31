@@ -174,12 +174,10 @@ const submit = async (submissionId, answers, studentId) => {
   // Determine status: if no essay, auto-grade fully
   const finalStatus = hasEssay ? 'submitted' : 'graded';
 
+  // Build update — start minimal, add optional columns
   const updateData = {
     status: finalStatus,
-    auto_score: autoScore,
     submitted_at: now.toISOString(),
-    time_spent_seconds: timeSpent,
-    updated_at: now.toISOString(),
   };
 
   if (!hasEssay) {
@@ -187,16 +185,37 @@ const submit = async (submissionId, answers, studentId) => {
     updateData.graded_at = now.toISOString();
   }
 
-  const { data: updated, error: updateErr } = await supabase
+  // Try full update with all columns first
+  const fullUpdate = {
+    ...updateData,
+    auto_score: autoScore,
+    time_spent_seconds: timeSpent,
+    updated_at: now.toISOString(),
+  };
+
+  let { data: updated, error: updateErr } = await supabase
     .from('submissions')
-    .update(updateData)
+    .update(fullUpdate)
     .eq('id', submissionId)
     .select()
     .single();
 
   if (updateErr) {
-    console.error('[Submit] Update submission error:', updateErr);
-    throw { statusCode: 500, message: 'Lỗi khi cập nhật bài nộp' };
+    console.error('[Submit] Full update failed:', JSON.stringify(updateErr));
+
+    // Fallback: minimal update (only core columns)
+    const { data: d2, error: e2 } = await supabase
+      .from('submissions')
+      .update(updateData)
+      .eq('id', submissionId)
+      .select()
+      .single();
+
+    if (e2) {
+      console.error('[Submit] Minimal update also failed:', JSON.stringify(e2));
+      throw { statusCode: 500, message: 'Lỗi khi cập nhật bài nộp: ' + (e2.message || updateErr.message) };
+    }
+    updated = d2;
   }
   return updated;
 };
