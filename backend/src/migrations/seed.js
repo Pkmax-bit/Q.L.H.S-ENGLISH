@@ -8,34 +8,42 @@ const supabase = createClient(
 );
 
 async function seed() {
-  // Check if admin exists
-  const { data: existing } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('email', 'admin@edu.com')
-    .single();
+  const accounts = [
+    { email: 'admin@edu.com', password: 'admin123', role: 'admin', full_name: 'Administrator', phone: '0900000000' },
+    { email: 'teacher@edu.com', password: 'teacher123', role: 'teacher', full_name: 'Giáo Viên Demo', phone: '0900000001' },
+    { email: 'student@edu.com', password: 'student123', role: 'student', full_name: 'Học Sinh Demo', phone: '0900000002' },
+  ];
 
-  if (existing) {
-    console.log('Admin already exists, skipping.');
-    return;
-  }
+  for (const account of accounts) {
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('email', account.email)
+      .single();
 
-  const passwordHash = await bcrypt.hash('admin123', 12);
+    if (existing) {
+      console.log(`${account.role} (${account.email}) already exists, skipping.`);
+      continue;
+    }
 
-  const { error: userError } = await supabase.from('profiles').insert({
-    email: 'admin@edu.com',
-    password_hash: passwordHash,
-    role: 'admin',
-    full_name: 'Administrator',
-    phone: '0900000000',
-  });
-  if (userError) {
-    console.error('Failed to create admin:', userError.message);
-    return;
+    const passwordHash = await bcrypt.hash(account.password, 12);
+
+    const { error } = await supabase.from('profiles').insert({
+      email: account.email,
+      password_hash: passwordHash,
+      role: account.role,
+      full_name: account.full_name,
+      phone: account.phone,
+    });
+
+    if (error) {
+      console.error(`Failed to create ${account.role}:`, error.message);
+    } else {
+      console.log(`✅ ${account.role}: ${account.email} / ${account.password}`);
+    }
   }
 
   console.log('🌱 Seed completed!');
-  console.log('Admin: admin@edu.com / admin123');
 }
 
 seed().catch(console.error);

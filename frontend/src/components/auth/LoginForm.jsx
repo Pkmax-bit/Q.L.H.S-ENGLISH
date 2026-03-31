@@ -1,9 +1,15 @@
 import { useState, useContext } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { School, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { School, Mail, Lock, Eye, EyeOff, ShieldCheck, GraduationCap, UserRound } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { ToastContext } from '../../context/ToastContext'
 import Button from '../common/Button'
+
+const QUICK_ACCOUNTS = [
+  { label: 'Admin', email: 'admin@edu.com', password: 'admin123', icon: ShieldCheck, color: 'from-red-500 to-red-600', hoverColor: 'hover:from-red-600 hover:to-red-700' },
+  { label: 'Giáo viên', email: 'teacher@edu.com', password: 'teacher123', icon: GraduationCap, color: 'from-blue-500 to-blue-600', hoverColor: 'hover:from-blue-600 hover:to-blue-700' },
+  { label: 'Học sinh', email: 'student@edu.com', password: 'student123', icon: UserRound, color: 'from-green-500 to-green-600', hoverColor: 'hover:from-green-600 hover:to-green-700' },
+]
 
 export default function LoginForm() {
   const [form, setForm] = useState({ email: '', password: '' })
@@ -32,6 +38,21 @@ export default function LoginForm() {
     setLoading(true)
     try {
       await login(form)
+      navigate('/')
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Đăng nhập thất bại. Vui lòng thử lại.'
+      showError(msg)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleQuickLogin = async (account) => {
+    setForm({ email: account.email, password: account.password })
+    setErrors({})
+    setLoading(true)
+    try {
+      await login({ email: account.email, password: account.password })
       navigate('/')
     } catch (err) {
       const msg = err.response?.data?.message || 'Đăng nhập thất bại. Vui lòng thử lại.'
@@ -102,6 +123,28 @@ export default function LoginForm() {
               Đăng nhập
             </Button>
           </form>
+
+          {/* Quick Login */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <p className="text-xs text-center text-gray-400 mb-3">Đăng nhập nhanh (Demo)</p>
+            <div className="grid grid-cols-3 gap-2">
+              {QUICK_ACCOUNTS.map((account) => {
+                const Icon = account.icon
+                return (
+                  <button
+                    key={account.label}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleQuickLogin(account)}
+                    className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl bg-gradient-to-b ${account.color} ${account.hoverColor} text-white transition-all duration-200 shadow-md hover:shadow-lg hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    <Icon className="h-5 w-5" />
+                    <span className="text-xs font-medium">{account.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>
