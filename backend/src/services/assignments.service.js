@@ -259,7 +259,59 @@ const removeQuestion = async (questionId) => {
   return data;
 };
 
+/**
+ * Bulk insert multiple questions for an assignment.
+ * @param {string} assignmentId
+ * @param {Array} questions - array of question objects
+ * @returns {Array} inserted rows
+ */
+const bulkAddQuestions = async (assignmentId, questions) => {
+  if (!questions || questions.length === 0) return [];
+
+  const rows = questions.map((q, idx) => ({
+    assignment_id: assignmentId,
+    question_text: q.question_text || q.text || '',
+    question_type: q.question_type || 'essay',
+    options: q.options || null,
+    correct_answer: q.correct_answer || '',
+    points: q.points || 10,
+    order_index: q.order_index ?? idx,
+    file_url: q.file_url || null,
+    youtube_url: q.youtube_url || null,
+  }));
+
+  const { data, error } = await supabase
+    .from('assignment_questions')
+    .insert(rows)
+    .select();
+
+  if (error) throw error;
+  return data || [];
+};
+
+/**
+ * Sync questions for an assignment: delete all existing, then bulk insert new ones.
+ * Used when updating an assignment with a new set of questions.
+ * @param {string} assignmentId
+ * @param {Array} questions - full list of questions to replace with
+ * @returns {Array} inserted rows
+ */
+const syncQuestions = async (assignmentId, questions) => {
+  // Delete all existing questions for this assignment
+  const { error: delError } = await supabase
+    .from('assignment_questions')
+    .delete()
+    .eq('assignment_id', assignmentId);
+
+  if (delError) throw delError;
+
+  // Insert all new questions
+  if (!questions || questions.length === 0) return [];
+  return bulkAddQuestions(assignmentId, questions);
+};
+
 module.exports = {
   getAll, getById, create, update, remove,
   addQuestion, updateQuestion, removeQuestion,
+  bulkAddQuestions, syncQuestions,
 };

@@ -7,6 +7,14 @@ const assignmentsService = {
   update: (id, data) => api.put(`/assignments/${id}`, data),
   delete: (id) => api.delete(`/assignments/${id}`),
 
+  // Bulk add questions to an assignment
+  bulkAddQuestions: (assignmentId, questions) =>
+    api.post(`/assignments/${assignmentId}/questions/bulk`, { questions }),
+
+  // Sync (replace all) questions for an assignment
+  syncQuestions: (assignmentId, questions) =>
+    api.put(`/assignments/${assignmentId}/questions/sync`, { questions }),
+
   // Excel import: parse file → questions array
   parseExcelQuestions: (file) => {
     const formData = new FormData()

@@ -47,6 +47,17 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
 
   useEffect(() => {
     if (assignment && assignment.id) {
+      // Map DB question format → QuestionBuilder format
+      const mappedQuestions = (assignment.questions || []).map((q) => ({
+        ...q,
+        text: q.question_text || q.text || '',
+        question_type: q.question_type || 'essay',
+        points: q.points ?? 10,
+        options: q.options || [],
+        correct_answer: q.correct_answer || '',
+        file_url: q.file_url || '',
+        youtube_url: q.youtube_url || '',
+      }))
       setForm({
         title: assignment.title || '',
         class_id: assignment.class_id || assignment.class?.id || '',
@@ -56,7 +67,7 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
         due_date: toInputDate(assignment.due_date) || '',
         is_published: assignment.is_published || false,
         time_limit_minutes: assignment.time_limit_minutes ?? '',
-        questions: assignment.questions || [],
+        questions: mappedQuestions,
       })
     } else {
       setForm({ ...initialForm, class_id: defaultClassId || '' })
@@ -85,11 +96,28 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
 
     setLoading(true)
     try {
+      // Map QuestionBuilder format → backend format
+      const mappedQuestions = (form.questions || []).map((q, idx) => ({
+        question_text: q.question_text || q.text || '',
+        question_type: q.question_type || 'essay',
+        options: q.options || [],
+        correct_answer: q.correct_answer || '',
+        points: q.points !== '' && q.points !== undefined ? Number(q.points) : 10,
+        order_index: idx,
+        file_url: q.file_url || '',
+        youtube_url: q.youtube_url || '',
+      }))
+
       const payload = {
-        ...form,
-        total_points: form.total_points !== '' ? Number(form.total_points) : undefined,
-        time_limit_minutes: form.time_limit_minutes !== '' ? Number(form.time_limit_minutes) : undefined,
+        title: form.title,
+        class_id: form.class_id,
         lesson_id: form.lesson_id || undefined,
+        assignment_type: form.assignment_type,
+        total_points: form.total_points !== '' ? Number(form.total_points) : undefined,
+        due_date: form.due_date || undefined,
+        is_published: form.is_published,
+        time_limit_minutes: form.time_limit_minutes !== '' ? Number(form.time_limit_minutes) : undefined,
+        questions: mappedQuestions,
       }
       if (isEdit) {
         await assignmentsService.update(assignment.id, payload)

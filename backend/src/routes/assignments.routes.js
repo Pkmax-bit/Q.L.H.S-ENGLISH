@@ -34,6 +34,8 @@ router.put('/:id', auth, authorize('admin', 'teacher'), assignmentsController.up
 router.delete('/:id', auth, authorize('admin'), assignmentsController.remove);
 
 // Questions (options are now stored as JSONB in assignment_questions.options)
+router.post('/:id/questions/bulk', auth, authorize('admin', 'teacher'), assignmentsController.bulkAddQuestions);
+router.put('/:id/questions/sync', auth, authorize('admin', 'teacher'), assignmentsController.syncQuestions);
 router.post('/:id/questions', auth, authorize('admin', 'teacher'), assignmentsController.addQuestion);
 router.put('/:id/questions/:questionId', auth, authorize('admin', 'teacher'), assignmentsController.updateQuestion);
 router.delete('/:id/questions/:questionId', auth, authorize('admin', 'teacher'), assignmentsController.removeQuestion);

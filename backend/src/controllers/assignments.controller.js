@@ -27,8 +27,18 @@ const getById = async (req, res, next) => {
 
 const create = async (req, res, next) => {
   try {
-    const data = { ...req.body, created_by: req.user.id };
+    const { questions, ...rest } = req.body;
+    const data = { ...rest, created_by: req.user.id };
     const assignment = await assignmentsService.create(data);
+
+    // If questions are provided, bulk insert them
+    if (questions && Array.isArray(questions) && questions.length > 0) {
+      const savedQuestions = await assignmentsService.bulkAddQuestions(assignment.id, questions);
+      assignment.questions = savedQuestions;
+    } else {
+      assignment.questions = [];
+    }
+
     emitNotification('assignment:created', assignment);
     return response.created(res, assignment, 'Assignment created successfully');
   } catch (error) {
@@ -38,10 +48,18 @@ const create = async (req, res, next) => {
 
 const update = async (req, res, next) => {
   try {
-    const assignment = await assignmentsService.update(req.params.id, req.body);
+    const { questions, ...rest } = req.body;
+    const assignment = await assignmentsService.update(req.params.id, rest);
     if (!assignment) {
       return response.notFound(res, 'Assignment not found');
     }
+
+    // If questions array is provided, sync (replace all)
+    if (questions && Array.isArray(questions)) {
+      const savedQuestions = await assignmentsService.syncQuestions(req.params.id, questions);
+      assignment.questions = savedQuestions;
+    }
+
     emitNotification('assignment:updated', assignment);
     return response.success(res, assignment, 'Assignment updated successfully');
   } catch (error) {
@@ -90,6 +108,42 @@ const removeQuestion = async (req, res, next) => {
       return response.notFound(res, 'Question not found');
     }
     return response.success(res, null, 'Question removed successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Bulk add multiple questions to an assignment in one request.
+ * POST /:id/questions/bulk
+ * Body: { questions: [...] }
+ */
+const bulkAddQuestions = async (req, res, next) => {
+  try {
+    const { questions } = req.body;
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return response.badRequest(res, 'Vui lòng cung cấp danh sách câu hỏi');
+    }
+    const saved = await assignmentsService.bulkAddQuestions(req.params.id, questions);
+    return response.created(res, saved, `Đã thêm ${saved.length} câu hỏi`);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Replace all questions for an assignment (delete old + insert new).
+ * PUT /:id/questions/sync
+ * Body: { questions: [...] }
+ */
+const syncQuestions = async (req, res, next) => {
+  try {
+    const { questions } = req.body;
+    if (!questions || !Array.isArray(questions)) {
+      return response.badRequest(res, 'Vui lòng cung cấp danh sách câu hỏi');
+    }
+    const saved = await assignmentsService.syncQuestions(req.params.id, questions);
+    return response.success(res, saved, `Đã đồng bộ ${saved.length} câu hỏi`);
   } catch (error) {
     next(error);
   }
@@ -375,5 +429,6 @@ const downloadQuestionTemplate = async (req, res, next) => {
 module.exports = {
   getAll, getById, create, update, remove,
   addQuestion, updateQuestion, removeQuestion,
+  bulkAddQuestions, syncQuestions,
   parseExcelQuestions, downloadQuestionTemplate,
 };
