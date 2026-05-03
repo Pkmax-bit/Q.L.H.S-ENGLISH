@@ -26,6 +26,7 @@ const router = Router();
 // Excel import/export for questions — MUST be before /:id routes
 router.post('/import-questions/parse', auth, authorize('admin', 'teacher'), excelUpload.single('file'), assignmentsController.parseExcelQuestions);
 router.get('/import-questions/template', auth, authorize('admin', 'teacher'), assignmentsController.downloadQuestionTemplate);
+router.post('/export-questions-excel', auth, authorize('admin', 'teacher'), assignmentsController.exportQuestionsExcel);
 
 router.get('/', auth, assignmentsController.getAll);
 router.get('/:id', auth, assignmentsController.getById);

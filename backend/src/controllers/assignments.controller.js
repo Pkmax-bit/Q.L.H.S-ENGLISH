@@ -3,6 +3,21 @@ const response = require('../utils/response');
 const { emitNotification } = require('../socket');
 const XLSX = require('xlsx');
 const path = require('path');
+const {
+  buildBlankTemplateWorkbook,
+  buildExportWorkbookFromQuestions,
+  workbookToBuffer,
+} = require('../utils/toeicExcelWorkbook');
+
+/** Khớp CHECK DB (sau migration 011_assignments_toeic_types_check.sql) */
+const ALLOWED_ASSIGNMENT_TYPES = new Set([
+  'essay',
+  'multiple_choice',
+  'mixed',
+  'toeic_listening',
+  'toeic_lr',
+  'toeic_four_skills',
+]);
 
 const getAll = async (req, res, next) => {
   try {
@@ -29,6 +44,16 @@ const create = async (req, res, next) => {
   try {
     const { questions, ...rest } = req.body;
     const data = { ...rest, created_by: req.user.id };
+    if (
+      data.assignment_type != null &&
+      data.assignment_type !== '' &&
+      !ALLOWED_ASSIGNMENT_TYPES.has(data.assignment_type)
+    ) {
+      return response.badRequest(
+        res,
+        `assignment_type không hợp lệ: "${data.assignment_type}". Các giá trị cho phép: ${[...ALLOWED_ASSIGNMENT_TYPES].join(', ')}`
+      );
+    }
     const assignment = await assignmentsService.create(data);
 
     // If questions are provided, bulk insert them
@@ -49,6 +74,16 @@ const create = async (req, res, next) => {
 const update = async (req, res, next) => {
   try {
     const { questions, ...rest } = req.body;
+    if (
+      rest.assignment_type != null &&
+      rest.assignment_type !== '' &&
+      !ALLOWED_ASSIGNMENT_TYPES.has(rest.assignment_type)
+    ) {
+      return response.badRequest(
+        res,
+        `assignment_type không hợp lệ: "${rest.assignment_type}". Các giá trị cho phép: ${[...ALLOWED_ASSIGNMENT_TYPES].join(', ')}`
+      );
+    }
     const assignment = await assignmentsService.update(req.params.id, rest);
     if (!assignment) {
       return response.notFound(res, 'Assignment not found');
@@ -150,11 +185,77 @@ const syncQuestions = async (req, res, next) => {
 };
 
 /**
+ * Đọc một dòng sheet trắc nghiệm (kèm URL ảnh / âm thanh tuỳ chọn — dùng cho TOEIC Part 1).
+ */
+function parseMultipleChoiceExcelRow(row) {
+  const questionText = row['Câu hỏi'] ?? row['Cau hoi'] ?? row['Question'] ?? row['question'] ?? '';
+  const fileUrl = String(
+    row['URL ảnh']
+    ?? row['URL anh']
+    ?? row['URL ảnh (Part 1)']
+    ?? row['file_url']
+    ?? row['File URL']
+    ?? ''
+  ).trim();
+  const youtubeUrl = String(
+    row['URL âm thanh']
+    ?? row['URL am thanh']
+    ?? row['Audio URL']
+    ?? row['youtube_url']
+    ?? ''
+  ).trim();
+  const optA = row['Đáp án A'] ?? row['A'] ?? row['Option A'] ?? '';
+  const optB = row['Đáp án B'] ?? row['B'] ?? row['Option B'] ?? '';
+  const optC = row['Đáp án C'] ?? row['C'] ?? row['Option C'] ?? '';
+  const optD = row['Đáp án D'] ?? row['D'] ?? row['Option D'] ?? '';
+  const correctRaw = String(row['Đáp án đúng'] ?? row['Dap an dung'] ?? row['Correct'] ?? row['correct'] ?? '').trim().toUpperCase();
+  const points = Number(row['Điểm'] ?? row['Diem'] ?? row['Points'] ?? row['points'] ?? 10) || 10;
+
+  const stem = String(questionText).trim();
+  const hasStem = !!stem;
+  const hasMedia = !!fileUrl || !!youtubeUrl;
+  const hasAnyOption = [optA, optB, optC, optD].some((o) => String(o || '').trim() !== '');
+
+  if (!hasStem && !hasMedia && !hasAnyOption) {
+    return { skip: true, reason: 'empty' };
+  }
+
+  const optionsRaw = [
+    { text: String(optA).trim(), letter: 'A' },
+    { text: String(optB).trim(), letter: 'B' },
+    { text: String(optC).trim(), letter: 'C' },
+    { text: String(optD).trim(), letter: 'D' },
+  ].filter((o) => o.text !== '');
+
+  if (optionsRaw.length === 0) {
+    return { skip: true, reason: 'no_options', stem: hasStem };
+  }
+
+  const options = optionsRaw.map((o) => ({
+    text: o.text,
+    is_correct: correctRaw === o.letter,
+  }));
+
+  return {
+    skip: false,
+    question: {
+      question_text: stem,
+      question_type: 'multiple_choice',
+      options,
+      correct_answer: correctRaw,
+      points,
+      file_url: fileUrl,
+      youtube_url: youtubeUrl,
+    },
+  };
+}
+
+/**
  * Parse an uploaded Excel file into question objects.
- * Expects two sheets:
- *   - "Trắc nghiệm" (Multiple Choice): columns Câu hỏi | Đáp án A | Đáp án B | Đáp án C | Đáp án D | Đáp án đúng | Điểm
- *   - "Tự luận" (Essay): columns Câu hỏi | Đáp án | Điểm
- * Either or both sheets can be present.
+ * Expects sheets (tuỳ chọn):
+ *   - "Trắc nghiệm" … | URL ảnh | URL âm thanh | … (URL tuỳ chọn, dùng cho Part 1 trong cùng sheet)
+ *   - "Part 1 (TOEIC)" — 6 câu mô tả ảnh, cùng định dạng cột với trắc nghiệm + URL
+ *   - "Tự luận" …
  */
 const parseExcelQuestions = async (req, res, next) => {
   try {
@@ -176,59 +277,60 @@ const parseExcelQuestions = async (req, res, next) => {
       });
     };
 
-    // --- Parse "Trắc nghiệm" sheet ---
-    const mcSheetName = findSheet(['trắc nghiệm', 'trac nghiem', 'multiple_choice', 'multiple choice', 'mcq']);
-    if (mcSheetName) {
-      const ws = workbook.Sheets[mcSheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    const findPart1Sheet = () => {
+      return sheetNames.find((name) => {
+        const lower = name.toLowerCase().trim();
+        if (lower.includes('trắc nghiệm') || lower.includes('trac nghiem')) return false;
+        return (
+          lower === 'part 1 (toeic)'
+          || lower === 'part 1'
+          || (lower.includes('part 1') && lower.includes('toeic'))
+          || lower.includes('listening part 1')
+        );
+      });
+    };
 
+    const pushMcRows = (rows, sheetLabel) => {
       for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        // Flexible column name matching
-        const questionText = row['Câu hỏi'] ?? row['Cau hoi'] ?? row['Question'] ?? row['question'] ?? '';
-        const optA = row['Đáp án A'] ?? row['A'] ?? row['Option A'] ?? '';
-        const optB = row['Đáp án B'] ?? row['B'] ?? row['Option B'] ?? '';
-        const optC = row['Đáp án C'] ?? row['C'] ?? row['Option C'] ?? '';
-        const optD = row['Đáp án D'] ?? row['D'] ?? row['Option D'] ?? '';
-        const correctRaw = String(row['Đáp án đúng'] ?? row['Dap an dung'] ?? row['Correct'] ?? row['correct'] ?? '').trim().toUpperCase();
-        const points = Number(row['Điểm'] ?? row['Diem'] ?? row['Points'] ?? row['points'] ?? 10) || 10;
-
-        if (!String(questionText).trim()) {
-          if (i > 0) warnings.push(`Trắc nghiệm dòng ${i + 2}: bỏ qua (câu hỏi trống)`);
+        const parsed = parseMultipleChoiceExcelRow(rows[i]);
+        if (parsed.skip) {
+          if (parsed.reason === 'empty' && i > 0) {
+            warnings.push(`${sheetLabel} dòng ${i + 2}: bỏ qua (dòng trống)`);
+          } else if (parsed.reason === 'no_options') {
+            warnings.push(`${sheetLabel} dòng ${i + 2}: bỏ qua (thiếu đáp án A–D)`);
+          }
           continue;
         }
 
-        // Build options array
-        const optionsRaw = [
-          { text: String(optA).trim(), letter: 'A' },
-          { text: String(optB).trim(), letter: 'B' },
-          { text: String(optC).trim(), letter: 'C' },
-          { text: String(optD).trim(), letter: 'D' },
-        ].filter((o) => o.text !== '');
-
-        // Mark correct
-        const options = optionsRaw.map((o) => ({
-          text: o.text,
-          is_correct: correctRaw === o.letter,
-        }));
-
-        // Validate at least one correct
-        const hasCorrect = options.some((o) => o.is_correct);
-        if (!hasCorrect && options.length > 0) {
-          warnings.push(`Trắc nghiệm dòng ${i + 2}: không tìm thấy đáp án đúng "${correctRaw}" (cần A/B/C/D)`);
+        const { question } = parsed;
+        const hasCorrect = question.options.some((o) => o.is_correct);
+        if (!hasCorrect && question.options.length > 0) {
+          warnings.push(
+            `${sheetLabel} dòng ${i + 2}: không khớp đáp án đúng "${String(question.correct_answer).trim()}" (cần A/B/C/D)`
+          );
         }
 
         questions.push({
-          question_text: String(questionText).trim(),
-          question_type: 'multiple_choice',
-          options,
-          correct_answer: correctRaw,
-          points,
+          ...question,
           order_index: orderIndex++,
-          file_url: '',
-          youtube_url: '',
         });
       }
+    };
+
+    // --- Part 1 (TOEIC): đọc trước để 6 dòng áp vào câu 1–6 khi import đề TOEIC ---
+    const part1SheetName = findPart1Sheet();
+    if (part1SheetName) {
+      const ws = workbook.Sheets[part1SheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      pushMcRows(rows, `Sheet "${part1SheetName}"`);
+    }
+
+    // --- Parse "Trắc nghiệm" sheet ---
+    const mcSheetName = findSheet(['trắc nghiệm', 'trac nghiem', 'multiple_choice', 'multiple choice', 'mcq']);
+    if (mcSheetName && mcSheetName !== part1SheetName) {
+      const ws = workbook.Sheets[mcSheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      pushMcRows(rows, `Sheet "${mcSheetName}"`);
     }
 
     // --- Parse "Tự luận" sheet ---
@@ -261,9 +363,14 @@ const parseExcelQuestions = async (req, res, next) => {
       }
     }
 
-    // --- If no recognized sheets, try the first sheet as generic ---
-    if (!mcSheetName && !essaySheetName && sheetNames.length > 0) {
-      const ws = workbook.Sheets[sheetNames[0]];
+    // --- If no recognized sheets, try the first non-guide sheet as generic ---
+    if (questions.length === 0 && !mcSheetName && !essaySheetName && sheetNames.length > 0) {
+      const skipGuide = (n) => {
+        const l = String(n).toLowerCase();
+        return l.includes('hướng dẫn') || l.includes('huong dan') || l.includes('guide');
+      };
+      const candidateName = sheetNames.find((n) => !skipGuide(n)) || sheetNames[0];
+      const ws = workbook.Sheets[candidateName];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
       for (let i = 0; i < rows.length; i++) {
@@ -321,12 +428,12 @@ const parseExcelQuestions = async (req, res, next) => {
       }
 
       if (questions.length > 0) {
-        warnings.push(`Không tìm thấy sheet "Trắc nghiệm" hoặc "Tự luận", đã đọc từ sheet "${sheetNames[0]}"`);
+        warnings.push(`Không tìm thấy sheet "Trắc nghiệm" hoặc "Tự luận", đã đọc từ sheet "${candidateName}"`);
       }
     }
 
     if (questions.length === 0) {
-      return response.badRequest(res, 'Không tìm thấy câu hỏi nào trong file Excel. Hãy đảm bảo file có sheet "Trắc nghiệm" và/hoặc "Tự luận" với đúng định dạng cột.');
+      return response.badRequest(res, 'Không tìm thấy câu hỏi nào trong file Excel. Cần sheet "Trắc nghiệm", "Part 1 (TOEIC)" và/hoặc "Tự luận" đúng định dạng cột (xem file mẫu).');
     }
 
     const mcCount = questions.filter((q) => q.question_type === 'multiple_choice').length;
@@ -351,32 +458,94 @@ const parseExcelQuestions = async (req, res, next) => {
 };
 
 /**
+ * Xuất Excel: điền URL, tên file media (basename), đáp án — để đối chiếu khi soạn.
+ * POST body: { questions: [...], assignment_type: string }
+ */
+const exportQuestionsExcel = async (req, res, next) => {
+  try {
+    const { questions, assignment_type: assignmentType } = req.body || {};
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return response.badRequest(res, 'Cần mảng questions không rỗng');
+    }
+    const allowed = ['toeic_listening', 'toeic_lr', 'toeic_four_skills'];
+    if (!assignmentType || !allowed.includes(assignmentType)) {
+      return response.badRequest(res, `assignment_type phải là một trong: ${allowed.join(', ')}`);
+    }
+    const workbook = buildExportWorkbookFromQuestions(questions, assignmentType);
+    const buffer = workbookToBuffer(workbook);
+    const fname =
+      assignmentType === 'toeic_four_skills'
+        ? 'toeic-4-ky-nang-cau-hoi-media.xlsx'
+        : assignmentType === 'toeic_lr'
+          ? 'toeic-nghe-doc-cau-hoi-media.xlsx'
+          : 'toeic-listening-cau-hoi-media.xlsx';
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+    res.send(buffer);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Download an Excel template for importing questions.
+ * Query: variant = general | toeic_listening | toeic_lr | toeic_four_skills
  */
 const downloadQuestionTemplate = async (req, res, next) => {
   try {
+    const variant = String(req.query.variant || 'general').toLowerCase();
+    const blank = buildBlankTemplateWorkbook(variant);
+    if (blank) {
+      const buffer = workbookToBuffer(blank);
+      const fname =
+        variant === 'toeic_four_skills'
+          ? 'mau-toeic-4-ky-nang.xlsx'
+          : variant === 'toeic_lr'
+            ? 'mau-toeic-nghe-doc.xlsx'
+            : variant === 'toeic_listening'
+              ? 'mau-toeic-listening-theo-part.xlsx'
+              : 'mau-import-cau-hoi.xlsx';
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+      res.send(buffer);
+      return;
+    }
+
     const workbook = XLSX.utils.book_new();
 
-    // --- Sheet 1: Trắc nghiệm ---
+    // --- Sheet 1: Trắc nghiệm (cột URL dùng cho TOEIC Part 1 nếu nhập trong cùng sheet; để trống nếu dùng sheet Part 1 riêng) ---
     const mcData = [
-      ['Câu hỏi', 'Đáp án A', 'Đáp án B', 'Đáp án C', 'Đáp án D', 'Đáp án đúng', 'Điểm'],
-      ['What is the capital of France?', 'London', 'Paris', 'Berlin', 'Madrid', 'B', 10],
-      ['Which tense: "I have been studying"?', 'Past Simple', 'Present Perfect', 'Present Perfect Continuous', 'Past Continuous', 'C', 10],
-      ['Choose the correct word: "She ___ to school every day."', 'go', 'goes', 'going', 'gone', 'B', 5],
+      ['Câu hỏi', 'URL ảnh', 'URL âm thanh', 'Đáp án A', 'Đáp án B', 'Đáp án C', 'Đáp án D', 'Đáp án đúng', 'Điểm'],
     ];
     const mcSheet = XLSX.utils.aoa_to_sheet(mcData);
     mcSheet['!cols'] = [
-      { wch: 45 }, // Câu hỏi
-      { wch: 25 }, // A
-      { wch: 30 }, // B
-      { wch: 30 }, // C
-      { wch: 25 }, // D
-      { wch: 14 }, // Đáp án đúng
-      { wch: 8 },  // Điểm
+      { wch: 42 },
+      { wch: 36 },
+      { wch: 36 },
+      { wch: 28 },
+      { wch: 28 },
+      { wch: 28 },
+      { wch: 28 },
+      { wch: 14 },
+      { wch: 8 },
     ];
     XLSX.utils.book_append_sheet(workbook, mcSheet, 'Trắc nghiệm');
 
-    // --- Sheet 2: Tự luận ---
+    // --- Sheet 2: Part 1 TOEIC Listening (6 câu — mô tả hình) ---
+    const part1Data = [
+      ['Câu hỏi', 'URL ảnh', 'URL âm thanh', 'Đáp án A', 'Đáp án B', 'Đáp án C', 'Đáp án D', 'Đáp án đúng', 'Điểm'],
+      ['(Tuỳ chọn — có thể để trống)', 'https://example.com/part1/q01.jpg', 'https://example.com/part1/q01.mp3', 'He is reading', 'She is opening the door', 'They are sitting', 'It is raining', 'B', 5],
+      ['', 'https://example.com/part1/q02.jpg', 'https://example.com/part1/q02.mp3', 'The plane is landing', 'The workers are lifting boxes', 'The car is parking', 'The ship is sailing', 'B', 5],
+      ['', 'https://example.com/part1/q03.jpg', 'https://example.com/part1/q03.mp3', 'Fish are swimming', 'Birds are flying', 'Cats are sleeping', 'Dogs are running', 'A', 5],
+      ['', 'https://example.com/part1/q04.jpg', 'https://example.com/part1/q04.mp3', 'Typing on a laptop', 'Writing on a board', 'Talking on the phone', 'Reading a newspaper', 'C', 5],
+      ['', 'https://example.com/part1/q05.jpg', 'https://example.com/part1/q05.mp3', 'In a hospital', 'At a restaurant', 'In a library', 'At a train station', 'D', 5],
+      ['', 'https://example.com/part1/q06.jpg', 'https://example.com/part1/q06.mp3', 'They are shaking hands', 'They are waving goodbye', 'They are arguing', 'They are cooking', 'A', 5],
+    ];
+    const part1Sheet = XLSX.utils.aoa_to_sheet(part1Data);
+    part1Sheet['!cols'] = mcSheet['!cols'];
+    XLSX.utils.book_append_sheet(workbook, part1Sheet, 'Part 1 (TOEIC)');
+
+    // --- Sheet 3: Tự luận ---
     const essayData = [
       ['Câu hỏi', 'Đáp án', 'Điểm'],
       ['Describe your favorite holiday in English (100-150 words).', 'Sample: My favorite holiday is Tet because...', 20],
@@ -391,26 +560,28 @@ const downloadQuestionTemplate = async (req, res, next) => {
     ];
     XLSX.utils.book_append_sheet(workbook, essaySheet, 'Tự luận');
 
-    // --- Sheet 3: Hướng dẫn ---
+    // --- Sheet 4: Hướng dẫn ---
     const guideData = [
-      ['📋 HƯỚNG DẪN SỬ DỤNG FILE MẪU IMPORT CÂU HỎI'],
+      ['📋 HƯỚNG DẪN — FILE MẪU IMPORT CÂU HỎI'],
       [''],
-      ['Sheet "Trắc nghiệm" (Multiple Choice):'],
-      ['  - Câu hỏi: Nội dung câu hỏi (bắt buộc)'],
-      ['  - Đáp án A, B, C, D: Nội dung các lựa chọn (ít nhất 2 đáp án)'],
-      ['  - Đáp án đúng: Nhập chữ cái A, B, C hoặc D (bắt buộc)'],
-      ['  - Điểm: Số điểm cho câu hỏi (mặc định 10)'],
+      ['Sheet "Part 1 (TOEIC)" — 6 câu Listening Part 1 (mô tả hình):'],
+      ['  - Mỗi dòng = 1 câu (đủ 6 dòng cho Part 1).'],
+      ['  - URL ảnh / URL âm thanh: link trực tiếp tới file .jpg .png … và .mp3 (hoặc URL Supabase public).'],
+      ['  - Câu hỏi: có thể để trống nếu chỉ cần ảnh + audio + 4 lựa chọn.'],
+      ['  - Đáp án đúng: A, B, C hoặc D.'],
+      ['  - Import đề TOEIC: 6 dòng sheet này được áp vào câu 1–6 của khung 100 câu (trước sheet Trắc nghiệm trong file).'],
+      [''],
+      ['Sheet "Trắc nghiệm":'],
+      ['  - Cột "URL ảnh", "URL âm thanh" (tuỳ chọn): dùng khi nhập Part 1 hoặc câu có media trong cùng sheet.'],
+      ['  - Câu hỏi có thể để trống nếu đã có ít nhất URL hoặc đủ 4 đáp án.'],
+      ['  - Đáp án A–D, Đáp án đúng, Điểm như bảng thường.'],
       [''],
       ['Sheet "Tự luận" (Essay):'],
-      ['  - Câu hỏi: Nội dung câu hỏi (bắt buộc)'],
-      ['  - Đáp án: Đáp án mẫu / gợi ý chấm (tùy chọn)'],
-      ['  - Điểm: Số điểm cho câu hỏi (mặc định 10)'],
+      ['  - Câu hỏi | Đáp án | Điểm'],
       [''],
       ['Lưu ý:'],
-      ['  - Có thể dùng 1 hoặc cả 2 sheet'],
-      ['  - Dòng đầu tiên là tiêu đề cột, KHÔNG chỉnh sửa'],
-      ['  - Các dòng trống sẽ bị bỏ qua'],
-      ['  - File phải có định dạng .xlsx hoặc .xls'],
+      ['  - Dòng đầu mỗi sheet là tiêu đề cột; không đổi tên cột.'],
+      ['  - File .xlsx hoặc .xls.'],
     ];
     const guideSheet = XLSX.utils.aoa_to_sheet(guideData);
     guideSheet['!cols'] = [{ wch: 70 }];
@@ -430,5 +601,5 @@ module.exports = {
   getAll, getById, create, update, remove,
   addQuestion, updateQuestion, removeQuestion,
   bulkAddQuestions, syncQuestions,
-  parseExcelQuestions, downloadQuestionTemplate,
+  parseExcelQuestions, downloadQuestionTemplate, exportQuestionsExcel,
 };

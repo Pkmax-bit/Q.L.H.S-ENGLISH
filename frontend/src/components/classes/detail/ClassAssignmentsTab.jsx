@@ -9,11 +9,15 @@ import { useAuth } from '../../../hooks/useAuth'
 import { useFetch } from '../../../hooks/useFetch'
 import assignmentsService from '../../../services/assignments.service'
 import { formatDate } from '../../../utils/formatDate'
+import { unwrapApiPayload } from '../../../utils/assignmentHelpers'
 
 const TYPE_LABELS = {
   multiple_choice: { label: 'Trắc nghiệm', color: 'bg-blue-100 text-blue-700' },
   essay: { label: 'Tự luận', color: 'bg-amber-100 text-amber-700' },
   mixed: { label: 'Kết hợp', color: 'bg-purple-100 text-purple-700' },
+  toeic_listening: { label: 'TOEIC Listening', color: 'bg-indigo-100 text-indigo-800' },
+  toeic_lr: { label: 'TOEIC L&R', color: 'bg-teal-100 text-teal-900' },
+  toeic_four_skills: { label: 'TOEIC 4 k.năng', color: 'bg-fuchsia-100 text-fuchsia-900' },
 }
 
 export default function ClassAssignmentsTab({ assignments: initialAssignments, classId, onReload }) {
@@ -41,9 +45,9 @@ export default function ClassAssignmentsTab({ assignments: initialAssignments, c
 
   const handleEdit = (assignment) => {
     // Fetch full detail with questions for editing
-    assignmentsService.getById(assignment.id).then(res => {
-      const data = res.data?.data ?? res.data ?? res
-      setSelected(data)
+    assignmentsService.getById(assignment.id).then((res) => {
+      const data = unwrapApiPayload(res)
+      setSelected(data || assignment)
       setShowForm(true)
     }).catch(() => {
       setSelected(assignment)
@@ -52,9 +56,9 @@ export default function ClassAssignmentsTab({ assignments: initialAssignments, c
   }
 
   const handleView = (assignment) => {
-    assignmentsService.getById(assignment.id).then(res => {
-      const data = res.data?.data ?? res.data ?? res
-      setSelected(data)
+    assignmentsService.getById(assignment.id).then((res) => {
+      const data = unwrapApiPayload(res)
+      setSelected(data || assignment)
       setShowDetail(true)
     }).catch(() => {
       setSelected(assignment)
@@ -218,6 +222,7 @@ export default function ClassAssignmentsTab({ assignments: initialAssignments, c
       {/* Assignment Form Modal */}
       {canManage && (
         <AssignmentForm
+          key={selected?.id != null ? String(selected.id) : 'new'}
           isOpen={showForm}
           onClose={() => { setShowForm(false); setSelected(null) }}
           assignment={selected}
@@ -231,6 +236,7 @@ export default function ClassAssignmentsTab({ assignments: initialAssignments, c
         isOpen={showDetail}
         onClose={() => { setShowDetail(false); setSelected(null) }}
         assignment={selected}
+        studentView={!canManage}
       />
 
       {/* Delete Confirm */}

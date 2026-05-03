@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Info, Users, BookOpen, ClipboardList, BarChart3 } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
@@ -12,7 +12,7 @@ import { useFetch } from '../hooks/useFetch'
 import { useAuth } from '../hooks/useAuth'
 import classesService from '../services/classes.service'
 
-const TABS = [
+const ALL_TABS = [
   { key: 'overview', label: 'Tổng quan', icon: Info },
   { key: 'students', label: 'Học sinh', icon: Users },
   { key: 'lessons', label: 'Bài học', icon: BookOpen },
@@ -25,6 +25,21 @@ export default function ClassDetailPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('overview')
   const { user } = useAuth()
+  const isStudent = user?.role === 'student'
+
+  const tabs = useMemo(
+    () =>
+      isStudent
+        ? ALL_TABS.filter((t) => ['overview', 'lessons', 'assignments'].includes(t.key))
+        : ALL_TABS,
+    [isStudent]
+  )
+
+  useEffect(() => {
+    if (isStudent && ['students', 'grades'].includes(activeTab)) {
+      setActiveTab('assignments')
+    }
+  }, [isStudent, activeTab])
 
   const fetchOverview = useCallback(() => classesService.getOverview(id), [id])
   const { data: overview, loading, execute: reload } = useFetch(fetchOverview)
@@ -77,16 +92,26 @@ export default function ClassDetailPage() {
         </span>
       </div>
 
-      {/* Quick stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
-        {[
-          { label: 'Học sinh', value: stats.student_count, color: 'blue', icon: '👨‍🎓' },
-          { label: 'Bài học', value: stats.lesson_count, color: 'green', icon: '📖' },
-          { label: 'Bài tập', value: stats.assignment_count, color: 'purple', icon: '📝' },
-          { label: 'Bài nộp', value: stats.total_submissions, color: 'amber', icon: '📤' },
-          { label: 'Đã chấm', value: stats.graded_submissions, color: 'teal', icon: '✅' },
-          { label: 'Điểm TB', value: stats.avg_score || '—', color: 'red', icon: '📊' },
-        ].map((s) => (
+      {/* Quick stats — học sinh chỉ thấy bài học / bài tập (không thống kê chấm điểm cả lớp) */}
+      <div
+        className={`grid gap-3 ${
+          isStudent ? 'grid-cols-2 sm:grid-cols-2 max-w-lg' : 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-6'
+        }`}
+      >
+        {(isStudent
+          ? [
+              { label: 'Bài học', value: stats.lesson_count, color: 'green', icon: '📖' },
+              { label: 'Bài tập', value: stats.assignment_count, color: 'purple', icon: '📝' },
+            ]
+          : [
+              { label: 'Học sinh', value: stats.student_count, color: 'blue', icon: '👨‍🎓' },
+              { label: 'Bài học', value: stats.lesson_count, color: 'green', icon: '📖' },
+              { label: 'Bài tập', value: stats.assignment_count, color: 'purple', icon: '📝' },
+              { label: 'Bài nộp', value: stats.total_submissions, color: 'amber', icon: '📤' },
+              { label: 'Đã chấm', value: stats.graded_submissions, color: 'teal', icon: '✅' },
+              { label: 'Điểm TB', value: stats.avg_score || '—', color: 'red', icon: '📊' },
+            ]
+        ).map((s) => (
           <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-3 text-center">
             <div className="text-xl mb-1">{s.icon}</div>
             <div className="text-xl font-bold text-gray-900">{s.value}</div>
@@ -98,7 +123,7 @@ export default function ClassDetailPage() {
       {/* Tabs */}
       <div className="border-b border-gray-200">
         <div className="flex gap-0 overflow-x-auto">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.key
             let count = null
@@ -134,7 +159,7 @@ export default function ClassDetailPage() {
       {/* Tab content */}
       <div>
         {activeTab === 'overview' && (
-          <ClassOverviewTab classInfo={classInfo} stats={stats} />
+          <ClassOverviewTab classInfo={classInfo} stats={stats} forStudent={isStudent} />
         )}
         {activeTab === 'students' && (
           <ClassStudentsTab

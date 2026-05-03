@@ -1,14 +1,103 @@
 import { useState, useEffect, useContext, useMemo, useRef, useCallback } from 'react'
 import {
   ArrowLeft, Clock, CheckCircle, AlertTriangle, Send,
-  ChevronLeft, ChevronRight, FileText, HelpCircle
+  ChevronLeft, ChevronRight, FileText, HelpCircle,
+  Headphones, Image as ImageIcon,
+  List, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import Button from '../common/Button'
 import LoadingSpinner from '../common/LoadingSpinner'
 import RichContentViewer from '../common/RichContentViewer'
+import YoutubeEmbed from '../common/YoutubeEmbed'
 import { ToastContext } from '../../context/ToastContext'
 import submissionsService from '../../services/submissions.service'
 import assignmentsService from '../../services/assignments.service'
+import {
+  getToeicListeningMeta,
+  isDirectAudioUrl,
+  pickGroupAudioUrl,
+  TOEIC_PART_RANGES,
+} from '../../utils/toeicListening'
+import { getToeicReadingMeta, READING_PART_RANGES } from '../../utils/toeicReading'
+import {
+  ASSIGNMENT_TYPE_TOEIC_LR,
+  ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS,
+  TOEIC_LISTENING_COUNT,
+  TOEIC_LR_TOTAL,
+  TOEIC_SPEAKING_COUNT,
+  TOEIC_WRITING_COUNT,
+} from '../../utils/toeicExamConfig'
+import { mediaFileNameFromUrl } from '../../utils/mediaUrl'
+
+function rangeInclusive(start, end) {
+  if (start > end) return []
+  const out = []
+  for (let i = start; i <= end; i++) out.push(i)
+  return out
+}
+
+/** Nhóm chỉ số câu (0-based) theo Part TOEIC để hiển thị trong sidebar */
+function buildQuestionPartGroups(assignmentType, total) {
+  if (total === 0) return []
+  if (assignmentType === 'toeic_listening') {
+    return TOEIC_PART_RANGES.map((r) => {
+      const end = Math.min(r.end, total - 1)
+      if (r.start > end) return null
+      return {
+        key: `L${r.part}`,
+        label: r.label,
+        indices: rangeInclusive(r.start, end),
+      }
+    }).filter(Boolean)
+  }
+  if (assignmentType === ASSIGNMENT_TYPE_TOEIC_LR || assignmentType === ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS) {
+    const groups = []
+    const L = Math.min(TOEIC_LISTENING_COUNT, total)
+    for (const r of TOEIC_PART_RANGES) {
+      const end = Math.min(r.end, L - 1)
+      if (r.start >= L) continue
+      groups.push({
+        key: `Lp${r.part}`,
+        label: `Nghe — ${r.label}`,
+        indices: rangeInclusive(r.start, end),
+      })
+    }
+    if (total > TOEIC_LISTENING_COUNT) {
+      for (const r of READING_PART_RANGES) {
+        const absStart = TOEIC_LISTENING_COUNT + r.start
+        const absEnd = Math.min(TOEIC_LISTENING_COUNT + r.end, total - 1)
+        if (absStart > absEnd || absStart >= total) continue
+        groups.push({
+          key: `Rp${r.part}`,
+          label: `Đọc — ${r.label}`,
+          indices: rangeInclusive(absStart, absEnd),
+        })
+      }
+    }
+    if (assignmentType === ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS && total > TOEIC_LR_TOTAL) {
+      const spEnd = Math.min(TOEIC_LR_TOTAL + TOEIC_SPEAKING_COUNT - 1, total - 1)
+      if (TOEIC_LR_TOTAL <= spEnd) {
+        groups.push({
+          key: 'speaking',
+          label: `Speaking (${TOEIC_SPEAKING_COUNT} bài)`,
+          indices: rangeInclusive(TOEIC_LR_TOTAL, spEnd),
+        })
+      }
+      const wStart = TOEIC_LR_TOTAL + TOEIC_SPEAKING_COUNT
+      if (total > wStart) {
+        groups.push({
+          key: 'writing',
+          label: `Writing (${TOEIC_WRITING_COUNT} bài)`,
+          indices: rangeInclusive(wStart, total - 1),
+        })
+      }
+    }
+    return groups.length > 0
+      ? groups
+      : [{ key: 'all', label: 'Tất cả câu', indices: rangeInclusive(0, total - 1) }]
+  }
+  return [{ key: 'all', label: 'Tất cả câu', indices: rangeInclusive(0, total - 1) }]
+}
 
 export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
   const [assignment, setAssignment] = useState(null)
@@ -21,7 +110,43 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
   const [showConfirm, setShowConfirm] = useState(false)
   const [timeLeft, setTimeLeft] = useState(null)
   const [error, setError] = useState(null)
+  /** Sidebar danh sách số câu — mặc định ẩn */
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
+
+  const assignmentType = assignment?.assignment_type
+  const currentQuestionLive = questions[currentQ] ?? null
+
+  const listeningMeta = useMemo(() => {
+    if (!currentQuestionLive || questions.length === 0) return null
+    const at = assignmentType
+    if (
+      at === 'toeic_listening' ||
+      ((at === ASSIGNMENT_TYPE_TOEIC_LR || at === ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS) &&
+        currentQ < TOEIC_LISTENING_COUNT)
+    ) {
+      return getToeicListeningMeta(currentQ)
+    }
+    return null
+  }, [assignmentType, currentQuestionLive, questions.length, currentQ])
+
+  const readingMeta = useMemo(() => {
+    if (!currentQuestionLive) return null
+    const at = assignmentType
+    if (
+      (at === ASSIGNMENT_TYPE_TOEIC_LR || at === ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS) &&
+      currentQ >= TOEIC_LISTENING_COUNT &&
+      currentQ < TOEIC_LR_TOTAL
+    ) {
+      return getToeicReadingMeta(currentQ - TOEIC_LISTENING_COUNT)
+    }
+    return null
+  }, [assignmentType, currentQuestionLive, currentQ])
+
+  const groupAudioUrl = useMemo(() => {
+    if (!listeningMeta || (listeningMeta.part !== 3 && listeningMeta.part !== 4)) return null
+    return pickGroupAudioUrl(questions, listeningMeta.part, listeningMeta.groupIndex)
+  }, [listeningMeta, questions])
 
   // Load assignment + start submission
   useEffect(() => {
@@ -102,26 +227,6 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
     questionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [currentQ])
 
-  // Countdown timer
-  useEffect(() => {
-    if (timeLeft === null || timeLeft <= 0) return
-    const interval = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(interval)
-          handleAutoSubmit()
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [timeLeft !== null]) // eslint-disable-line
-
-  const handleAutoSubmit = () => {
-    handleSubmit(true)
-  }
-
   const formatTimer = (seconds) => {
     if (seconds === null) return null
     const m = Math.floor(seconds / 60)
@@ -153,7 +258,14 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
     }).length
   }, [questions, answers])
 
-  const handleSubmit = async (forced = false) => {
+  const questionPartGroups = useMemo(
+    () => buildQuestionPartGroups(assignmentType, questions.length),
+    [assignmentType, questions.length]
+  )
+
+  const handleSubmitRef = useRef(async (_forced) => {})
+
+  const handleSubmit = useCallback(async (forced = false) => {
     if (!submission) return
     if (!forced && answeredCount < questions.length) {
       setShowConfirm(true)
@@ -180,7 +292,27 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
       setSubmitting(false)
       setShowConfirm(false)
     }
-  }
+  }, [submission, questions, answers, answeredCount, success, showError, onComplete])
+
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit
+  }, [handleSubmit])
+
+  // Đếm ngược tổng — luôn gọi bản submit mới nhất khi hết giờ (tránh nộp thiếu đáp án do closure cũ)
+  useEffect(() => {
+    if (timeLeft === null || timeLeft <= 0) return
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval)
+          void handleSubmitRef.current?.(true)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [timeLeft !== null])
 
   if (loading) return <LoadingSpinner message="Đang tải bài tập..." />
 
@@ -210,78 +342,47 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
   const currentQuestion = questions[currentQ]
   const qText = currentQuestion?.question_text || currentQuestion?.text || '(Câu hỏi)'
 
+  const questionNavButton = (idx) => {
+    const q = questions[idx]
+    if (!q) return null
+    const a = answers[q.id]
+    const isAnswered = a && (
+      q.question_type === 'multiple_choice'
+        ? a.selected_option_index !== undefined && a.selected_option_index !== null
+        : a.answer_text?.trim()
+    )
+    const isCurrent = idx === currentQ
+    return (
+      <button
+        key={q.id}
+        type="button"
+        onClick={() => setCurrentQ(idx)}
+        className={`w-8 h-8 rounded-lg text-xs font-medium transition-all ${
+          isCurrent
+            ? 'bg-blue-600 text-white shadow-md scale-110'
+            : isAnswered
+              ? 'bg-green-100 text-green-700 border border-green-300'
+              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+        }`}
+        title={`Câu ${idx + 1}${isAnswered ? ' (đã trả lời)' : ''}`}
+      >
+        {idx + 1}
+      </button>
+    )
+  }
+
   return (
-    <div className="max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-4 sticky top-0 z-10">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-3">
-            <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
-              <ArrowLeft className="h-4 w-4" /> Quay lại
-            </button>
-            {assignment && (
-              <h2 className="text-sm font-semibold text-gray-700 hidden sm:block">{assignment.title}</h2>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Progress */}
-            <div className="flex items-center gap-1.5 text-sm text-gray-500">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span>{answeredCount}/{questions.length}</span>
-            </div>
-
-            {/* Timer */}
-            {timeLeft !== null && (
-              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-mono font-bold ${timerColor}`}>
-                <Clock className="h-4 w-4" />
-                {formatTimer(timeLeft)}
-              </div>
-            )}
-
-            {/* Submit button */}
-            <Button
-              variant="success"
-              icon={Send}
-              onClick={() => handleSubmit(false)}
-              loading={submitting}
-              size="sm"
-            >
-              Nộp bài
-            </Button>
-          </div>
+    <div className="max-w-7xl mx-auto px-2 sm:px-4">
+      <div className="flex flex-col lg:flex-row lg:items-start gap-4 lg:gap-6">
+        {/* Cột chính: đề / nội dung */}
+        <div className="flex-1 min-w-0 space-y-4 order-2 lg:order-1">
+      {listeningMeta && (
+        <div className="rounded-lg border border-amber-100 bg-amber-50/90 px-3 py-2 mb-4 text-xs text-amber-950 leading-relaxed">
+          <strong className="font-semibold text-amber-900">Phần Nghe:</strong> Đồng hồ (khi giáo viên đặt phút) đếm cho{' '}
+          <strong>toàn bộ bài</strong>, chạy liên tục khi bạn chuyển câu.{' '}
+          <strong>Không có</strong> khoảng dừng riêng sau từng file audio để điền đáp án (khác thi TOEIC trên giấy).
         </div>
-
-        {/* Question navigation dots */}
-        <div className="flex gap-1.5 mt-3 flex-wrap">
-          {questions.map((q, idx) => {
-            const a = answers[q.id]
-            const isAnswered = a && (
-              q.question_type === 'multiple_choice'
-                ? a.selected_option_index !== undefined && a.selected_option_index !== null
-                : a.answer_text?.trim()
-            )
-            const isCurrent = idx === currentQ
-
-            return (
-              <button
-                key={q.id}
-                onClick={() => setCurrentQ(idx)}
-                className={`w-8 h-8 rounded-lg text-xs font-medium transition-all ${
-                  isCurrent
-                    ? 'bg-blue-600 text-white shadow-md scale-110'
-                    : isAnswered
-                      ? 'bg-green-100 text-green-700 border border-green-300'
-                      : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                }`}
-                title={`Câu ${idx + 1}${isAnswered ? ' (đã trả lời)' : ''}`}
-              >
-                {idx + 1}
-              </button>
-            )
-          })}
-        </div>
-      </div>
+      )}
 
       {/* Question content */}
       {currentQuestion && (
@@ -293,13 +394,109 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
             <div className="flex items-center gap-2 text-xs text-gray-400">
               <span>{currentQuestion.points || 0} điểm</span>
               <span>•</span>
-              <span>{currentQuestion.question_type === 'multiple_choice' ? '🔘 Trắc nghiệm' : '✍️ Tự luận'}</span>
+              <span>
+                {currentQuestion.question_type === 'multiple_choice'
+                  ? '🔘 Trắc nghiệm'
+                  : currentQuestion.question_type === 'toeic_speaking'
+                    ? '🎤 Speaking'
+                    : currentQuestion.question_type === 'toeic_writing'
+                      ? '✍️ Writing'
+                      : '✍️ Tự luận'}
+              </span>
             </div>
           </div>
 
+          {listeningMeta && (
+            <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-4 py-3 mb-4">
+              <p className="text-sm font-bold text-indigo-900">
+                {TOEIC_PART_RANGES.find((r) => r.part === listeningMeta.part)?.label || listeningMeta.label}
+              </p>
+              <p className="text-xs text-indigo-700 mt-1">
+                {TOEIC_PART_RANGES.find((r) => r.part === listeningMeta.part)?.note}
+              </p>
+            </div>
+          )}
+
+          {readingMeta && (
+            <div className="rounded-lg bg-emerald-50 border border-emerald-100 px-4 py-3 mb-4">
+              <p className="text-sm font-bold text-emerald-900">
+                {READING_PART_RANGES.find((r) => r.part === readingMeta.part)?.label || readingMeta.label}
+              </p>
+              <p className="text-xs text-emerald-800 mt-1">
+                {READING_PART_RANGES.find((r) => r.part === readingMeta.part)?.note}
+              </p>
+            </div>
+          )}
+
+          {/* Listening: nhóm audio Part 3–4 */}
+          {listeningMeta && (listeningMeta.part === 3 || listeningMeta.part === 4) && groupAudioUrl && (
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-800 mb-2">
+                <Headphones className="h-4 w-4 text-indigo-600" />
+                Audio đoạn
+              </div>
+              <p className="text-xs text-gray-600 mb-2 break-all">
+                <span className="text-gray-500">Tên file / nguồn:</span>{' '}
+                <span className="font-medium text-gray-800">{mediaFileNameFromUrl(groupAudioUrl)}</span>
+              </p>
+              {isDirectAudioUrl(groupAudioUrl) ? (
+                <audio key={groupAudioUrl} controls className="w-full" preload="metadata" src={groupAudioUrl} />
+              ) : (
+                <a href={groupAudioUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline">
+                  Mở âm thanh
+                </a>
+              )}
+            </div>
+          )}
+
+          {listeningMeta?.part === 1 && currentQuestion.file_url && (
+            <div className="rounded-xl border border-gray-200 overflow-hidden bg-gray-100 mb-4">
+              <div className="flex items-center gap-2 px-3 py-2 bg-white border-b border-gray-100 text-sm text-gray-700">
+                <ImageIcon className="h-4 w-4" /> Hình ảnh (Part 1)
+              </div>
+              <p className="px-3 py-2 text-xs bg-white border-b border-gray-100 text-gray-700 break-all">
+                <span className="text-gray-500">Tên file:</span>{' '}
+                <span className="font-medium">{mediaFileNameFromUrl(currentQuestion.file_url)}</span>
+              </p>
+              <img
+                src={currentQuestion.file_url}
+                alt="Part 1"
+                className="w-full max-h-[360px] object-contain mx-auto block"
+              />
+            </div>
+          )}
+
+          {/* Listening Part 1–2 / đơn lẻ: audio câu */}
+          {listeningMeta &&
+            (listeningMeta.part === 1 || listeningMeta.part === 2) &&
+            currentQuestion.youtube_url?.trim() && (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-800 mb-2">
+                  <Headphones className="h-4 w-4 text-indigo-600" />
+                  {listeningMeta.part === 2 ? 'Audio (không hiển thị đề chữ)' : 'Audio'}
+                </div>
+                <p className="text-xs text-gray-600 mb-2 break-all">
+                  <span className="text-gray-500">Tên file / nguồn:</span>{' '}
+                  <span className="font-medium text-gray-800">{mediaFileNameFromUrl(currentQuestion.youtube_url)}</span>
+                </p>
+                {isDirectAudioUrl(currentQuestion.youtube_url) ? (
+                  <audio controls className="w-full" preload="metadata" src={currentQuestion.youtube_url} />
+                ) : (
+                  <YoutubeEmbed
+                    url={currentQuestion.youtube_url}
+                    title={`${assignment?.title || 'Bài tập'} — câu ${currentQ + 1}`}
+                  />
+                )}
+              </div>
+            )}
+
           {/* Question text */}
           <div className="mb-6">
-            {currentQuestion.question_text && currentQuestion.question_text.includes('<') ? (
+            {listeningMeta?.part === 2 ? (
+              <p className="text-sm text-gray-600 italic">
+                Part 2 — Nghe và chọn A / B / C (theo đặc tả TOEIC, không hiển thị nội dung chữ trên màn hình).
+              </p>
+            ) : currentQuestion.question_text && currentQuestion.question_text.includes('<') ? (
               <RichContentViewer content={currentQuestion.question_text} />
             ) : (
               <p className="text-base font-medium text-gray-900 leading-relaxed whitespace-pre-wrap">
@@ -307,22 +504,46 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
               </p>
             )}
 
-            {/* File attachment */}
-            {currentQuestion.file_url && (
-              <a href={currentQuestion.file_url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 mt-3 text-sm text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg">
-                <FileText className="h-4 w-4" /> Xem tệp đính kèm
+            {!listeningMeta && readingMeta?.part === 7 && currentQuestion.file_url && (
+              <div className="mt-4 rounded-xl border overflow-hidden bg-gray-50">
+                <p className="px-3 py-2 text-xs text-gray-700 bg-white border-b border-gray-100 break-all">
+                  <span className="text-gray-500">Tên file ảnh:</span>{' '}
+                  <span className="font-medium">{mediaFileNameFromUrl(currentQuestion.file_url)}</span>
+                </p>
+                <img
+                  src={currentQuestion.file_url}
+                  alt="Reading"
+                  className="w-full max-h-[320px] object-contain mx-auto"
+                />
+              </div>
+            )}
+
+            {/* File attachment — không phải ảnh Part 1 / Reading P7 đã hiển thị */}
+            {currentQuestion.file_url &&
+              !(listeningMeta?.part === 1) &&
+              !(readingMeta?.part === 7 && currentQuestion.file_url) && (
+              <a
+                href={currentQuestion.file_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex flex-col items-start gap-0.5 mt-3 text-sm text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <FileText className="h-4 w-4" /> Xem tệp đính kèm
+                </span>
+                <span className="text-xs text-gray-600 font-normal break-all max-w-full">
+                  {mediaFileNameFromUrl(currentQuestion.file_url)}
+                </span>
               </a>
             )}
 
-            {/* YouTube */}
-            {currentQuestion.youtube_url && (
-              <div className="mt-3">
-                <a href={currentQuestion.youtube_url} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-red-600 hover:text-red-800 bg-red-50 px-3 py-1.5 rounded-lg">
-                  📺 Xem video
-                </a>
-              </div>
+            {/* Video / nhúng — toàn bộ Listening đã có khối audio riêng */}
+            {currentQuestion.youtube_url && !listeningMeta && (
+              <YoutubeEmbed
+                url={currentQuestion.youtube_url}
+                title={`${assignment?.title || 'Bài tập'} — câu ${currentQ + 1}`}
+                className="mt-4"
+              />
             )}
           </div>
 
@@ -332,6 +553,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
               <p className="text-xs text-gray-500 mb-1">Chọn đáp án đúng:</p>
               {(currentQuestion.options || []).map((opt, optIdx) => {
                 const isSelected = answers[currentQuestion.id]?.selected_option_index === optIdx
+                const hideChoiceText = listeningMeta?.part === 2
                 return (
                   <button
                     key={optIdx}
@@ -348,7 +570,9 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
                       {String.fromCharCode(65 + optIdx)}
                     </div>
                     <span className={`text-sm flex-1 ${isSelected ? 'text-blue-800 font-medium' : 'text-gray-700'}`}>
-                      {opt.text || `Đáp án ${String.fromCharCode(65 + optIdx)}`}
+                      {hideChoiceText
+                        ? '\u00a0'
+                        : (opt.text || `Đáp án ${String.fromCharCode(65 + optIdx)}`)}
                     </span>
                     {isSelected && (
                       <CheckCircle className="h-5 w-5 text-blue-500 flex-shrink-0" />
@@ -359,12 +583,42 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
             </div>
           ) : (
             <div>
-              <p className="text-xs text-gray-500 mb-2">Nhập câu trả lời:</p>
+              {currentQuestion.toeic_meta && (
+                <div className="mb-3 rounded-lg bg-violet-50 border border-violet-100 px-3 py-2 text-xs text-violet-900 space-y-1">
+                  {currentQuestion.question_type === 'toeic_speaking' && (
+                    <p>
+                      Chuẩn bị: <strong>{currentQuestion.toeic_meta.prep_seconds}</strong>s · Trả lời:{' '}
+                      <strong>{currentQuestion.toeic_meta.answer_seconds}</strong>s
+                      {currentQuestion.toeic_meta.shared_stimulus ? (
+                        <span className="block mt-1 text-violet-700">
+                          Dùng chung tài liệu với các câu Speaking xung quanh (theo đề).
+                        </span>
+                      ) : null}
+                    </p>
+                  )}
+                  {currentQuestion.question_type === 'toeic_writing' && (
+                    <p>
+                      Gợi ý thời gian: <strong>{currentQuestion.toeic_meta.time_minutes}</strong> phút
+                      {Array.isArray(currentQuestion.toeic_meta.keywords) &&
+                        currentQuestion.toeic_meta.keywords.length > 0 && (
+                          <span className="block mt-1">
+                            Từ khóa bắt buộc: {currentQuestion.toeic_meta.keywords.join(', ')}
+                          </span>
+                        )}
+                    </p>
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-gray-500 mb-2">
+                {currentQuestion.question_type === 'toeic_speaking'
+                  ? 'Ghi âm / dán link file hoặc ghi chú (phiên bản đơn giản):'
+                  : 'Nhập câu trả lời:'}
+              </p>
               <textarea
                 value={answers[currentQuestion.id]?.answer_text || ''}
                 onChange={(e) => updateAnswer(currentQuestion.id, 'answer_text', e.target.value)}
                 placeholder="Nhập câu trả lời của bạn tại đây..."
-                rows={10}
+                rows={currentQuestion.question_type === 'toeic_writing' ? 14 : 10}
                 className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 text-sm resize-y transition-colors"
               />
               <div className="flex justify-between mt-1">
@@ -427,6 +681,80 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
           <p className="text-xs text-green-600 mt-1">Nhấn "Nộp bài" khi bạn đã kiểm tra xong.</p>
         </div>
       )}
+
+        </div>
+
+        {/* Cột phải: thanh điều khiển + danh sách câu theo phần (mặc định ẩn) */}
+        <aside className="w-full lg:w-72 xl:w-80 flex-shrink-0 order-1 lg:order-2 lg:sticky lg:top-4 lg:self-start space-y-3 z-20">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 sm:p-4">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 flex-shrink-0"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Quay lại
+                </button>
+                {assignment && (
+                  <h2 className="text-sm font-semibold text-gray-800 text-right line-clamp-2 flex-1 min-w-0">
+                    {assignment.title}
+                  </h2>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-sm text-gray-500">
+                  <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                  <span>{answeredCount}/{questions.length}</span>
+                </div>
+                {timeLeft !== null && (
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-mono font-bold ${timerColor}`}>
+                    <Clock className="h-4 w-4" />
+                    {formatTimer(timeLeft)}
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="success"
+                icon={Send}
+                className="w-full"
+                onClick={() => handleSubmit(false)}
+                loading={submitting}
+                size="sm"
+              >
+                Nộp bài
+              </Button>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((o) => !o)}
+            className="w-full flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <List className="h-4 w-4 text-gray-500" />
+              Danh sách câu ({questions.length})
+            </span>
+            {sidebarOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+          </button>
+
+          {sidebarOpen && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 max-h-[min(70vh,560px)] overflow-y-auto overscroll-contain">
+              {questionPartGroups.map((group) => (
+                <div key={group.key} className="mb-4 last:mb-0">
+                  <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2 pr-1">
+                    {group.label}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.indices.map((idx) => questionNavButton(idx))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </aside>
+      </div>
 
       {/* Confirm dialog */}
       {showConfirm && (

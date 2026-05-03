@@ -24,6 +24,7 @@ import Input from '../common/Input'
 import Select from '../common/Select'
 import { ToastContext } from '../../context/ToastContext'
 import assignmentsService from '../../services/assignments.service'
+import { MCQ_OPTION_COUNT_MAX, MCQ_OPTION_COUNT_MIN } from '../../utils/assignmentHelpers'
 
 function SortableQuestion({ question, index, onUpdate, onRemove }) {
   const {
@@ -51,12 +52,16 @@ function SortableQuestion({ question, index, onUpdate, onRemove }) {
     onUpdate(index, { ...question, options })
   }
 
+  const optCount = (question.options || []).length
+
   const addOption = () => {
+    if (optCount >= MCQ_OPTION_COUNT_MAX) return
     const options = [...(question.options || []), { text: '', is_correct: false }]
     onUpdate(index, { ...question, options })
   }
 
   const removeOption = (optIdx) => {
+    if (optCount <= MCQ_OPTION_COUNT_MIN) return
     const options = (question.options || []).filter((_, i) => i !== optIdx)
     onUpdate(index, { ...question, options })
   }
@@ -158,7 +163,8 @@ function SortableQuestion({ question, index, onUpdate, onRemove }) {
                   <button
                     type="button"
                     onClick={() => removeOption(optIdx)}
-                    className="p-1 rounded hover:bg-red-50 text-red-400"
+                    disabled={optCount <= MCQ_OPTION_COUNT_MIN}
+                    className="p-1 rounded hover:bg-red-50 text-red-400 disabled:opacity-30 disabled:pointer-events-none"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -167,10 +173,11 @@ function SortableQuestion({ question, index, onUpdate, onRemove }) {
               <button
                 type="button"
                 onClick={addOption}
-                className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 mt-1"
+                disabled={optCount >= MCQ_OPTION_COUNT_MAX}
+                className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 mt-1 disabled:opacity-40 disabled:pointer-events-none"
               >
                 <CirclePlus className="h-4 w-4" />
-                Thêm đáp án
+                Thêm đáp án ({MCQ_OPTION_COUNT_MIN}–{MCQ_OPTION_COUNT_MAX})
               </button>
             </div>
           )}
@@ -302,7 +309,9 @@ function ExcelImportPanel({ onImport, onClose }) {
       <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-blue-100">
         <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">1</span>
         <div className="flex-1">
-          <p className="text-sm text-gray-700">Tải file mẫu Excel với 2 sheet: <strong>Trắc nghiệm</strong> và <strong>Tự luận</strong></p>
+          <p className="text-sm text-gray-700">
+            Tải file mẫu gồm <strong>Trắc nghiệm</strong> (có thêm cột URL ảnh / âm thanh), <strong>Part 1 (TOEIC)</strong> và <strong>Tự luận</strong>
+          </p>
         </div>
         <button
           type="button"

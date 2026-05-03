@@ -196,7 +196,7 @@ const remove = async (id) => {
 };
 
 const addQuestion = async (assignmentId, data) => {
-  const { question_text, question_type, options, correct_answer, points, order_index, file_url, youtube_url } = data;
+  const { question_text, question_type, options, correct_answer, points, order_index, file_url, youtube_url, toeic_meta } = data;
   const { data: row, error } = await supabase
     .from('assignment_questions')
     .insert({
@@ -209,6 +209,7 @@ const addQuestion = async (assignmentId, data) => {
       order_index: order_index || 0,
       file_url,
       youtube_url,
+      toeic_meta: toeic_meta ?? null,
     })
     .select()
     .single();
@@ -218,7 +219,7 @@ const addQuestion = async (assignmentId, data) => {
 };
 
 const updateQuestion = async (questionId, data) => {
-  const { question_text, question_type, options, correct_answer, points, order_index, file_url, youtube_url } = data;
+  const { question_text, question_type, options, correct_answer, points, order_index, file_url, youtube_url, toeic_meta } = data;
 
   const updateObj = {};
   if (question_text !== undefined) updateObj.question_text = question_text;
@@ -229,6 +230,7 @@ const updateQuestion = async (questionId, data) => {
   if (order_index !== undefined) updateObj.order_index = order_index;
   if (file_url !== undefined) updateObj.file_url = file_url;
   if (youtube_url !== undefined) updateObj.youtube_url = youtube_url;
+  if (toeic_meta !== undefined) updateObj.toeic_meta = toeic_meta;
 
   const { data: row, error } = await supabase
     .from('assignment_questions')
@@ -278,6 +280,7 @@ const bulkAddQuestions = async (assignmentId, questions) => {
     order_index: q.order_index ?? idx,
     file_url: q.file_url || null,
     youtube_url: q.youtube_url || null,
+    toeic_meta: q.toeic_meta ?? null,
   }));
 
   const { data, error } = await supabase

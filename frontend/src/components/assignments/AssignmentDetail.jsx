@@ -1,23 +1,36 @@
+import { Link } from 'react-router-dom'
 import Modal from '../common/Modal'
 import StatusBadge from '../common/StatusBadge'
 import RichContentViewer from '../common/RichContentViewer'
 import { formatDate } from '../../utils/formatDate'
-import { BookOpen, Calendar, Hash, Clock, Check, X } from 'lucide-react'
+import { BookOpen, Calendar, Hash, Clock, Check, X, PlayCircle } from 'lucide-react'
+import YoutubeEmbed from '../common/YoutubeEmbed'
 
 const typeLabelMap = {
   essay: 'Tự luận',
   mcq: 'Trắc nghiệm',
   multiple_choice: 'Trắc nghiệm',
   mixed: 'Hỗn hợp',
+  toeic_listening: 'TOEIC Listening',
+  toeic_lr: 'TOEIC Nghe & Đọc',
+  toeic_four_skills: 'TOEIC 4 kỹ năng',
 }
 
-export default function AssignmentDetail({ isOpen, onClose, assignment }) {
+/**
+ * @param {boolean} [studentView] — học sinh: không hiển thị câu hỏi / đáp án; chỉ mô tả + nút vào làm bài
+ */
+export default function AssignmentDetail({ isOpen, onClose, assignment, studentView = false }) {
   if (!assignment) return null
 
   const questions = assignment.questions || []
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Chi tiết bài tập" size="xl">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={studentView ? 'Bài tập' : 'Chi tiết bài tập'}
+      size="xl"
+    >
       <div className="space-y-5">
         {/* Title */}
         <div className="flex items-center justify-between">
@@ -76,20 +89,52 @@ export default function AssignmentDetail({ isOpen, onClose, assignment }) {
           </div>
         )}
 
-        {/* Questions */}
-        {questions.length > 0 && (
+        {/* Học sinh: không xem đề / đáp án — chỉ đường dẫn làm bài */}
+        {studentView && (
+          <div className="pt-3 border-t border-gray-100 rounded-xl bg-indigo-50/80 border border-indigo-100 p-4 space-y-3">
+            <p className="text-sm text-indigo-950">
+              Bài gồm <strong>{questions.length}</strong> phần (câu).{' '}
+              <span className="text-indigo-800">
+                Nội dung câu và đáp án chỉ hiển thị trong màn làm bài.
+              </span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                to={`/my-assignments/${assignment.id}`}
+                onClick={onClose}
+                className="inline-flex items-center justify-center gap-2 rounded-lg font-medium px-4 py-2 text-sm bg-green-600 hover:bg-green-700 text-white shadow-sm transition-colors"
+              >
+                <PlayCircle className="h-4 w-4" />
+                Vào làm bài / Xem bài tập
+              </Link>
+              <p className="text-xs text-indigo-700 self-center">
+                Hoặc mở từ menu <strong>Bài tập của tôi</strong>.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Giáo viên / admin: xem đầy đủ câu hỏi và đáp án */}
+        {!studentView && questions.length > 0 && (
           <div className="pt-3 border-t border-gray-100">
             <p className="text-sm font-semibold text-gray-700 mb-3">
               Câu hỏi ({questions.length})
             </p>
             <div className="space-y-4">
-              {questions.map((q, idx) => (
+              {questions.map((q, idx) => {
+                const body = q.question_text || q.text || ''
+                return (
                 <div key={q.id || idx} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-2">
-                    <p className="text-sm font-medium text-gray-800">
-                      Câu {idx + 1}: {q.text || '(Chưa có nội dung)'}
-                    </p>
-                    <span className="text-xs text-blue-600 font-medium ml-2 whitespace-nowrap">
+                  <div className="flex items-start justify-between mb-2 gap-2">
+                    <div className="text-sm font-medium text-gray-800 min-w-0 flex-1">
+                      <span className="text-gray-600">Câu {idx + 1}:</span>{' '}
+                      {body.includes('<') ? (
+                        <RichContentViewer content={body} />
+                      ) : (
+                        <span>{body || '(Chưa có nội dung)'}</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
                       {q.points ?? '—'} điểm
                     </span>
                   </div>
@@ -134,14 +179,15 @@ export default function AssignmentDetail({ isOpen, onClose, assignment }) {
                   )}
 
                   {q.youtube_url && (
-                    <div className="mt-2">
-                      <a href={q.youtube_url} target="_blank" rel="noopener noreferrer" className="text-xs text-red-600 hover:underline">
-                        Video YouTube
-                      </a>
-                    </div>
+                    <YoutubeEmbed
+                      url={q.youtube_url}
+                      title={`${assignment.title || 'Bài tập'} — câu ${idx + 1}`}
+                      className="mt-3"
+                    />
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}

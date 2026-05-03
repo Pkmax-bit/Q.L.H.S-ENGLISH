@@ -16,7 +16,7 @@ const errorHandler = (err, req, res, next) => {
     });
   }
 
-  if (err.message && err.message.includes('File type')) {
+  if (err.message && (err.message.includes('File type') || err.message.includes('Định dạng không hỗ trợ'))) {
     return res.status(400).json({
       success: false,
       message: err.message,
@@ -49,9 +49,12 @@ const errorHandler = (err, req, res, next) => {
   }
 
   if (err.code === '23514') {
+    const detail = err.details || err.detail || err.message || '';
     return res.status(400).json({
       success: false,
-      message: 'Value violates check constraint',
+      message: detail && String(detail).length > 0
+        ? `Value violates check constraint: ${detail}`
+        : 'Value violates check constraint',
       data: null,
     });
   }

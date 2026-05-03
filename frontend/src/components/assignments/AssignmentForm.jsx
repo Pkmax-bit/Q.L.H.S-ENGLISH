@@ -4,7 +4,22 @@ import Input from '../common/Input'
 import Select from '../common/Select'
 import Button from '../common/Button'
 import QuestionBuilder from './QuestionBuilder'
+import ToeicListeningQuestionBuilder from './ToeicListeningQuestionBuilder'
+import ToeicMultiSectionBuilder from './ToeicMultiSectionBuilder'
 import { ToastContext } from '../../context/ToastContext'
+import {
+  ASSIGNMENT_TYPE_TOEIC_LISTENING,
+  TOEIC_FULL_QUESTIONS,
+  buildToeicListeningSkeletonQuestions,
+} from '../../utils/toeicListening'
+import {
+  ASSIGNMENT_TYPE_TOEIC_LR,
+  ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS,
+  TOEIC_LR_TOTAL,
+  TOEIC_FOUR_SKILLS_TOTAL,
+  buildToeicLRSkeletonQuestions,
+  buildToeicFourSkillsSkeletonQuestions,
+} from '../../utils/toeicExamConfig'
 import { useFetch } from '../../hooks/useFetch'
 import assignmentsService from '../../services/assignments.service'
 import classesService from '../../services/classes.service'
@@ -46,6 +61,8 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
   const lessonOptions = filteredLessons.map((l) => ({ value: l.id, label: l.title }))
 
   useEffect(() => {
+    if (!isOpen) return
+
     if (assignment && assignment.id) {
       // Map DB question format → QuestionBuilder format
       const mappedQuestions = (assignment.questions || []).map((q) => ({
@@ -57,11 +74,14 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
         correct_answer: q.correct_answer || '',
         file_url: q.file_url || '',
         youtube_url: q.youtube_url || '',
+        toeic_meta: q.toeic_meta ?? null,
       }))
+      const classIdRaw = assignment.class_id ?? assignment.class?.id
+      const lessonIdRaw = assignment.lesson_id ?? assignment.lesson?.id
       setForm({
         title: assignment.title || '',
-        class_id: assignment.class_id || assignment.class?.id || '',
-        lesson_id: assignment.lesson_id || assignment.lesson?.id || '',
+        class_id: classIdRaw != null && classIdRaw !== '' ? String(classIdRaw) : '',
+        lesson_id: lessonIdRaw != null && lessonIdRaw !== '' ? String(lessonIdRaw) : '',
         assignment_type: assignment.assignment_type || 'essay',
         total_points: assignment.total_points ?? '',
         due_date: toInputDate(assignment.due_date) || '',
@@ -70,13 +90,107 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
         questions: mappedQuestions,
       })
     } else {
-      setForm({ ...initialForm, class_id: defaultClassId || '' })
+      setForm({
+        ...initialForm,
+        class_id: defaultClassId != null && defaultClassId !== '' ? String(defaultClassId) : '',
+      })
     }
     setErrors({})
   }, [assignment, isOpen, defaultClassId])
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
+
+    if (name === 'assignment_type' && value === ASSIGNMENT_TYPE_TOEIC_LISTENING) {
+      setForm((prev) => {
+        if (prev.assignment_type === ASSIGNMENT_TYPE_TOEIC_LISTENING) return prev
+        if (
+          prev.questions?.length > 0 &&
+          prev.questions.length !== TOEIC_FULL_QUESTIONS
+        ) {
+          if (
+            !window.confirm(
+              'Chuyển sang TOEIC Listening: tạo khung 100 câu chuẩn? Câu hỏi hiện tại sẽ bị thay thế.'
+            )
+          ) {
+            return prev
+          }
+        }
+        const ts = Date.now()
+        const needSkeleton =
+          !prev.questions?.length || prev.questions.length !== TOEIC_FULL_QUESTIONS
+        const nextQuestions = needSkeleton
+          ? buildToeicListeningSkeletonQuestions().map((q, i) => ({
+              ...q,
+              id: `toeic_${ts}_${i}`,
+            }))
+          : prev.questions
+        return {
+          ...prev,
+          assignment_type: value,
+          time_limit_minutes: prev.time_limit_minutes || 45,
+          total_points: prev.total_points !== '' && prev.total_points !== undefined
+            ? prev.total_points
+            : 100,
+          questions: nextQuestions,
+        }
+      })
+      if (errors.assignment_type) setErrors((prev) => ({ ...prev, assignment_type: null }))
+      return
+    }
+
+    if (name === 'assignment_type' && value === ASSIGNMENT_TYPE_TOEIC_LR) {
+      setForm((prev) => {
+        if (prev.assignment_type === ASSIGNMENT_TYPE_TOEIC_LR) return prev
+        if (
+          prev.questions?.length > 0 &&
+          prev.questions.length !== TOEIC_LR_TOTAL &&
+          !window.confirm(
+            `Chuyển sang TOEIC 2 kỹ năng (Nghe + Đọc): tạo khung ${TOEIC_LR_TOTAL} câu? Câu hiện tại sẽ bị thay thế.`
+          )
+        ) {
+          return prev
+        }
+        const ts = Date.now()
+        return {
+          ...prev,
+          assignment_type: value,
+          time_limit_minutes: prev.time_limit_minutes || 120,
+          total_points:
+            prev.total_points !== '' && prev.total_points !== undefined ? prev.total_points : 200,
+          questions: buildToeicLRSkeletonQuestions(ts),
+        }
+      })
+      if (errors.assignment_type) setErrors((prev) => ({ ...prev, assignment_type: null }))
+      return
+    }
+
+    if (name === 'assignment_type' && value === ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS) {
+      setForm((prev) => {
+        if (prev.assignment_type === ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS) return prev
+        if (
+          prev.questions?.length > 0 &&
+          prev.questions.length !== TOEIC_FOUR_SKILLS_TOTAL &&
+          !window.confirm(
+            `Chuyển sang TOEIC 4 kỹ năng: tạo khung ${TOEIC_FOUR_SKILLS_TOTAL} phần (200 TN + 11 Speaking + 8 Writing)? Câu hiện tại sẽ bị thay thế.`
+          )
+        ) {
+          return prev
+        }
+        const ts = Date.now()
+        return {
+          ...prev,
+          assignment_type: value,
+          time_limit_minutes: prev.time_limit_minutes || 300,
+          total_points:
+            prev.total_points !== '' && prev.total_points !== undefined ? prev.total_points : 400,
+          questions: buildToeicFourSkillsSkeletonQuestions(ts),
+        }
+      })
+      if (errors.assignment_type) setErrors((prev) => ({ ...prev, assignment_type: null }))
+      return
+    }
+
     setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }))
   }
@@ -106,6 +220,7 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
         order_index: idx,
         file_url: q.file_url || '',
         youtube_url: q.youtube_url || '',
+        toeic_meta: q.toeic_meta ?? null,
       }))
 
       const payload = {
@@ -138,8 +253,30 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={isEdit ? 'Chỉnh sửa bài tập' : 'Thêm bài tập mới'}
-      size="xl"
+      title={
+        form.assignment_type === ASSIGNMENT_TYPE_TOEIC_LISTENING
+          ? isEdit
+            ? 'Chỉnh sửa bài kiểm tra TOEIC Listening'
+            : 'Tạo bài kiểm tra TOEIC Listening'
+          : form.assignment_type === ASSIGNMENT_TYPE_TOEIC_LR
+            ? isEdit
+              ? 'Chỉnh sửa TOEIC — Nghe & Đọc'
+              : 'Tạo bài TOEIC — Nghe & Đọc (200 câu)'
+            : form.assignment_type === ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS
+              ? isEdit
+                ? 'Chỉnh sửa TOEIC 4 kỹ năng'
+                : 'Tạo bài TOEIC 4 kỹ năng'
+              : isEdit
+                ? 'Chỉnh sửa bài tập'
+                : 'Thêm bài tập mới'
+      }
+      size={
+        form.assignment_type === ASSIGNMENT_TYPE_TOEIC_LISTENING ||
+        form.assignment_type === ASSIGNMENT_TYPE_TOEIC_LR ||
+        form.assignment_type === ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS
+          ? 'full'
+          : 'xl'
+      }
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>
@@ -189,6 +326,9 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
               { value: 'essay', label: 'Tự luận' },
               { value: 'multiple_choice', label: 'Trắc nghiệm' },
               { value: 'mixed', label: 'Hỗn hợp' },
+              { value: ASSIGNMENT_TYPE_TOEIC_LISTENING, label: 'TOEIC Listening (100 câu)' },
+              { value: ASSIGNMENT_TYPE_TOEIC_LR, label: 'TOEIC Nghe & Đọc (200 câu)' },
+              { value: ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS, label: 'TOEIC 4 kỹ năng (L+R+S+W)' },
             ]}
           />
           <Input
@@ -231,10 +371,24 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
 
         {/* Question builder */}
         <div className="pt-4 border-t border-gray-100">
-          <QuestionBuilder
-            questions={form.questions}
-            onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
-          />
+          {form.assignment_type === ASSIGNMENT_TYPE_TOEIC_LISTENING ? (
+            <ToeicListeningQuestionBuilder
+              questions={form.questions}
+              onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
+            />
+          ) : form.assignment_type === ASSIGNMENT_TYPE_TOEIC_LR ||
+            form.assignment_type === ASSIGNMENT_TYPE_TOEIC_FOUR_SKILLS ? (
+            <ToeicMultiSectionBuilder
+              assignmentType={form.assignment_type}
+              questions={form.questions}
+              onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
+            />
+          ) : (
+            <QuestionBuilder
+              questions={form.questions}
+              onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
+            />
+          )}
         </div>
       </form>
     </Modal>

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, GraduationCap, BookOpen, School,
   FileText, ClipboardList, CalendarDays, Building2, Wallet,
   ChevronLeft, ChevronRight, X, BookCopy, UserCheck, Backpack,
-  PenLine, TableProperties, BarChart3, ListChecks
+  PenLine, TableProperties, BarChart3, ListChecks, Library,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../hooks/useAuth'
@@ -79,6 +79,12 @@ const menuItems = [
     path: '/assignments',
     icon: ClipboardList,
     label: 'Bài tập',
+    roles: ['admin', 'teacher'],
+  },
+  {
+    path: '/question-bank',
+    icon: Library,
+    label: 'Ngân hàng câu hỏi',
     roles: ['admin', 'teacher'],
   },
   {

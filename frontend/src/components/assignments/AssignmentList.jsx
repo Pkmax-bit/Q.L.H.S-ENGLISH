@@ -12,11 +12,15 @@ import { useAuth } from '../../hooks/useAuth'
 import { ToastContext } from '../../context/ToastContext'
 import assignmentsService from '../../services/assignments.service'
 import { formatDate } from '../../utils/formatDate'
+import { unwrapApiPayload } from '../../utils/assignmentHelpers'
 
 const typeBadgeMap = {
   essay: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Tự luận' },
   multiple_choice: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Trắc nghiệm' },
   mixed: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Hỗn hợp' },
+  toeic_listening: { bg: 'bg-indigo-100', text: 'text-indigo-800', label: 'TOEIC Listening' },
+  toeic_lr: { bg: 'bg-teal-100', text: 'text-teal-900', label: 'TOEIC Nghe & Đọc' },
+  toeic_four_skills: { bg: 'bg-fuchsia-100', text: 'text-fuchsia-900', label: 'TOEIC 4 kỹ năng' },
 }
 
 function TypeBadge({ type }) {
@@ -85,9 +89,27 @@ export default function AssignmentList() {
     },
   ]
 
-  const handleEdit = (item) => { setSelected(item); setShowForm(true) }
+  const handleEdit = (assignment) => {
+    assignmentsService.getById(assignment.id).then((res) => {
+      const data = unwrapApiPayload(res)
+      setSelected(data || assignment)
+      setShowForm(true)
+    }).catch(() => {
+      setSelected(assignment)
+      setShowForm(true)
+    })
+  }
   const handleDelete = (item) => { setSelected(item); setShowDelete(true) }
-  const handleView = (item) => { setSelected(item); setShowDetail(true) }
+  const handleView = (assignment) => {
+    assignmentsService.getById(assignment.id).then((res) => {
+      const data = unwrapApiPayload(res)
+      setSelected(data || assignment)
+      setShowDetail(true)
+    }).catch(() => {
+      setSelected(assignment)
+      setShowDetail(true)
+    })
+  }
 
   const confirmDelete = async () => {
     setDeleting(true)
@@ -147,6 +169,7 @@ export default function AssignmentList() {
       />
 
       <AssignmentForm
+        key={selected?.id != null ? String(selected.id) : 'new'}
         isOpen={showForm}
         onClose={() => { setShowForm(false); setSelected(null) }}
         assignment={selected}

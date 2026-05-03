@@ -1,7 +1,7 @@
 import { Calendar, User, Users, MapPin, FileText, BookOpen, ClipboardList } from 'lucide-react'
 import { formatDate } from '../../../utils/formatDate'
 
-export default function ClassOverviewTab({ classInfo, stats }) {
+export default function ClassOverviewTab({ classInfo, stats, forStudent = false }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Class info card */}
@@ -41,47 +41,50 @@ export default function ClassOverviewTab({ classInfo, stats }) {
         )}
       </div>
 
-      {/* Stats summary card */}
+      {/* Stats — học sinh chỉ thấy bài học / bài tập (không xem thống kê chấm cả lớp) */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
         <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          📊 Thống kê tổng quan
+          {forStudent ? '📌 Trong lớp này' : '📊 Thống kê tổng quan'}
         </h3>
 
         <div className="space-y-3">
           <StatRow
             label="Bài học"
             value={stats.lesson_count}
-            description="bài học đã tạo"
+            description={forStudent ? 'được đăng trong lớp' : 'bài học đã tạo'}
             color="green"
           />
           <StatRow
             label="Bài tập"
             value={stats.assignment_count}
-            description="bài tập đã giao"
+            description={forStudent ? 'được giao — làm trong tab Bài tập' : 'bài tập đã giao'}
             color="purple"
           />
-          <StatRow
-            label="Bài nộp"
-            value={stats.total_submissions}
-            description="lần nộp bài"
-            color="amber"
-          />
-          <StatRow
-            label="Đã chấm"
-            value={stats.graded_submissions}
-            description={`/ ${stats.total_submissions} bài nộp`}
-            color="teal"
-          />
-          <StatRow
-            label="Điểm TB"
-            value={stats.avg_score || '—'}
-            description="điểm trung bình lớp"
-            color="red"
-          />
+          {!forStudent && (
+            <>
+              <StatRow
+                label="Bài nộp"
+                value={stats.total_submissions}
+                description="lần nộp bài"
+                color="amber"
+              />
+              <StatRow
+                label="Đã chấm"
+                value={stats.graded_submissions}
+                description={`/ ${stats.total_submissions} bài nộp`}
+                color="teal"
+              />
+              <StatRow
+                label="Điểm TB"
+                value={stats.avg_score || '—'}
+                description="điểm trung bình lớp"
+                color="red"
+              />
+            </>
+          )}
         </div>
 
-        {/* Progress bar */}
-        {stats.total_submissions > 0 && (
+        {!forStudent && stats.total_submissions > 0 && (
           <div className="pt-3 border-t border-gray-100">
             <div className="flex justify-between text-xs text-gray-500 mb-1.5">
               <span>Tiến độ chấm bài</span>

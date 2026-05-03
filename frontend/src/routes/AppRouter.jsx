@@ -19,8 +19,10 @@ import ClassDetailPage from '../pages/ClassDetailPage'
 import StudentLearningPage from '../pages/StudentLearningPage'
 import MyGradesPage from '../pages/MyGradesPage'
 import MyAssignmentsPage from '../pages/MyAssignmentsPage'
+import MyAssignmentDetailPage from '../pages/MyAssignmentDetailPage'
 import SubmissionsPage from '../pages/SubmissionsPage'
 import GradeBookPage from '../pages/GradeBookPage'
+import QuestionBankPage from '../pages/QuestionBankPage'
 import ProfilePage from '../pages/ProfilePage'
 import NotFoundPage from '../pages/NotFoundPage'
 
@@ -133,6 +135,14 @@ export default function AppRouter() {
             </RoleRoute>
           }
         />
+        <Route
+          path="question-bank"
+          element={
+            <RoleRoute roles={['admin', 'teacher']}>
+              <QuestionBankPage />
+            </RoleRoute>
+          }
+        />
 
         {/* Admin + Teacher - Enrollment requests */}
         <Route
@@ -158,6 +168,14 @@ export default function AppRouter() {
           element={
             <RoleRoute roles={['student']}>
               <MyAssignmentsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="my-assignments/:assignmentId"
+          element={
+            <RoleRoute roles={['student']}>
+              <MyAssignmentDetailPage />
             </RoleRoute>
           }
         />

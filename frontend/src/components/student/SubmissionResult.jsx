@@ -1,13 +1,87 @@
 import { useCallback } from 'react'
 import {
-  ArrowLeft, CheckCircle, XCircle, Clock, Trophy,
-  Circle, AlertTriangle, FileText, MessageSquare
+  ArrowLeft, CheckCircle, XCircle, Clock,
+  Circle, AlertTriangle, FileText, MessageSquare,
+  Headphones, Image as ImageIcon,
 } from 'lucide-react'
 import Button from '../common/Button'
 import LoadingSpinner from '../common/LoadingSpinner'
 import RichContentViewer from '../common/RichContentViewer'
+import YoutubeEmbed from '../common/YoutubeEmbed'
 import { useFetch } from '../../hooks/useFetch'
 import submissionsService from '../../services/submissions.service'
+import { mediaFileNameFromUrl } from '../../utils/mediaUrl'
+import { mcqLetter } from '../../utils/assignmentHelpers'
+import { isDirectAudioUrl } from '../../utils/toeicListening'
+
+function isLikelyImageUrl(url) {
+  if (!url || typeof url !== 'string') return false
+  return /\.(jpe?g|png|gif|webp|svg|bmp)(\?|#|$)/i.test(url.trim())
+}
+
+/** Khối media cột phải — đồng bộ kiểu hiển thị với màn làm bài */
+function QuestionMediaPanel({ question: q, assignmentTitle, questionIndex }) {
+  const audioOrVideoUrl = q.youtube_url?.trim()
+  const fileUrl = q.file_url?.trim()
+  if (!audioOrVideoUrl && !fileUrl) return null
+
+  return (
+    <aside className="w-full lg:w-72 xl:w-80 flex-shrink-0 space-y-4 lg:border-l lg:border-gray-100 lg:pl-4 pt-4 lg:pt-0 border-t lg:border-t-0 border-gray-100">
+      <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Phương tiện &amp; tài liệu</p>
+
+      {audioOrVideoUrl && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <div className="flex items-center gap-2 text-xs font-medium text-gray-700 mb-2">
+            <Headphones className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" />
+            Âm thanh / Video
+          </div>
+          <p className="text-[11px] text-gray-500 mb-2 break-all">
+            {mediaFileNameFromUrl(audioOrVideoUrl)}
+          </p>
+          {isDirectAudioUrl(audioOrVideoUrl) ? (
+            <audio controls className="w-full" preload="metadata" src={audioOrVideoUrl} />
+          ) : (
+            <YoutubeEmbed
+              url={audioOrVideoUrl}
+              title={`${assignmentTitle} — câu ${questionIndex + 1}`}
+              className="w-full"
+            />
+          )}
+        </div>
+      )}
+
+      {fileUrl && (
+        <div className="rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
+          <div className="flex items-center gap-2 px-3 py-2 bg-white border-b border-gray-100 text-xs text-gray-700">
+            <ImageIcon className="h-3.5 w-3.5 flex-shrink-0" />
+            {isLikelyImageUrl(fileUrl) ? 'Hình ảnh' : 'Tệp đính kèm'}
+          </div>
+          <p className="px-3 py-1.5 text-[11px] text-gray-600 bg-white border-b border-gray-100 break-all">
+            {mediaFileNameFromUrl(fileUrl)}
+          </p>
+          {isLikelyImageUrl(fileUrl) ? (
+            <img
+              src={fileUrl}
+              alt={`Tài liệu câu ${questionIndex + 1}`}
+              className="w-full max-h-[360px] object-contain bg-gray-100 mx-auto block"
+            />
+          ) : (
+            <div className="p-3 bg-white">
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+              >
+                <FileText className="h-4 w-4" /> Mở tệp
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+    </aside>
+  )
+}
 
 export default function SubmissionResult({ submissionId, onBack }) {
   const fetchSubmission = useCallback(() => submissionsService.getById(submissionId), [submissionId])
@@ -52,7 +126,7 @@ export default function SubmissionResult({ submissionId, onBack }) {
   const assignmentTitle = submission.assignment_title || submission.assignments?.title || 'Bài tập'
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-7xl mx-auto px-2 sm:px-4">
       <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4">
         <ArrowLeft className="h-4 w-4" /> Quay lại
       </button>
@@ -147,14 +221,16 @@ export default function SubmissionResult({ submissionId, onBack }) {
               const qText = q.question_text || '—'
 
               return (
-                <div key={answer.id || idx} className={`rounded-xl border p-5 ${
+                <div key={answer.id || idx} className={`rounded-xl border p-4 sm:p-5 ${
                   answer.is_correct === true ? 'border-green-200 bg-green-50/30' :
                   answer.is_correct === false ? 'border-red-200 bg-red-50/30' :
                   'border-gray-200 bg-white'
                 }`}>
+                  <div className="flex flex-col lg:flex-row lg:items-start gap-4">
+                    <div className="flex-1 min-w-0">
                   {/* Question header */}
                   <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900">
                         <span className="text-blue-600 mr-2">Câu {idx + 1}.</span>
                         {qText.includes('<') ? (
@@ -201,7 +277,7 @@ export default function SubmissionResult({ submissionId, onBack }) {
                               isSelected ? (isCorrectOpt ? 'bg-green-500 text-white' : 'bg-red-500 text-white') :
                               isCorrectOpt ? 'bg-green-200 text-green-700' : 'bg-gray-200 text-gray-500'
                             }`}>
-                              {String.fromCharCode(65 + oi)}
+                              {mcqLetter(oi)}
                             </div>
                             <span className="flex-1">{opt.text}</span>
                             {isSelected && <span className="text-xs font-medium ml-auto">← Bạn chọn</span>}
@@ -239,6 +315,13 @@ export default function SubmissionResult({ submissionId, onBack }) {
                       <p className="text-xs text-blue-700">{answer.feedback}</p>
                     </div>
                   )}
+                    </div>
+                    <QuestionMediaPanel
+                      question={q}
+                      assignmentTitle={assignmentTitle}
+                      questionIndex={idx}
+                    />
+                  </div>
                 </div>
               )
             })}

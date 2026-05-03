@@ -24,9 +24,13 @@ const assignmentsService = {
     })
   },
 
-  // Download template Excel file
-  downloadQuestionTemplate: () =>
-    api.get('/assignments/import-questions/template', { responseType: 'blob' }),
+  // Download template Excel — params: { variant: 'general' | 'toeic_listening' | 'toeic_lr' | 'toeic_four_skills' }
+  downloadQuestionTemplate: (params) =>
+    api.get('/assignments/import-questions/template', { params, responseType: 'blob' }),
+
+  /** Xuất đề ra Excel — có cột tên file media (basename URL). Body: { questions, assignment_type } */
+  exportQuestionsExcel: (body) =>
+    api.post('/assignments/export-questions-excel', body, { responseType: 'blob' }),
 }
 
 export default assignmentsService

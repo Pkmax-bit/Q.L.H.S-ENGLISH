@@ -33,6 +33,14 @@ const fileFilter = (req, file, cb) => {
     'video/mp4',
     'audio/mpeg',
     'audio/mp3',
+    'audio/wav',
+    'audio/x-wav',
+    'audio/ogg',
+    'audio/webm',
+    'audio/aac',
+    'audio/flac',
+    'audio/x-m4a',
+    'audio/mp4',
   ];
 
   if (allowedTypes.includes(file.mimetype)) {

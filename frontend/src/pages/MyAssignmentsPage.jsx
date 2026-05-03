@@ -1,5 +1,6 @@
 import { useCallback, useState, useMemo } from 'react'
-import { ClipboardList, Clock, CheckCircle2, AlertTriangle, Timer, Search, BookOpen } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ClipboardList, Clock, AlertTriangle, Timer, Search, ChevronRight, PlayCircle } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import { useFetch } from '../hooks/useFetch'
 import { useDebounce } from '../hooks/useDebounce'
@@ -24,15 +25,17 @@ export default function MyAssignmentsPage() {
     if (classIds.length === 0) return Promise.resolve({ data: [] })
     return assignmentsService.getAll({ is_published: 'true', limit: 500 })
   }, [classIds.join(',')])
-  const { data: assignData, loading: assignLoading } = useFetch(fetchAssignments)
+  const { data: assignData, loading: assignLoading } = useFetch(fetchAssignments, [classIds.join(',')])
   const allAssignments = Array.isArray(assignData) ? assignData : assignData?.assignments || []
 
-  // Filter only assignments in my classes
-  const myAssignments = allAssignments.filter(a => classIds.includes(a.class_id))
+  // Filter only assignments in my classes (so sánh id an toàn kiểu string)
+  const myAssignments = allAssignments.filter(a =>
+    classIds.some(cid => String(cid) === String(a.class_id))
+  )
 
   // Fetch my submissions
   const fetchMySubs = useCallback(() => submissionsService.getMy({ limit: 500 }), [])
-  const { data: subsData } = useFetch(fetchMySubs)
+  const { data: subsData } = useFetch(fetchMySubs, [classIds.join(',')])
   const mySubmissions = Array.isArray(subsData) ? subsData : subsData?.submissions || []
   const subMap = useMemo(() => {
     const m = {}; mySubmissions.forEach(s => { m[s.assignment_id] = s }); return m
@@ -158,10 +161,16 @@ export default function MyAssignmentsPage() {
                     <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
                       a.assignment_type === 'multiple_choice' ? 'bg-blue-100 text-blue-700' :
                       a.assignment_type === 'essay' ? 'bg-amber-100 text-amber-700' :
+                      a.assignment_type === 'toeic_listening' ? 'bg-indigo-100 text-indigo-800' :
+                      a.assignment_type === 'toeic_lr' ? 'bg-teal-100 text-teal-900' :
+                      a.assignment_type === 'toeic_four_skills' ? 'bg-fuchsia-100 text-fuchsia-900' :
                       'bg-purple-100 text-purple-700'
                     }`}>
                       {a.assignment_type === 'multiple_choice' ? 'Trắc nghiệm' :
-                       a.assignment_type === 'essay' ? 'Tự luận' : 'Kết hợp'}
+                       a.assignment_type === 'essay' ? 'Tự luận' :
+                       a.assignment_type === 'toeic_listening' ? 'TOEIC Listening' :
+                       a.assignment_type === 'toeic_lr' ? 'TOEIC Nghe & Đọc' :
+                       a.assignment_type === 'toeic_four_skills' ? 'TOEIC 4 kỹ năng' : 'Kết hợp'}
                     </span>
                   </div>
 
@@ -192,8 +201,8 @@ export default function MyAssignmentsPage() {
                   )}
                 </div>
 
-                {/* Status / Score */}
-                <div className="flex-shrink-0">
+                {/* Status / actions */}
+                <div className="flex-shrink-0 flex flex-col items-end gap-2">
                   {a.submission?.status === 'graded' ? (
                     <div className="text-center">
                       <div className={`text-lg font-bold ${
@@ -217,6 +226,30 @@ export default function MyAssignmentsPage() {
                       <ClipboardList className="h-3.5 w-3.5" /> Chưa làm
                     </div>
                   )}
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Link
+                      to={`/my-assignments/${a.id}`}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      Chi tiết <ChevronRight className="h-3.5 w-3.5" />
+                    </Link>
+                    {!a.isDone && (
+                      <Link
+                        to={`/my-assignments/${a.id}`}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+                      >
+                        <PlayCircle className="h-3.5 w-3.5" /> Vào làm bài
+                      </Link>
+                    )}
+                    {a.isDone && (
+                      <Link
+                        to={`/my-assignments/${a.id}`}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg border border-green-200 transition-colors"
+                      >
+                        Xem bài / điểm
+                      </Link>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
