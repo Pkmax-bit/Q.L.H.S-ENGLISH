@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { BookOpen, RefreshCw, Info, Check, Plus, Trash2 } from 'lucide-react'
 import Button from '../common/Button'
 import Input from '../common/Input'
+import DriveLinkHelper from '../common/DriveLinkHelper'
 import RichContentViewer from '../common/RichContentViewer'
 import {
   TOEIC_READING_QUESTIONS,
@@ -97,13 +98,14 @@ function ReadingQuestionCard({ globalIndex, question, onUpdate }) {
             label="URL ảnh / biểu đồ (tuỳ chọn — Part 7)"
             value={question.file_url || ''}
             onChange={(e) => handleChange('file_url', e.target.value)}
-            placeholder="https://..."
+            placeholder="https://... hoặc link Google Drive"
           />
           {question.file_url?.trim() && (
             <p className="text-xs text-gray-500 mt-1.5">
               Tên media: <span className="font-medium text-gray-800 break-all">{mediaFileNameFromUrl(question.file_url)}</span>
             </p>
           )}
+          <DriveLinkHelper url={question.file_url || ''} kind="image" />
         </div>
       )}
 

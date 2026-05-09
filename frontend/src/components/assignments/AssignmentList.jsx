@@ -1,11 +1,13 @@
 import { useState, useContext, useCallback } from 'react'
-import { Plus, Download } from 'lucide-react'
+import { Plus, Download, FlaskConical } from 'lucide-react'
 import Table from '../common/Table'
 import Button from '../common/Button'
 import StatusBadge from '../common/StatusBadge'
 import ConfirmDialog from '../common/ConfirmDialog'
 import AssignmentForm from './AssignmentForm'
 import AssignmentDetail from './AssignmentDetail'
+import TakeAssignment from '../student/TakeAssignment'
+import TakeToeicListening from '../student/TakeToeicListening'
 import { useFetch } from '../../hooks/useFetch'
 import { useExcelExport } from '../../hooks/useExcelExport'
 import { useAuth } from '../../hooks/useAuth'
@@ -13,6 +15,7 @@ import { ToastContext } from '../../context/ToastContext'
 import assignmentsService from '../../services/assignments.service'
 import { formatDate } from '../../utils/formatDate'
 import { unwrapApiPayload } from '../../utils/assignmentHelpers'
+import { shouldUseTakeToeicListeningShell } from '../../utils/toeicListening'
 
 const typeBadgeMap = {
   essay: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Tự luận' },
@@ -38,6 +41,8 @@ export default function AssignmentList() {
   const [showDelete, setShowDelete] = useState(false)
   const [selected, setSelected] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  /** Khi khác null → render component "Làm bài" ở chế độ xem trước (không lưu). */
+  const [previewAssignment, setPreviewAssignment] = useState(null)
   const { success, error: showError } = useContext(ToastContext)
   const { exportToExcel } = useExcelExport()
   const { user } = useAuth()
@@ -111,6 +116,38 @@ export default function AssignmentList() {
     })
   }
 
+  /** "Làm thử" từ hàng trong bảng — luôn nạp lại dữ liệu mới nhất từ API. */
+  const handlePreviewFromRow = (assignment) => {
+    assignmentsService
+      .getById(assignment.id)
+      .then((res) => {
+        const data = unwrapApiPayload(res)
+        const merged = {
+          ...(assignment || {}),
+          ...(data || {}),
+          // Tránh mất assignment_type khi payload chi tiết không trùng khóa với hàng bảng
+          assignment_type: data?.assignment_type ?? assignment?.assignment_type,
+          questions: data?.questions ?? assignment?.questions,
+        }
+        if (!merged?.questions || merged.questions.length === 0) {
+          showError('Bài tập chưa có câu hỏi để xem trước.')
+          return
+        }
+        setPreviewAssignment(merged)
+      })
+      .catch(() => showError('Không tải được bài tập để xem trước.'))
+  }
+
+  /**
+   * "Làm thử" từ AssignmentForm — KHÔNG đóng form; phủ overlay xem trước lên trên
+   * để teacher không mất phần đang gõ khi quay lại.
+   */
+  const handlePreviewFromForm = (data) => {
+    setPreviewAssignment(data)
+  }
+
+  const exitPreview = () => setPreviewAssignment(null)
+
   const confirmDelete = async () => {
     setDeleting(true)
     try {
@@ -136,6 +173,24 @@ export default function AssignmentList() {
       { key: 'due_date', header: 'Hạn nộp', accessor: (r) => formatDate(r.due_date) || '' },
     ]
     exportToExcel(assignmentList, exportCols, 'danh-sach-bai-tap')
+  }
+
+  const renderPreviewOverlay = () => {
+    if (!previewAssignment) return null
+    const Comp = shouldUseTakeToeicListeningShell(previewAssignment)
+      ? TakeToeicListening
+      : TakeAssignment
+    // Đặt z-index cao hơn Modal (z-50) để xem trước phủ lên cả AssignmentForm đang mở.
+    return (
+      <div className="fixed inset-0 z-[60] bg-gray-50 overflow-y-auto py-6">
+        <Comp
+          assignmentId={previewAssignment.id}
+          previewAssignment={previewAssignment}
+          onBack={exitPreview}
+          onComplete={exitPreview}
+        />
+      </div>
+    )
   }
 
   return (
@@ -164,6 +219,16 @@ export default function AssignmentList() {
         onEdit={handleEdit}
         onDelete={isAdmin ? handleDelete : undefined}
         onView={handleView}
+        actions={(item) => (
+          <button
+            type="button"
+            onClick={() => handlePreviewFromRow(item)}
+            className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-600 transition-colors"
+            title="Làm thử (xem trước, không lưu)"
+          >
+            <FlaskConical className="h-4 w-4" />
+          </button>
+        )}
         searchPlaceholder="Tìm bài tập..."
         emptyMessage="Chưa có bài tập nào"
       />
@@ -174,6 +239,7 @@ export default function AssignmentList() {
         onClose={() => { setShowForm(false); setSelected(null) }}
         assignment={selected}
         onSuccess={() => { setShowForm(false); setSelected(null); reload() }}
+        onPreview={handlePreviewFromForm}
       />
 
       <AssignmentDetail
@@ -192,6 +258,8 @@ export default function AssignmentList() {
           message={`Bạn có chắc chắn muốn xóa bài tập "${selected?.title}"?`}
         />
       )}
+
+      {renderPreviewOverlay()}
     </div>
   )
 }

@@ -1,6 +1,22 @@
 const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
+/** Số nguyên dương hoặc null — 0 / rỗng = không giới hạn */
+function normalizeMaxAttempts(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const n = Number(raw);
+  if (Number.isNaN(n) || n <= 0) return null;
+  return Math.min(Math.floor(n), 9999);
+}
+
+/** Khoảng thời gian (giây) cho Listening exam mode — 1..120, fallback default. */
+function normalizeListeningSeconds(raw, fallback) {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const n = Number(raw);
+  if (Number.isNaN(n) || n < 1) return fallback;
+  return Math.min(Math.floor(n), 120);
+}
+
 const getAll = async (queryParams) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
   const allowedSort = ['title', 'assignment_type', 'total_points', 'due_date', 'created_at'];
@@ -127,7 +143,16 @@ const getById = async (id) => {
 };
 
 const create = async (data) => {
-  const { title, class_id, lesson_id, description, assignment_type, due_date, total_points, is_published, is_template, time_limit_minutes, created_by } = data;
+  const {
+    title, class_id, lesson_id, description, assignment_type, due_date,
+    total_points, is_published, is_template, time_limit_minutes,
+    allow_retake, max_attempts, created_by,
+    listening_exam_mode, listening_answer_seconds,
+    listening_part34_answer_seconds, listening_directions_seconds,
+  } = data;
+
+  const examMode = listening_exam_mode === true;
+
   const { data: row, error } = await supabase
     .from('assignments')
     .insert({
@@ -141,6 +166,12 @@ const create = async (data) => {
       is_published: is_published || false,
       is_template: is_template || false,
       time_limit_minutes,
+      allow_retake: allow_retake === true,
+      max_attempts: allow_retake === true ? normalizeMaxAttempts(max_attempts) : null,
+      listening_exam_mode: examMode,
+      listening_answer_seconds: normalizeListeningSeconds(listening_answer_seconds, 5),
+      listening_part34_answer_seconds: normalizeListeningSeconds(listening_part34_answer_seconds, 8),
+      listening_directions_seconds: normalizeListeningSeconds(listening_directions_seconds, 25),
       created_by,
     })
     .select()
@@ -151,7 +182,13 @@ const create = async (data) => {
 };
 
 const update = async (id, data) => {
-  const { title, class_id, lesson_id, description, assignment_type, due_date, total_points, is_published, is_template, time_limit_minutes } = data;
+  const {
+    title, class_id, lesson_id, description, assignment_type, due_date,
+    total_points, is_published, is_template, time_limit_minutes,
+    allow_retake, max_attempts,
+    listening_exam_mode, listening_answer_seconds,
+    listening_part34_answer_seconds, listening_directions_seconds,
+  } = data;
 
   const updateObj = {};
   if (title !== undefined) updateObj.title = title;
@@ -164,6 +201,22 @@ const update = async (id, data) => {
   if (is_published !== undefined) updateObj.is_published = is_published;
   if (is_template !== undefined) updateObj.is_template = is_template;
   if (time_limit_minutes !== undefined) updateObj.time_limit_minutes = time_limit_minutes;
+  if (allow_retake !== undefined) updateObj.allow_retake = allow_retake === true;
+  if (allow_retake === false) {
+    updateObj.max_attempts = null;
+  } else if (max_attempts !== undefined) {
+    updateObj.max_attempts = normalizeMaxAttempts(max_attempts);
+  }
+  if (listening_exam_mode !== undefined) updateObj.listening_exam_mode = listening_exam_mode === true;
+  if (listening_answer_seconds !== undefined) {
+    updateObj.listening_answer_seconds = normalizeListeningSeconds(listening_answer_seconds, 5);
+  }
+  if (listening_part34_answer_seconds !== undefined) {
+    updateObj.listening_part34_answer_seconds = normalizeListeningSeconds(listening_part34_answer_seconds, 8);
+  }
+  if (listening_directions_seconds !== undefined) {
+    updateObj.listening_directions_seconds = normalizeListeningSeconds(listening_directions_seconds, 25);
+  }
   updateObj.updated_at = new Date().toISOString();
 
   const { data: row, error } = await supabase

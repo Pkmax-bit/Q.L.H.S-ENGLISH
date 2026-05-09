@@ -13,10 +13,15 @@ import submissionsService from '../../services/submissions.service'
 import { mediaFileNameFromUrl } from '../../utils/mediaUrl'
 import { mcqLetter } from '../../utils/assignmentHelpers'
 import { isDirectAudioUrl } from '../../utils/toeicListening'
+import { normalizeMediaUrl, isGoogleDriveUrl } from '../../utils/googleDrive'
 
 function isLikelyImageUrl(url) {
   if (!url || typeof url !== 'string') return false
-  return /\.(jpe?g|png|gif|webp|svg|bmp)(\?|#|$)/i.test(url.trim())
+  const t = url.trim()
+  if (/\.(jpe?g|png|gif|webp|svg|bmp)(\?|#|$)/i.test(t)) return true
+  // Drive URL trong file_url thường là ảnh khi đặt vào Part 1 / Reading P7
+  if (isGoogleDriveUrl(t)) return true
+  return false
 }
 
 /** Khối media cột phải — đồng bộ kiểu hiển thị với màn làm bài */
@@ -39,7 +44,7 @@ function QuestionMediaPanel({ question: q, assignmentTitle, questionIndex }) {
             {mediaFileNameFromUrl(audioOrVideoUrl)}
           </p>
           {isDirectAudioUrl(audioOrVideoUrl) ? (
-            <audio controls className="w-full" preload="metadata" src={audioOrVideoUrl} />
+            <audio controls className="w-full" preload="metadata" src={normalizeMediaUrl(audioOrVideoUrl, 'audio')} />
           ) : (
             <YoutubeEmbed
               url={audioOrVideoUrl}
@@ -61,14 +66,14 @@ function QuestionMediaPanel({ question: q, assignmentTitle, questionIndex }) {
           </p>
           {isLikelyImageUrl(fileUrl) ? (
             <img
-              src={fileUrl}
+              src={normalizeMediaUrl(fileUrl, 'image')}
               alt={`Tài liệu câu ${questionIndex + 1}`}
               className="w-full max-h-[360px] object-contain bg-gray-100 mx-auto block"
             />
           ) : (
             <div className="p-3 bg-white">
               <a
-                href={fileUrl}
+                href={normalizeMediaUrl(fileUrl, 'file')}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"

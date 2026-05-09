@@ -3,7 +3,7 @@ import {
   ArrowLeft, Clock, CheckCircle, AlertTriangle, Send,
   ChevronLeft, ChevronRight, FileText, HelpCircle,
   Headphones, Image as ImageIcon,
-  List, ChevronDown, ChevronUp,
+  List, ChevronDown, ChevronUp, FlaskConical,
 } from 'lucide-react'
 import Button from '../common/Button'
 import LoadingSpinner from '../common/LoadingSpinner'
@@ -28,6 +28,7 @@ import {
   TOEIC_WRITING_COUNT,
 } from '../../utils/toeicExamConfig'
 import { mediaFileNameFromUrl } from '../../utils/mediaUrl'
+import { normalizeMediaUrl } from '../../utils/googleDrive'
 
 function rangeInclusive(start, end) {
   if (start > end) return []
@@ -99,7 +100,14 @@ function buildQuestionPartGroups(assignmentType, total) {
   return [{ key: 'all', label: 'Tất cả câu', indices: rangeInclusive(0, total - 1) }]
 }
 
-export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
+/**
+ * @param {object} [previewAssignment] — Khi có, component chạy ở chế độ XEM TRƯỚC
+ *   cho giáo viên: không gọi API start/submit, không lưu localStorage; auto‑chấm trắc
+ *   nghiệm cục bộ và hiển thị banner cảnh báo "không lưu kết quả".
+ *   Cấu trúc giống `assignment` (có `questions` đã được map sẵn từ form).
+ */
+export default function TakeAssignment({ assignmentId, onBack, onComplete, previewAssignment }) {
+  const isPreview = !!previewAssignment
   const [assignment, setAssignment] = useState(null)
   const [submission, setSubmission] = useState(null)
   const [questions, setQuestions] = useState([])
@@ -155,13 +163,18 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
       setLoading(true)
       setError(null)
       try {
-        // 1. Get assignment details with questions
-        const aRes = await assignmentsService.getById(assignmentId)
-        const assignmentData = aRes.data?.data ?? aRes.data ?? aRes
+        // 1. Lấy đề bài: ở chế độ xem trước, dùng dữ liệu truyền vào (không gọi API).
+        let assignmentData
+        if (isPreview) {
+          assignmentData = previewAssignment
+        } else {
+          const aRes = await assignmentsService.getById(assignmentId)
+          assignmentData = aRes.data?.data ?? aRes.data ?? aRes
+        }
         if (cancelled) return
 
         setAssignment(assignmentData)
-        const qs = assignmentData.questions || assignmentData.assignment_questions || []
+        const qs = assignmentData?.questions || assignmentData?.assignment_questions || []
         const sortedQs = [...qs].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0))
         setQuestions(sortedQs)
 
@@ -171,25 +184,27 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
           return
         }
 
-        // 2. Set timer
-        if (assignmentData.time_limit_minutes) {
+        if (assignmentData?.time_limit_minutes) {
           setTimeLeft(assignmentData.time_limit_minutes * 60)
         }
 
-        // 3. Start submission
+        if (isPreview) {
+          // Chế độ xem trước: dùng submission ảo, bỏ qua localStorage để tránh dính state cũ.
+          setSubmission({ id: `preview_${assignmentId || 'new'}`, started_at: new Date().toISOString() })
+          return
+        }
+
         const sRes = await submissionsService.start({ assignment_id: assignmentId })
         const subData = sRes.data?.data ?? sRes.data ?? sRes
         if (cancelled) return
         setSubmission(subData)
 
-        // 4a. Restore draft answers from localStorage
         const draftKey = `draft_answers_${subData.id}`
         try {
           const saved = localStorage.getItem(draftKey)
           if (saved) setAnswers(JSON.parse(saved))
         } catch {}
 
-        // 4b. If resuming, recalculate timer
         if (subData.started_at && assignmentData.time_limit_minutes) {
           const elapsed = Math.floor((Date.now() - new Date(subData.started_at).getTime()) / 1000)
           const remaining = assignmentData.time_limit_minutes * 60 - elapsed
@@ -199,7 +214,6 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
         if (cancelled) return
         const msg = err.response?.data?.message || 'Không thể bắt đầu bài tập'
         if (err.response?.status === 409) {
-          // Already submitted - show message
           setError('Bạn đã nộp bài này rồi.')
         } else {
           setError(msg)
@@ -211,15 +225,16 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
     }
     init()
     return () => { cancelled = true }
-  }, [assignmentId])
+  }, [assignmentId, isPreview, previewAssignment])
 
-  // Save answers to localStorage on change
+  // Save answers to localStorage on change (bỏ qua trong chế độ xem trước)
   useEffect(() => {
+    if (isPreview) return
     if (!submission?.id || Object.keys(answers).length === 0) return
     try {
       localStorage.setItem(`draft_answers_${submission.id}`, JSON.stringify(answers))
     } catch {}
-  }, [answers, submission?.id])
+  }, [answers, submission?.id, isPreview])
 
   // Scroll to top when switching questions
   const questionRef = useRef(null)
@@ -280,9 +295,28 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
         selected_option_index: answers[q.id]?.selected_option_index ?? null,
       }))
 
+      if (isPreview) {
+        // Tự chấm trắc nghiệm cục bộ — không gọi API.
+        let mcqTotal = 0
+        let mcqCorrect = 0
+        for (const q of questions) {
+          if (q.question_type !== 'multiple_choice') continue
+          mcqTotal += 1
+          const opts = q.options || []
+          const correctIdx = opts.findIndex((o) => o?.is_correct === true)
+          const picked = answers[q.id]?.selected_option_index
+          if (correctIdx >= 0 && picked === correctIdx) mcqCorrect += 1
+        }
+        const summary = mcqTotal > 0
+          ? `Xem trước: TN đúng ${mcqCorrect}/${mcqTotal}. Tự luận chưa chấm.`
+          : 'Đã hoàn tất xem trước (bài không có câu trắc nghiệm để tự chấm).'
+        success(summary)
+        onComplete?.({ id: null, preview: true, mcq_correct: mcqCorrect, mcq_total: mcqTotal })
+        return
+      }
+
       const result = await submissionsService.submit(submission.id, { answers: answerPayload })
       const resultData = result.data?.data ?? result.data ?? result
-      // Clear draft from localStorage
       try { localStorage.removeItem(`draft_answers_${submission.id}`) } catch {}
       success('🎉 Nộp bài thành công!')
       onComplete?.({ id: resultData.id || submission.id, ...resultData })
@@ -292,7 +326,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
       setSubmitting(false)
       setShowConfirm(false)
     }
-  }, [submission, questions, answers, answeredCount, success, showError, onComplete])
+  }, [submission, questions, answers, answeredCount, success, showError, onComplete, isPreview])
 
   useEffect(() => {
     handleSubmitRef.current = handleSubmit
@@ -373,6 +407,17 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
 
   return (
     <div className="max-w-7xl mx-auto px-2 sm:px-4">
+      {isPreview && (
+        <div className="mb-4 rounded-xl border-2 border-dashed border-amber-300 bg-amber-50/80 px-4 py-3 flex items-start gap-3">
+          <FlaskConical className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-amber-900 leading-relaxed">
+            <strong className="font-semibold">Chế độ xem trước (giáo viên).</strong>{' '}
+            Bạn đang làm thử bài tập để kiểm tra trải nghiệm học sinh. Câu trả lời{' '}
+            <strong>không được lưu</strong>, không tính vào lượt nộp; khi "nộp" hệ thống chỉ tự chấm{' '}
+            trắc nghiệm cục bộ rồi đóng màn này.
+          </div>
+        </div>
+      )}
       <div className="flex flex-col lg:flex-row lg:items-start gap-4 lg:gap-6">
         {/* Cột chính: đề / nội dung */}
         <div className="flex-1 min-w-0 space-y-4 order-2 lg:order-1">
@@ -440,7 +485,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
                 <span className="font-medium text-gray-800">{mediaFileNameFromUrl(groupAudioUrl)}</span>
               </p>
               {isDirectAudioUrl(groupAudioUrl) ? (
-                <audio key={groupAudioUrl} controls className="w-full" preload="metadata" src={groupAudioUrl} />
+                <audio key={groupAudioUrl} controls className="w-full" preload="metadata" src={normalizeMediaUrl(groupAudioUrl, 'audio')} />
               ) : (
                 <a href={groupAudioUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline">
                   Mở âm thanh
@@ -459,7 +504,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
                 <span className="font-medium">{mediaFileNameFromUrl(currentQuestion.file_url)}</span>
               </p>
               <img
-                src={currentQuestion.file_url}
+                src={normalizeMediaUrl(currentQuestion.file_url, 'image')}
                 alt="Part 1"
                 className="w-full max-h-[360px] object-contain mx-auto block"
               />
@@ -480,7 +525,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
                   <span className="font-medium text-gray-800">{mediaFileNameFromUrl(currentQuestion.youtube_url)}</span>
                 </p>
                 {isDirectAudioUrl(currentQuestion.youtube_url) ? (
-                  <audio controls className="w-full" preload="metadata" src={currentQuestion.youtube_url} />
+                  <audio controls className="w-full" preload="metadata" src={normalizeMediaUrl(currentQuestion.youtube_url, 'audio')} />
                 ) : (
                   <YoutubeEmbed
                     url={currentQuestion.youtube_url}
@@ -511,7 +556,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
                   <span className="font-medium">{mediaFileNameFromUrl(currentQuestion.file_url)}</span>
                 </p>
                 <img
-                  src={currentQuestion.file_url}
+                  src={normalizeMediaUrl(currentQuestion.file_url, 'image')}
                   alt="Reading"
                   className="w-full max-h-[320px] object-contain mx-auto"
                 />
@@ -523,7 +568,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete }) {
               !(listeningMeta?.part === 1) &&
               !(readingMeta?.part === 7 && currentQuestion.file_url) && (
               <a
-                href={currentQuestion.file_url}
+                href={normalizeMediaUrl(currentQuestion.file_url, 'file')}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex flex-col items-start gap-0.5 mt-3 text-sm text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg"

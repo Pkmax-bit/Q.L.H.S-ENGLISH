@@ -22,6 +22,7 @@ import {
 import Button from '../common/Button'
 import Input from '../common/Input'
 import Select from '../common/Select'
+import DriveLinkHelper from '../common/DriveLinkHelper'
 import { ToastContext } from '../../context/ToastContext'
 import assignmentsService from '../../services/assignments.service'
 import { MCQ_OPTION_COUNT_MAX, MCQ_OPTION_COUNT_MIN } from '../../utils/assignmentHelpers'
@@ -184,19 +185,29 @@ function SortableQuestion({ question, index, onUpdate, onRemove }) {
 
           {/* File URL and YouTube URL */}
           <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="URL tệp tin"
-              value={question.file_url || ''}
-              onChange={(e) => handleChange('file_url', e.target.value)}
-              placeholder="https://example.com/file.pdf"
-            />
-            <Input
-              label="YouTube URL"
-              value={question.youtube_url || ''}
-              onChange={(e) => handleChange('youtube_url', e.target.value)}
-              placeholder="https://youtube.com/watch?v=..."
-            />
+            <div>
+              <Input
+                label="URL tệp tin / ảnh"
+                value={question.file_url || ''}
+                onChange={(e) => handleChange('file_url', e.target.value)}
+                placeholder="https://example.com/file.pdf hoặc link Google Drive"
+              />
+              <DriveLinkHelper url={question.file_url || ''} kind="image" />
+            </div>
+            <div>
+              <Input
+                label="URL âm thanh / YouTube"
+                value={question.youtube_url || ''}
+                onChange={(e) => handleChange('youtube_url', e.target.value)}
+                placeholder="https://youtube.com/... hoặc link Google Drive (.mp3)"
+              />
+              <DriveLinkHelper url={question.youtube_url || ''} kind="audio" />
+            </div>
           </div>
+          <p className="text-[11px] text-gray-500 leading-relaxed -mt-1">
+            Có thể dán link <strong>Google Drive</strong> (file phải share &quot;Anyone with the link&quot;).
+            Hệ thống sẽ tự stream qua proxy để hỗ trợ tua audio và file lớn.
+          </p>
         </div>
       </div>
     </div>

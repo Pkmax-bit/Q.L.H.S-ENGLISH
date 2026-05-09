@@ -2,6 +2,7 @@ import { useState, useMemo, useContext } from 'react'
 import { Headphones, RefreshCw, Info, Check, Layers, ListChecks, FileSpreadsheet, Plus, Trash2 } from 'lucide-react'
 import Button from '../common/Button'
 import Input from '../common/Input'
+import DriveLinkHelper from '../common/DriveLinkHelper'
 import RichContentViewer from '../common/RichContentViewer'
 import ToeicMediaQueues from './ToeicMediaQueues'
 import ToeicBulkQuestionPaste from './ToeicBulkQuestionPaste'
@@ -97,7 +98,7 @@ function ToeicQuestionCard({ globalIndex, question, onUpdate }) {
               label="URL ảnh (Part 1)"
               value={question.file_url || ''}
               onChange={(e) => handleChange('file_url', e.target.value)}
-              placeholder="https://.../photo.jpg"
+              placeholder="https://.../photo.jpg hoặc link Google Drive"
             />
             {question.file_url?.trim() && (
               <p className="text-xs text-gray-500 mt-1.5">
@@ -105,6 +106,7 @@ function ToeicQuestionCard({ globalIndex, question, onUpdate }) {
                 <span className="font-medium text-gray-800 break-all">{mediaFileNameFromUrl(question.file_url)}</span>
               </p>
             )}
+            <DriveLinkHelper url={question.file_url || ''} kind="image" />
           </div>
         )}
         {(meta.part === 1 || meta.part === 2 || meta.indexInGroup === 0) && (
@@ -119,13 +121,14 @@ function ToeicQuestionCard({ globalIndex, question, onUpdate }) {
               }
               value={question.youtube_url || ''}
               onChange={(e) => handleChange('youtube_url', e.target.value)}
-              placeholder="https://.../audio.mp3"
+              placeholder="https://.../audio.mp3 hoặc link Google Drive"
             />
             {question.youtube_url?.trim() && (
               <p className="text-xs text-gray-500 mt-1.5">
                 Tên media: <span className="font-medium text-gray-800 break-all">{mediaFileNameFromUrl(question.youtube_url)}</span>
               </p>
             )}
+            <DriveLinkHelper url={question.youtube_url || ''} kind="audio" />
           </div>
         )}
       </div>

@@ -68,6 +68,20 @@ export default function AssignmentDetail({ isOpen, onClose, assignment, studentV
               <span>{assignment.time_limit_minutes} phút</span>
             </div>
           )}
+          {assignment.allow_retake && (
+            <div className="flex flex-col gap-0.5 text-indigo-700">
+              <span>
+                <span className="font-medium">Làm lại:</span> cho phép sau khi đã nộp
+              </span>
+              {assignment.max_attempts != null && Number(assignment.max_attempts) > 0 ? (
+                <span className="text-xs text-indigo-600">
+                  Tối đa <strong>{assignment.max_attempts}</strong> lần nộp (mọi lượt).
+                </span>
+              ) : (
+                <span className="text-xs text-indigo-600">Không giới hạn số lần nộp.</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Description */}
@@ -97,6 +111,11 @@ export default function AssignmentDetail({ isOpen, onClose, assignment, studentV
               <span className="text-indigo-800">
                 Nội dung câu và đáp án chỉ hiển thị trong màn làm bài.
               </span>
+              {assignment.allow_retake && (
+                <span className="block mt-2 text-indigo-800">
+                  Giáo viên cho phép <strong>làm lại</strong> sau khi đã nộp.
+                </span>
+              )}
             </p>
             <div className="flex flex-wrap gap-2">
               <Link

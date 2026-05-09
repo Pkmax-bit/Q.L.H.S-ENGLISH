@@ -1,4 +1,5 @@
 import { useState, useEffect, useContext, useCallback } from 'react'
+import { FlaskConical } from 'lucide-react'
 import Modal from '../common/Modal'
 import Input from '../common/Input'
 import Select from '../common/Select'
@@ -35,11 +36,22 @@ const initialForm = {
   total_points: '',
   due_date: '',
   is_published: false,
+  allow_retake: false,
+  max_attempts: '',
   time_limit_minutes: '',
+  listening_exam_mode: false,
+  listening_answer_seconds: 5,
+  listening_part34_answer_seconds: 8,
+  listening_directions_seconds: 25,
   questions: [],
 }
 
-export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess, defaultClassId }) {
+/** Chế độ thi mô phỏng (audio liên tục + auto-next) hiện chỉ hỗ trợ TOEIC Listening thuần. */
+function isListeningType(t) {
+  return t === ASSIGNMENT_TYPE_TOEIC_LISTENING
+}
+
+export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess, defaultClassId, onPreview }) {
   const [form, setForm] = useState(initialForm)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
@@ -86,7 +98,16 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
         total_points: assignment.total_points ?? '',
         due_date: toInputDate(assignment.due_date) || '',
         is_published: assignment.is_published || false,
+        allow_retake: !!assignment.allow_retake,
+        max_attempts:
+          assignment.max_attempts != null && assignment.max_attempts !== ''
+            ? String(assignment.max_attempts)
+            : '',
         time_limit_minutes: assignment.time_limit_minutes ?? '',
+        listening_exam_mode: !!assignment.listening_exam_mode,
+        listening_answer_seconds: assignment.listening_answer_seconds ?? 5,
+        listening_part34_answer_seconds: assignment.listening_part34_answer_seconds ?? 8,
+        listening_directions_seconds: assignment.listening_directions_seconds ?? 25,
         questions: mappedQuestions,
       })
     } else {
@@ -132,6 +153,7 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
           total_points: prev.total_points !== '' && prev.total_points !== undefined
             ? prev.total_points
             : 100,
+          listening_exam_mode: true,
           questions: nextQuestions,
         }
       })
@@ -202,6 +224,53 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
     })
   }
 
+  /**
+   * Mở chế độ xem trước (giáo viên làm thử) — không lưu, không gọi API submit/start.
+   * Dùng đúng dữ liệu đang gõ trong form (chưa cần bấm Lưu).
+   */
+  const handlePreview = () => {
+    if (!onPreview) return
+    if (!form.questions || form.questions.length === 0) {
+      showError('Bài tập chưa có câu hỏi nào để xem trước.')
+      return
+    }
+    const previewQuestions = form.questions.map((q, idx) => ({
+      id: q.id || `preview_${idx}`,
+      question_text: q.question_text || q.text || '',
+      question_type: q.question_type || 'essay',
+      options: q.options || [],
+      correct_answer: q.correct_answer || '',
+      points: q.points !== '' && q.points !== undefined ? Number(q.points) : 10,
+      order_index: idx,
+      file_url: q.file_url || '',
+      youtube_url: q.youtube_url || '',
+      toeic_meta: q.toeic_meta ?? null,
+    }))
+    const previewAssignment = {
+      id: assignment?.id || 'preview',
+      title: form.title || 'Bài tập (xem trước)',
+      description: assignment?.description || '',
+      class_id: form.class_id || null,
+      lesson_id: form.lesson_id || null,
+      assignment_type: form.assignment_type,
+      total_points: form.total_points !== '' ? Number(form.total_points) : null,
+      due_date: form.due_date || null,
+      time_limit_minutes: form.time_limit_minutes !== '' ? Number(form.time_limit_minutes) : null,
+      allow_retake: form.allow_retake === true,
+      max_attempts:
+        form.allow_retake === true && form.max_attempts !== '' && form.max_attempts != null
+          ? Number(form.max_attempts)
+          : null,
+      listening_exam_mode:
+        isListeningType(form.assignment_type) && form.listening_exam_mode === true,
+      listening_answer_seconds: Number(form.listening_answer_seconds) || 5,
+      listening_part34_answer_seconds: Number(form.listening_part34_answer_seconds) || 8,
+      listening_directions_seconds: Number(form.listening_directions_seconds) || 25,
+      questions: previewQuestions,
+    }
+    onPreview(previewAssignment)
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     const errs = validate()
@@ -231,7 +300,16 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
         total_points: form.total_points !== '' ? Number(form.total_points) : undefined,
         due_date: form.due_date || undefined,
         is_published: form.is_published,
+        allow_retake: form.allow_retake === true,
+        max_attempts:
+          form.allow_retake === true && form.max_attempts !== '' && form.max_attempts != null
+            ? Number(form.max_attempts)
+            : undefined,
         time_limit_minutes: form.time_limit_minutes !== '' ? Number(form.time_limit_minutes) : undefined,
+        listening_exam_mode: isListeningType(form.assignment_type) && form.listening_exam_mode === true,
+        listening_answer_seconds: Number(form.listening_answer_seconds) || 5,
+        listening_part34_answer_seconds: Number(form.listening_part34_answer_seconds) || 8,
+        listening_directions_seconds: Number(form.listening_directions_seconds) || 25,
         questions: mappedQuestions,
       }
       if (isEdit) {
@@ -282,6 +360,21 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
           <Button variant="outline" onClick={onClose} disabled={loading}>
             Hủy
           </Button>
+          {onPreview && (
+            <Button
+              variant="warning"
+              icon={FlaskConical}
+              onClick={handlePreview}
+              disabled={loading || (form.questions || []).length === 0}
+              title={
+                (form.questions || []).length === 0
+                  ? 'Thêm câu hỏi trước khi xem trước'
+                  : 'Làm thử trải nghiệm học sinh — không lưu kết quả'
+              }
+            >
+              Làm thử
+            </Button>
+          )}
           <Button onClick={handleSubmit} loading={loading}>
             {isEdit ? 'Cập nhật' : 'Thêm mới'}
           </Button>
@@ -355,19 +448,125 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
             placeholder="60"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="is_published"
-            name="is_published"
-            checked={form.is_published}
-            onChange={handleChange}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <label htmlFor="is_published" className="text-sm text-gray-700">
-            Đã xuất bản
-          </label>
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 sm:gap-6">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="is_published"
+              name="is_published"
+              checked={form.is_published}
+              onChange={handleChange}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="is_published" className="text-sm text-gray-700">
+              Đã xuất bản
+            </label>
+          </div>
+          <div className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              id="allow_retake"
+              name="allow_retake"
+              checked={form.allow_retake}
+              onChange={handleChange}
+              className="h-4 w-4 mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="allow_retake" className="text-sm text-gray-700 leading-snug">
+              Cho phép học sinh làm lại sau khi đã nộp
+              <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                Mỗi lần làm lại tạo bài nộp mới (lượt chấm riêng).
+              </span>
+            </label>
+          </div>
         </div>
+
+        {form.allow_retake && (
+          <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+            <Input
+              label="Giới hạn số lần nộp (tùy chọn)"
+              name="max_attempts"
+              type="number"
+              min={1}
+              step={1}
+              value={form.max_attempts}
+              onChange={handleChange}
+              placeholder="Để trống = không giới hạn"
+            />
+            <p className="text-xs text-indigo-800/90 mt-1.5">
+              Đếm mọi lần nộp bài (lượt đầu + làm lại). Ví dụ nhập <strong>3</strong> thì tối đa 3 lần nộp.
+            </p>
+          </div>
+        )}
+
+        {isListeningType(form.assignment_type) && (
+          <div className="rounded-lg border border-rose-100 bg-rose-50/60 px-4 py-3 space-y-3">
+            <div className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                id="listening_exam_mode"
+                name="listening_exam_mode"
+                checked={!!form.listening_exam_mode}
+                onChange={handleChange}
+                className="h-4 w-4 mt-0.5 rounded border-gray-300 text-rose-600 focus:ring-rose-500"
+              />
+              <label htmlFor="listening_exam_mode" className="text-sm text-gray-800 leading-snug">
+                <strong>Chế độ thi mô phỏng (Listening)</strong>
+                <span className="block text-xs text-gray-600 font-normal mt-0.5">
+                  Audio tự phát liên tục, có khoảng chờ tích đáp án rồi tự động chuyển câu —{' '}
+                  <strong>khoá tương tác</strong> như thi thật:
+                  không tua audio, không quay lại câu trước, không mở câu khác trên thanh điều hướng.
+                </span>
+              </label>
+            </div>
+
+            {form.listening_exam_mode && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Input
+                  label="Chờ chọn đáp án — Part 1/2 (giây)"
+                  name="listening_answer_seconds"
+                  type="number"
+                  min={1}
+                  max={120}
+                  step={1}
+                  value={form.listening_answer_seconds}
+                  onChange={handleChange}
+                  placeholder="5"
+                />
+                <Input
+                  label="Chờ chọn đáp án — Part 3/4 (giây/câu)"
+                  name="listening_part34_answer_seconds"
+                  type="number"
+                  min={1}
+                  max={120}
+                  step={1}
+                  value={form.listening_part34_answer_seconds}
+                  onChange={handleChange}
+                  placeholder="8"
+                />
+                <Input
+                  label="Directions đầu mỗi Part (giây)"
+                  name="listening_directions_seconds"
+                  type="number"
+                  min={1}
+                  max={120}
+                  step={1}
+                  value={form.listening_directions_seconds}
+                  onChange={handleChange}
+                  placeholder="25"
+                />
+                <p className="sm:col-span-3 text-xs text-rose-800/90 leading-relaxed">
+                  Trình tự mỗi câu Part 1/2: <strong>phát audio</strong> → hết audio chờ{' '}
+                  <strong>{form.listening_answer_seconds || 5}s</strong> để học sinh chọn đáp án →{' '}
+                  <strong>tự chuyển câu kế tiếp</strong> + tự phát audio mới. Part 3/4: phát audio đoạn
+                  một lần, sau đó mỗi câu trong nhóm có{' '}
+                  <strong>{form.listening_part34_answer_seconds || 8}s</strong> để chọn rồi tự chuyển sang
+                  câu kế. Đầu mỗi Part hiện <strong>Directions</strong> trong{' '}
+                  <strong>{form.listening_directions_seconds || 25}s</strong>.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Question builder */}
         <div className="pt-4 border-t border-gray-100">

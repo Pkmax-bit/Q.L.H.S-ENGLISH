@@ -4,6 +4,46 @@ export const ASSIGNMENT_TYPE_TOEIC_LISTENING = 'toeic_listening'
 /** Chuẩn đề Listening đầy đủ (theo spec TOEIC) */
 export const TOEIC_FULL_QUESTIONS = 100
 
+/**
+ * Khung 100 câu TOEIC Listening chuẩn: P1 có 4 lựa chọn, P2/P3 có 3 — dùng nhận diện khi
+ * assignment_type bị lưu nhầm `mixed` nhưng nội dung vẫn là đề Listening đầy đủ.
+ */
+export function looksLikeToeicListeningSkeleton(questions) {
+  if (!Array.isArray(questions) || questions.length !== TOEIC_FULL_QUESTIONS) return false
+  const q0 = questions[0]
+  const q6 = questions[6]
+  const q31 = questions[31]
+  const isMcq = (q) => q && q.question_type === 'multiple_choice'
+  if (!isMcq(q0) || !isMcq(q6) || !isMcq(q31)) return false
+  const n0 = (q0.options || []).length
+  const n6 = (q6.options || []).length
+  const n31 = (q31.options || []).length
+  return n0 === 4 && n6 === 3 && n31 === 3
+}
+
+/**
+ * Dùng màn TakeToeicListening (10s chuẩn bị + autoplay liên tục, nghỉ 5s mỗi câu) thay vì TakeAssignment.
+ *
+ * Điều kiện kích hoạt (chấp nhận sai cấu hình `assignment_type` để không phụ thuộc lựa chọn của giáo viên):
+ *   1. assignment_type === 'toeic_listening', HOẶC
+ *   2. Khung 100 câu khớp fingerprint Listening (P1: 4 lựa chọn, P2/P3: 3), HOẶC
+ *   3. Có ít nhất 1 câu trắc nghiệm có audio (youtube_url khác rỗng) trong toàn bộ đề.
+ */
+export function shouldUseTakeToeicListeningShell(assignment) {
+  if (!assignment) return false
+  if (assignment.assignment_type === ASSIGNMENT_TYPE_TOEIC_LISTENING) return true
+  const questions = Array.isArray(assignment.questions) ? assignment.questions : []
+  if (looksLikeToeicListeningSkeleton(questions)) return true
+  const hasMcqAudio = questions.some(
+    (q) =>
+      q &&
+      q.question_type === 'multiple_choice' &&
+      typeof q.youtube_url === 'string' &&
+      q.youtube_url.trim() !== ''
+  )
+  return hasMcqAudio
+}
+
 export const TOEIC_PART_RANGES = [
   { part: 1, label: 'Part 1 — Mô tả hình ảnh', start: 0, end: 5, choices: 4, note: 'Mỗi câu: 1 ảnh + nghe 4 lựa chọn' },
   { part: 2, label: 'Part 2 — Hỏi & đáp', start: 6, end: 30, choices: 3, note: '3 lựa chọn (A, B, C)' },
@@ -52,11 +92,17 @@ export function pickGroupAudioUrl(questions, part, groupIndex) {
   return null
 }
 
-/** URL có thể dùng làm thẻ <audio src> */
+/** URL có thể dùng làm thẻ <audio src> — chấp nhận file trực tiếp, blob, hoặc link Google Drive. */
 export function isDirectAudioUrl(url) {
   if (!url || typeof url !== 'string') return false
-  const u = url.trim().toLowerCase()
-  return /\.(mp3|wav|ogg|m4a|aac)(\?|#|$)/i.test(u) || u.startsWith('blob:')
+  const u = url.trim()
+  const lower = u.toLowerCase()
+  if (/\.(mp3|wav|ogg|m4a|aac)(\?|#|$)/i.test(lower)) return true
+  if (lower.startsWith('blob:')) return true
+  if (/^https?:\/\/(?:[^/]*\.)?(?:drive\.google\.com|docs\.google\.com|drive\.usercontent\.google\.com)\//i.test(u)) {
+    return true
+  }
+  return false
 }
 
 export function emptyMcqOptions(count) {

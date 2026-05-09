@@ -3,38 +3,12 @@ const { parsePagination, buildPaginationResponse } = require('../utils/paginatio
 
 /**
  * Start a submission (student begins an assignment).
+ * Nếu assignments.allow_retake = true, học sinh đã nộp vẫn có thể tạo lượt mới (submission mới).
  */
 const start = async (assignmentId, studentId) => {
-  // Check if already has a non-in_progress submission
-  const { data: existing } = await supabase
-    .from('submissions')
-    .select('id, status')
-    .eq('assignment_id', assignmentId)
-    .eq('student_id', studentId)
-    .in('status', ['submitted', 'graded'])
-    .maybeSingle();
-
-  if (existing) {
-    throw { statusCode: 409, message: 'Bạn đã nộp bài này rồi' };
-  }
-
-  // Check for in_progress — resume it
-  const { data: inProgress } = await supabase
-    .from('submissions')
-    .select('*')
-    .eq('assignment_id', assignmentId)
-    .eq('student_id', studentId)
-    .eq('status', 'in_progress')
-    .maybeSingle();
-
-  if (inProgress) {
-    return inProgress;
-  }
-
-  // Get assignment info
   const { data: assignment, error: aErr } = await supabase
     .from('assignments')
-    .select('id, total_points, is_published, due_date')
+    .select('id, total_points, is_published, due_date, allow_retake, max_attempts')
     .eq('id', assignmentId)
     .single();
 
@@ -46,7 +20,49 @@ const start = async (assignmentId, studentId) => {
     throw { statusCode: 403, message: 'Bài tập chưa được xuất bản' };
   }
 
-  // Create new submission
+  const allowRetake = assignment.allow_retake === true;
+  const maxAttemptsCap =
+    assignment.max_attempts != null && Number(assignment.max_attempts) > 0
+      ? Number(assignment.max_attempts)
+      : null;
+
+  const { count: completedCount, error: cntErr } = await supabase
+    .from('submissions')
+    .select('*', { count: 'exact', head: true })
+    .eq('assignment_id', assignmentId)
+    .eq('student_id', studentId)
+    .in('status', ['submitted', 'graded']);
+
+  if (cntErr) throw cntErr;
+  const doneCount = completedCount ?? 0;
+
+  if (!allowRetake && doneCount >= 1) {
+    throw { statusCode: 409, message: 'Bạn đã nộp bài này rồi' };
+  }
+
+  if (allowRetake && maxAttemptsCap != null && doneCount >= maxAttemptsCap) {
+    throw {
+      statusCode: 403,
+      message: `Bạn đã dùng hết ${maxAttemptsCap} lượt làm bài cho bài tập này`,
+    };
+  }
+
+  const { data: ipRows, error: ipErr } = await supabase
+    .from('submissions')
+    .select('*')
+    .eq('assignment_id', assignmentId)
+    .eq('student_id', studentId)
+    .eq('status', 'in_progress')
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  if (ipErr) throw ipErr;
+  const inProgress = ipRows?.[0] ?? null;
+
+  if (inProgress) {
+    return inProgress;
+  }
+
   const { data: row, error } = await supabase
     .from('submissions')
     .insert({
@@ -266,20 +282,72 @@ const getById = async (submissionId) => {
 };
 
 /**
- * Get student's submission for an assignment.
+ * Bài nộp hiện tại (ưu tiên in_progress) + lịch sử các lượt + thống kê giới hạn.
  */
 const getByStudentAndAssignment = async (assignmentId, studentId) => {
-  const { data, error } = await supabase
+  const { data: rows, error } = await supabase
     .from('submissions')
-    .select('*')
+    .select(
+      'id, status, score, auto_score, manual_score, submitted_at, started_at, created_at, time_spent_seconds, total_points'
+    )
     .eq('assignment_id', assignmentId)
     .eq('student_id', studentId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order('created_at', { ascending: true });
 
   if (error) throw error;
-  return data;
+
+  const list = rows || [];
+  const completed = list.filter((s) => s.status === 'submitted' || s.status === 'graded');
+  const inProgressList = list.filter((s) => s.status === 'in_progress');
+
+  let submission = null;
+  if (inProgressList.length > 0) {
+    submission = inProgressList[inProgressList.length - 1];
+  } else if (completed.length > 0) {
+    submission = completed.reduce((best, s) => {
+      const ts = new Date(s.submitted_at || s.created_at).getTime();
+      const bt = new Date(best.submitted_at || best.created_at).getTime();
+      return ts >= bt ? s : best;
+    });
+  }
+
+  const { data: assignmentMeta } = await supabase
+    .from('assignments')
+    .select('allow_retake, max_attempts')
+    .eq('id', assignmentId)
+    .maybeSingle();
+
+  const allowRetakeMeta = assignmentMeta?.allow_retake === true;
+  const maxA =
+    assignmentMeta?.max_attempts != null && Number(assignmentMeta.max_attempts) > 0
+      ? Number(assignmentMeta.max_attempts)
+      : null;
+  const completedCount = completed.length;
+  const unlimited = allowRetakeMeta && maxA == null;
+  let remainingSlots = null;
+  if (allowRetakeMeta && maxA != null) {
+    remainingSlots = Math.max(0, maxA - completedCount);
+  }
+
+  const hasInProgress = inProgressList.length > 0;
+
+  const attempts = list.map((s, idx) => ({
+    ...s,
+    attempt_number: idx + 1,
+  }));
+
+  return {
+    submission,
+    attempts,
+    stats: {
+      allow_retake: allowRetakeMeta,
+      max_attempts: assignmentMeta?.max_attempts ?? null,
+      completed_count: completedCount,
+      unlimited,
+      remaining_slots: unlimited ? null : remainingSlots,
+      has_in_progress: hasInProgress,
+    },
+  };
 };
 
 /**

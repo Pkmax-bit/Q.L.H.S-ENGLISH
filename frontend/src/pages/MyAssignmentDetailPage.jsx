@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, BookOpen, Calendar, Clock, ClipboardList, CheckCircle, AlertTriangle,
-  PlayCircle, BarChart3, FileText,
+  PlayCircle, BarChart3, FileText, RotateCcw, ListOrdered,
 } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import RichContentViewer from '../components/common/RichContentViewer'
@@ -11,9 +11,11 @@ import { useFetch } from '../hooks/useFetch'
 import classesService from '../services/classes.service'
 import assignmentsService from '../services/assignments.service'
 import submissionsService from '../services/submissions.service'
-import { formatDate } from '../utils/formatDate'
+import { formatDate, formatDateTime } from '../utils/formatDate'
 import TakeAssignment from '../components/student/TakeAssignment'
+import TakeToeicListening from '../components/student/TakeToeicListening'
 import SubmissionResult from '../components/student/SubmissionResult'
+import { shouldUseTakeToeicListeningShell } from '../utils/toeicListening'
 
 function typeLabel(t) {
   if (t === 'multiple_choice') return 'Trắc nghiệm'
@@ -44,7 +46,7 @@ export default function MyAssignmentDetailPage() {
     () => submissionsService.getMyForAssignment(assignmentId),
     [assignmentId]
   )
-  const { data: mySubmission, loading: subLoading, execute: refetchSubmission } =
+  const { data: submissionRaw, loading: subLoading, execute: refetchSubmission } =
     useFetch(fetchMySubmission, [assignmentId])
 
   const classes = Array.isArray(classesData) ? classesData : classesData?.classes || []
@@ -57,8 +59,18 @@ export default function MyAssignmentDetailPage() {
 
   const questionCount = assignment?.questions?.length ?? assignment?.question_count ?? 0
 
+  const mySubmission = submissionRaw?.submission ??
+    (submissionRaw?.stats === undefined && submissionRaw?.id ? submissionRaw : null)
+  const attempts = submissionRaw?.attempts ?? []
+  const stats = submissionRaw?.stats ?? {}
+
   const isDone = mySubmission && (mySubmission.status === 'submitted' || mySubmission.status === 'graded')
   const inProgress = mySubmission?.status === 'in_progress'
+  const canRetake =
+    !!stats.allow_retake &&
+    !stats.has_in_progress &&
+    (stats.completed_count ?? 0) > 0 &&
+    (stats.unlimited === true || (stats.remaining_slots ?? 0) > 0)
 
   const handleTakeComplete = (submission) => {
     setTaking(false)
@@ -67,8 +79,11 @@ export default function MyAssignmentDetailPage() {
   }
 
   if (taking) {
+    const Comp = shouldUseTakeToeicListeningShell(assignment)
+      ? TakeToeicListening
+      : TakeAssignment
     return (
-      <TakeAssignment
+      <Comp
         assignmentId={assignmentId}
         onBack={() => {
           setTaking(false)
@@ -164,6 +179,28 @@ export default function MyAssignmentDetailPage() {
         </div>
 
         <div className="flex flex-wrap gap-4 mt-4 text-sm text-gray-600 border-t border-gray-100 pt-4">
+          {assignment.allow_retake && (
+            <span className="w-full text-xs text-indigo-800 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+              {assignment.max_attempts != null && Number(assignment.max_attempts) > 0 ? (
+                <>
+                  Làm lại: <strong>tối đa {assignment.max_attempts}</strong> lần nộp — đã dùng{' '}
+                  <strong>{stats.completed_count ?? 0}</strong>
+                  {stats.remaining_slots != null && (
+                    <> · còn <strong>{stats.remaining_slots}</strong></>
+                  )}
+                  .
+                </>
+              ) : (
+                <>
+                  Làm lại: <strong>không giới hạn</strong> số lần nộp
+                  {(stats.completed_count ?? 0) > 0 && (
+                    <> — đã hoàn thành <strong>{stats.completed_count}</strong> lượt</>
+                  )}
+                  .
+                </>
+              )}
+            </span>
+          )}
           {assignment.total_points != null && (
             <span className="flex items-center gap-1.5">
               <ClipboardList className="h-4 w-4 text-gray-400" /> {assignment.total_points} điểm
@@ -207,9 +244,27 @@ export default function MyAssignmentDetailPage() {
               >
                 Xem kết quả
               </Button>
+              {canRetake && (
+                <Button
+                  variant="outline"
+                  icon={RotateCcw}
+                  onClick={() => setTaking(true)}
+                >
+                  Làm lại bài
+                </Button>
+              )}
               <p className="w-full text-xs text-gray-500 flex items-center gap-1">
                 <CheckCircle className="h-3.5 w-3.5 text-green-500" />
                 {mySubmission.status === 'graded' ? 'Đã chấm điểm' : 'Đã nộp — chờ chấm'}
+                {assignment.allow_retake && (
+                  <span className="text-indigo-600">
+                    {' '}
+                    ·{' '}
+                    {assignment.max_attempts != null && Number(assignment.max_attempts) > 0
+                      ? `Còn ${stats.remaining_slots ?? 0}/${assignment.max_attempts} lượt`
+                      : 'Có thể làm lại (không giới hạn)'}
+                  </span>
+                )}
               </p>
             </>
           ) : (
@@ -226,6 +281,70 @@ export default function MyAssignmentDetailPage() {
           )}
         </div>
       </div>
+
+      {attempts.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2 mb-4">
+            <ListOrdered className="h-4 w-4 text-indigo-600" />
+            Các lần làm ({attempts.length})
+          </h2>
+          <div className="overflow-x-auto rounded-lg border border-gray-100">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  <th className="px-3 py-2">Lần</th>
+                  <th className="px-3 py-2">Trạng thái</th>
+                  <th className="px-3 py-2">Nộp lúc</th>
+                  <th className="px-3 py-2 text-right">Điểm</th>
+                  <th className="px-3 py-2 text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {attempts.map((row) => {
+                  const st = row.status
+                  const label =
+                    st === 'graded'
+                      ? 'Đã chấm'
+                      : st === 'submitted'
+                        ? 'Đã nộp'
+                        : st === 'in_progress'
+                          ? 'Đang làm'
+                          : st
+                  const when = row.submitted_at || row.started_at || row.created_at
+                  const canOpenResult = st === 'submitted' || st === 'graded'
+                  return (
+                    <tr key={row.id} className="hover:bg-gray-50/80">
+                      <td className="px-3 py-2.5 font-medium text-gray-900">{row.attempt_number}</td>
+                      <td className="px-3 py-2.5 text-gray-700">{label}</td>
+                      <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+                        {when ? formatDateTime(when) : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {row.score != null && st === 'graded'
+                          ? `${row.score}/${row.total_points ?? assignment.total_points ?? '—'}`
+                          : row.auto_score != null && st !== 'graded'
+                            ? `${row.auto_score} (TN)`
+                            : '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        {canOpenResult && (
+                          <button
+                            type="button"
+                            onClick={() => setResultId(row.id)}
+                            className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                          >
+                            Xem chi tiết
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
