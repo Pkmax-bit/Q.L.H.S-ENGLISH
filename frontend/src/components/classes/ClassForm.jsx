@@ -1,17 +1,21 @@
 import { useState, useEffect, useContext, useCallback } from 'react'
+import { Users } from 'lucide-react'
 import Modal from '../common/Modal'
 import Input from '../common/Input'
 import Select from '../common/Select'
 import Button from '../common/Button'
+import ClassStudentManager from './ClassStudentManager'
 import { ToastContext } from '../../context/ToastContext'
 import { useFetch } from '../../hooks/useFetch'
 import classesService from '../../services/classes.service'
 import teachersService from '../../services/teachers.service'
+import subjectsService from '../../services/subjects.service'
 import { validateForm, required, positiveNumber } from '../../utils/validators'
 import { toInputDate } from '../../utils/formatDate'
 
 const initialForm = {
   name: '',
+  subject_id: '',
   teacher_id: '',
   max_students: '',
   status: 'active',
@@ -24,19 +28,41 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
   const [form, setForm] = useState(initialForm)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
+  const [studentsList, setStudentsList] = useState([])
+  const [loadingStudents, setLoadingStudents] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
   const isEdit = !!classData
 
+  const loadStudentsForClass = useCallback(async () => {
+    if (!classData?.id) return
+    setLoadingStudents(true)
+    try {
+      const res = await classesService.getStudents(classData.id)
+      const list = res.data?.data ?? res.data
+      setStudentsList(Array.isArray(list) ? list : [])
+    } catch (err) {
+      showError(err.response?.data?.message || 'Không tải được danh sách học sinh')
+      setStudentsList([])
+    } finally {
+      setLoadingStudents(false)
+    }
+  }, [classData?.id, showError])
+
   const fetchTeachers = useCallback(() => teachersService.getAll(), [])
   const { data: teachersData } = useFetch(fetchTeachers)
+  const fetchSubjects = useCallback(() => subjectsService.getAll(), [])
+  const { data: subjectsData } = useFetch(fetchSubjects)
 
   const teachers = Array.isArray(teachersData) ? teachersData : teachersData?.teachers || []
   const teacherOptions = teachers.map((t) => ({ value: t.id, label: t.full_name }))
+  const subjectsArr = Array.isArray(subjectsData) ? subjectsData : subjectsData?.subjects || subjectsData?.data || []
+  const subjectOptions = subjectsArr.map((s) => ({ value: s.id, label: s.name + (s.code ? ` (${s.code})` : '') }))
 
   useEffect(() => {
     if (classData) {
       setForm({
         name: classData.name || '',
+        subject_id: classData.subject_id || classData.subject?.id || '',
         teacher_id: classData.teacher_id || classData.teacher?.id || '',
         max_students: classData.max_students ?? '',
         status: classData.status || 'active',
@@ -49,6 +75,11 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
     }
     setErrors({})
   }, [classData, isOpen])
+
+  useEffect(() => {
+    if (isOpen && isEdit && classData?.id) loadStudentsForClass()
+    else setStudentsList([])
+  }, [isOpen, isEdit, classData?.id, loadStudentsForClass])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -75,6 +106,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
         ...form,
         max_students: form.max_students ? Number(form.max_students) : undefined,
         teacher_id: form.teacher_id || undefined,
+        subject_id: form.subject_id || undefined,
       }
       if (isEdit) {
         await classesService.update(classData.id, payload)
@@ -91,12 +123,16 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
     }
   }
 
+  const handleStudentsReload = () => {
+    loadStudentsForClass()
+  }
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={isEdit ? 'Chỉnh sửa lớp học' : 'Thêm lớp học mới'}
-      size="lg"
+      size={isEdit ? '3xl' : 'lg'}
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>
@@ -118,6 +154,14 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             error={errors.name}
             placeholder="Lớp Toán A1"
             required
+          />
+          <Select
+            label="Môn học"
+            name="subject_id"
+            value={form.subject_id}
+            onChange={handleChange}
+            options={subjectOptions}
+            placeholder="Chọn môn học"
           />
           <Select
             label="Giáo viên"
@@ -172,6 +216,27 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
           rows={3}
         />
       </form>
+
+      {isEdit && classData?.id && (
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <div className="flex items-center gap-2 mb-2">
+            <Users className="h-5 w-5 text-blue-600" />
+            <h3 className="text-base font-semibold text-gray-900">Học sinh trong lớp</h3>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            Thêm, xóa hoặc đề xuất học sinh (GV chỉ đề xuất; admin duyệt).
+          </p>
+          <div className="max-h-[min(420px,55vh)] overflow-y-auto pr-1">
+            <ClassStudentManager
+              classId={classData.id}
+              students={studentsList}
+              loading={loadingStudents}
+              onReload={handleStudentsReload}
+              readOnly={false}
+            />
+          </div>
+        </div>
+      )}
     </Modal>
   )
 }

@@ -15,9 +15,12 @@ import assignmentsService from '../../services/assignments.service'
 import {
   getToeicListeningMeta,
   isDirectAudioUrl,
-  pickGroupAudioUrl,
   TOEIC_PART_RANGES,
 } from '../../utils/toeicListening'
+import {
+  resolveQuestionAudioUrl,
+  hasMultiQuestionAudioGroup,
+} from '../../utils/toeicAudioGroups'
 import { getToeicReadingMeta, READING_PART_RANGES } from '../../utils/toeicReading'
 import {
   ASSIGNMENT_TYPE_TOEIC_LR,
@@ -151,10 +154,15 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete, previ
     return null
   }, [assignmentType, currentQuestionLive, currentQ])
 
+  const sharedListeningAudioGroup = useMemo(() => {
+    if (!listeningMeta) return false
+    return hasMultiQuestionAudioGroup(questions, currentQ)
+  }, [listeningMeta, questions, currentQ])
+
   const groupAudioUrl = useMemo(() => {
-    if (!listeningMeta || (listeningMeta.part !== 3 && listeningMeta.part !== 4)) return null
-    return pickGroupAudioUrl(questions, listeningMeta.part, listeningMeta.groupIndex)
-  }, [listeningMeta, questions])
+    if (!listeningMeta || !sharedListeningAudioGroup) return null
+    return resolveQuestionAudioUrl(questions, currentQ)
+  }, [listeningMeta, questions, currentQ, sharedListeningAudioGroup])
 
   // Load assignment + start submission
   useEffect(() => {
@@ -474,7 +482,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete, previ
           )}
 
           {/* Listening: nhóm audio Part 3–4 */}
-          {listeningMeta && (listeningMeta.part === 3 || listeningMeta.part === 4) && groupAudioUrl && (
+          {listeningMeta && sharedListeningAudioGroup && groupAudioUrl && (
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-4">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-800 mb-2">
                 <Headphones className="h-4 w-4 text-indigo-600" />

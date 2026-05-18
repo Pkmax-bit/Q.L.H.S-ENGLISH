@@ -24,11 +24,15 @@ import SubmissionsPage from '../pages/SubmissionsPage'
 import GradeBookPage from '../pages/GradeBookPage'
 import QuestionBankPage from '../pages/QuestionBankPage'
 import ProfilePage from '../pages/ProfilePage'
+import SchoolAdminHubPage from '../pages/SchoolAdminHubPage'
+import LessonBundlesPage from '../pages/LessonBundlesPage'
 import NotFoundPage from '../pages/NotFoundPage'
+import LandingPage from '../pages/LandingPage'
 
 export default function AppRouter() {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
 
       <Route
@@ -39,8 +43,17 @@ export default function AppRouter() {
         }
       >
         {/* Dashboard - all roles */}
-        <Route index element={<DashboardPage />} />
-        <Route path="dashboard" element={<Navigate to="/" replace />} />
+        <Route path="dashboard" element={<DashboardPage />} />
+
+        {/* Admin hub - one page to rule them all */}
+        <Route
+          path="admin-hub"
+          element={
+            <RoleRoute roles={['admin']}>
+              <SchoolAdminHubPage />
+            </RoleRoute>
+          }
+        />
 
         {/* Admin only */}
         <Route
@@ -132,6 +145,14 @@ export default function AppRouter() {
           element={
             <RoleRoute roles={['admin', 'teacher']}>
               <TemplatesPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="lesson-bundles"
+          element={
+            <RoleRoute roles={['admin', 'teacher']}>
+              <LessonBundlesPage />
             </RoleRoute>
           }
         />

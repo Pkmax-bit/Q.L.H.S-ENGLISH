@@ -1,9 +1,10 @@
 import { useState, useContext, useCallback } from 'react'
-import { ClipboardList, Clock, Eye, EyeOff, HelpCircle, AlertTriangle, Plus, Pencil, Trash2 } from 'lucide-react'
+import { ClipboardList, Clock, Eye, EyeOff, HelpCircle, AlertTriangle, Plus, Pencil, Trash2, Copy } from 'lucide-react'
 import Button from '../../common/Button'
 import ConfirmDialog from '../../common/ConfirmDialog'
 import AssignmentDetail from '../../assignments/AssignmentDetail'
 import AssignmentForm from '../../assignments/AssignmentForm'
+import ApplyTemplatesModal from '../ApplyTemplatesModal'
 import { ToastContext } from '../../../context/ToastContext'
 import { useAuth } from '../../../hooks/useAuth'
 import { useFetch } from '../../../hooks/useFetch'
@@ -24,6 +25,7 @@ export default function ClassAssignmentsTab({ assignments: initialAssignments, c
   const [showForm, setShowForm] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
+  const [showApply, setShowApply] = useState(false)
   const [selected, setSelected] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
@@ -104,9 +106,19 @@ export default function ClassAssignmentsTab({ assignments: initialAssignments, c
           <h3 className="text-sm font-semibold text-gray-700">
             Danh sách bài tập ({assignments.length})
           </h3>
-          <Button size="sm" icon={Plus} onClick={handleAdd}>
-            Thêm bài tập
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              icon={Copy}
+              onClick={() => setShowApply(true)}
+            >
+              Áp dụng từ mẫu
+            </Button>
+            <Button size="sm" icon={Plus} onClick={handleAdd}>
+              Thêm bài tập
+            </Button>
+          </div>
         </div>
       )}
 
@@ -238,6 +250,20 @@ export default function ClassAssignmentsTab({ assignments: initialAssignments, c
         assignment={selected}
         studentView={!canManage}
       />
+
+      {/* Apply templates */}
+      {canManage && (
+        <ApplyTemplatesModal
+          isOpen={showApply}
+          onClose={() => setShowApply(false)}
+          type="assignment"
+          classId={classId}
+          onApplied={() => {
+            reloadAssignments()
+            if (onReload) onReload()
+          }}
+        />
+      )}
 
       {/* Delete Confirm */}
       {isAdmin && (

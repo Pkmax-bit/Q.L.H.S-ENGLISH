@@ -1,8 +1,15 @@
 import { Calendar, User, Users, MapPin, FileText, BookOpen, ClipboardList } from 'lucide-react'
 import { formatDate } from '../../../utils/formatDate'
+import { useAuth } from '../../../hooks/useAuth'
+import ClassFeeConfigCard from './ClassFeeConfigCard'
+import ClassFeeProjectionCard from './ClassFeeProjectionCard'
 
-export default function ClassOverviewTab({ classInfo, stats, forStudent = false }) {
+export default function ClassOverviewTab({ classInfo, stats, forStudent = false, onReload }) {
+  const { user } = useAuth()
+  const showStaffFinance = !forStudent && (user?.role === 'admin' || user?.role === 'teacher')
+
   return (
+    <div className="space-y-6">
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Class info card */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
@@ -99,6 +106,17 @@ export default function ClassOverviewTab({ classInfo, stats, forStudent = false 
           </div>
         )}
       </div>
+    </div>
+
+    {showStaffFinance && (
+      <>
+        <ClassFeeProjectionCard
+          classId={classInfo.id}
+          reloadKey={`${classInfo.fee_policy}-${classInfo.fee_amount}-${classInfo.sessions_per_period}-${classInfo.start_date}-${classInfo.end_date}-${stats.student_count}`}
+        />
+        <ClassFeeConfigCard classInfo={classInfo} onUpdated={onReload} />
+      </>
+    )}
     </div>
   )
 }

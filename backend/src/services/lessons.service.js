@@ -7,6 +7,7 @@ const getAll = async (queryParams) => {
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
   const classId = queryParams.class_id || null;
   const isPublished = queryParams.is_published;
+  const isTemplate = queryParams.is_template;
 
   // Count query
   let countQuery = supabase.from('lessons').select('id', { count: 'exact', head: true });
@@ -18,6 +19,9 @@ const getAll = async (queryParams) => {
   }
   if (isPublished !== undefined) {
     countQuery = countQuery.eq('is_published', isPublished === 'true');
+  }
+  if (isTemplate !== undefined) {
+    countQuery = countQuery.eq('is_template', isTemplate === 'true' || isTemplate === true);
   }
   const { count: total, error: countError } = await countQuery;
   if (countError) throw countError;
@@ -39,6 +43,9 @@ const getAll = async (queryParams) => {
   }
   if (isPublished !== undefined) {
     dataQuery = dataQuery.eq('is_published', isPublished === 'true');
+  }
+  if (isTemplate !== undefined) {
+    dataQuery = dataQuery.eq('is_template', isTemplate === 'true' || isTemplate === true);
   }
 
   dataQuery = dataQuery

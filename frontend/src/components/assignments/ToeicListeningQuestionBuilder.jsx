@@ -1,5 +1,5 @@
-import { useState, useMemo, useContext } from 'react'
-import { Headphones, RefreshCw, Info, Check, Layers, ListChecks, FileSpreadsheet, Plus, Trash2 } from 'lucide-react'
+import { useState, useMemo, useContext, useCallback } from 'react'
+import { Headphones, RefreshCw, Info, Check, Layers, ListChecks, FileSpreadsheet, Plus, Trash2, Link2, Unlink } from 'lucide-react'
 import Button from '../common/Button'
 import Input from '../common/Input'
 import DriveLinkHelper from '../common/DriveLinkHelper'
@@ -13,6 +13,15 @@ import {
   buildToeicListeningSkeletonQuestions,
   getToeicListeningMeta,
 } from '../../utils/toeicListening'
+import {
+  applyAudioGroupToRange,
+  ungroupAudioAtIndex,
+  setGroupAudioUrl,
+  shouldShowAudioInputOnCard,
+  getAudioGroupLabel,
+  areIndicesContiguous,
+  getAudioGroupInfo,
+} from '../../utils/toeicAudioGroups'
 import { ToastContext } from '../../context/ToastContext'
 import assignmentsService from '../../services/assignments.service'
 import { mediaFileNameFromUrl } from '../../utils/mediaUrl'
@@ -24,12 +33,27 @@ function qText(q) {
   return q.text || q.question_text || ''
 }
 
-function ToeicQuestionCard({ globalIndex, question, onUpdate }) {
+function ToeicQuestionCard({
+  globalIndex,
+  question,
+  questions,
+  onUpdate,
+  selected,
+  onToggleSelect,
+}) {
   const meta = getToeicListeningMeta(globalIndex)
   const stem = qText(question)
   const opts = question.options || []
+  const groupLabel = getAudioGroupLabel(questions, globalIndex)
+  const showAudioInput = shouldShowAudioInputOnCard(questions, globalIndex)
+  const audioGroupInfo = getAudioGroupInfo(questions, globalIndex)
+  const inCustomGroup = groupLabel?.isCustom && groupLabel.size > 1
 
   const handleChange = (field, value) => {
+    if (field === 'youtube_url' && audioGroupInfo.usesCustomGroup && audioGroupInfo.inGroup) {
+      onUpdate({ ...question, youtube_url: value }, { syncAudioUrl: value })
+      return
+    }
     onUpdate({ ...question, [field]: value })
   }
 
@@ -59,25 +83,49 @@ function ToeicQuestionCard({ globalIndex, question, onUpdate }) {
   }
 
   return (
-    <div className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-2 mb-3">
-        <span className="text-sm font-bold text-indigo-700">
-          Câu {globalIndex + 1}
-          <span className="font-normal text-gray-500 ml-2">
-            · {meta.label}
-            {meta.part === 3 && meta.groupIndex != null && (
-              <span className="text-xs"> (hội thoại {meta.groupIndex + 1})</span>
-            )}
-            {meta.part === 4 && meta.groupIndex != null && (
-              <span className="text-xs"> (bài nói {meta.groupIndex + 1})</span>
-            )}
+    <div
+      className={`border rounded-xl p-4 bg-white shadow-sm transition-colors ${
+        selected ? 'border-indigo-400 ring-2 ring-indigo-200' : 'border-gray-200'
+      } ${inCustomGroup ? 'border-l-4 border-l-violet-500' : ''}`}
+    >
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0"
+            title="Chọn để gộp audio"
+          />
+          <span className="text-sm font-bold text-indigo-700">
+            Câu {globalIndex + 1}
+            <span className="font-normal text-gray-500 ml-2">
+              · {meta.label}
+              {meta.part === 3 && meta.groupIndex != null && !inCustomGroup && (
+                <span className="text-xs"> (hội thoại {meta.groupIndex + 1})</span>
+              )}
+              {meta.part === 4 && meta.groupIndex != null && !inCustomGroup && (
+                <span className="text-xs"> (bài nói {meta.groupIndex + 1})</span>
+              )}
+            </span>
           </span>
-        </span>
+        </div>
+        {groupLabel && groupLabel.size > 1 && (
+          <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-violet-100 text-violet-800">
+            Nhóm audio · {groupLabel.indexInGroup + 1}/{groupLabel.size}
+          </span>
+        )}
       </div>
 
-      {(meta.part === 3 || meta.part === 4) && meta.indexInGroup > 0 && (
+      {groupLabel && groupLabel.size > 1 && !groupLabel.isCustom && meta.indexInGroup > 0 && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5 mb-3">
-          Cùng file âm thanh với câu đầu nhóm (câu {globalIndex + 1 - meta.indexInGroup}) — có thể dán URL ở bất kỳ câu nào trong 3 câu.
+          Cùng file âm thanh với câu đầu nhóm (câu {groupLabel.leaderQuestionNumber}) — có thể dán URL ở bất kỳ câu nào trong nhóm.
+        </p>
+      )}
+
+      {inCustomGroup && !audioGroupInfo.isLeader && (
+        <p className="text-xs text-violet-800 bg-violet-50 border border-violet-100 rounded-lg px-2 py-1.5 mb-3">
+          Nghe chung audio với câu {groupLabel.leaderQuestionNumber} — chỉnh URL ở câu đầu nhóm.
         </p>
       )}
 
@@ -109,15 +157,17 @@ function ToeicQuestionCard({ globalIndex, question, onUpdate }) {
             <DriveLinkHelper url={question.file_url || ''} kind="image" />
           </div>
         )}
-        {(meta.part === 1 || meta.part === 2 || meta.indexInGroup === 0) && (
+        {showAudioInput && (
           <div>
             <Input
               label={
-                meta.part === 1
-                  ? 'URL file âm thanh (.mp3, …)'
-                  : meta.part === 2
-                    ? 'URL âm thanh (.mp3, …)'
-                    : 'URL âm thanh đoạn (.mp3, …)'
+                groupLabel && groupLabel.size > 1
+                  ? `URL âm thanh chung (${groupLabel.size} câu)`
+                  : meta.part === 1
+                    ? 'URL file âm thanh (.mp3, …)'
+                    : meta.part === 2
+                      ? 'URL âm thanh (.mp3, …)'
+                      : 'URL âm thanh đoạn (.mp3, …)'
               }
               value={question.youtube_url || ''}
               onChange={(e) => handleChange('youtube_url', e.target.value)}
@@ -201,6 +251,7 @@ export default function ToeicListeningQuestionBuilder({
   const [imageItems, setImageItems] = useState([])
   const [audioItems, setAudioItems] = useState([])
   const [excelReviewOpen, setExcelReviewOpen] = useState(false)
+  const [selectedIndices, setSelectedIndices] = useState(() => new Set())
   const { success: toastSuccess, error: toastError } = useContext(ToastContext)
 
   const questionsWithIds = questions.map((q) => ({
@@ -212,11 +263,23 @@ export default function ToeicListeningQuestionBuilder({
     onChange(next)
   }
 
-  const updateAtIndex = (idx, updated) => {
-    const copy = [...questionsWithIds]
+  const updateAtIndex = (idx, updated, opts = {}) => {
+    let copy = [...questionsWithIds]
     copy[idx] = updated
+    if (opts.syncAudioUrl != null) {
+      copy = setGroupAudioUrl(copy, idx, opts.syncAudioUrl)
+    }
     applyQuestions(copy)
   }
+
+  const toggleSelectIndex = useCallback((idx) => {
+    setSelectedIndices((prev) => {
+      const next = new Set(prev)
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return next
+    })
+  }, [])
 
   const generateSkeleton = () => {
     if (questionsWithIds.length > 0) {
@@ -238,6 +301,51 @@ export default function ToeicListeningQuestionBuilder({
     for (let i = range.start; i <= range.end; i++) out.push(i)
     return out
   }, [range])
+
+  const selectedInPart = useMemo(() => {
+    return [...selectedIndices].filter((i) => indicesInPart.includes(i)).sort((a, b) => a - b)
+  }, [selectedIndices, indicesInPart])
+
+  const handleGroupSelected = () => {
+    if (selectedInPart.length < 2) {
+      toastError('Chọn ít nhất 2 câu liên tiếp để gộp audio.')
+      return
+    }
+    if (!areIndicesContiguous(selectedInPart)) {
+      toastError('Chỉ gộp được các câu liên tiếp (ví dụ: 32, 33, 34).')
+      return
+    }
+    const start = selectedInPart[0]
+    const end = selectedInPart[selectedInPart.length - 1]
+    for (const i of selectedInPart) {
+      const info = getAudioGroupInfo(questionsWithIds, i)
+      if (info.usesCustomGroup && info.inGroup) {
+        toastError(`Câu ${i + 1} đã thuộc nhóm audio khác. Tách nhóm trước khi gộp lại.`)
+        return
+      }
+    }
+    const next = applyAudioGroupToRange(questionsWithIds, start, end)
+    applyQuestions(next)
+    setSelectedIndices(new Set())
+    toastSuccess(`Đã gộp ${selectedInPart.length} câu (câu ${start + 1}–${end + 1}) nghe chung một audio.`)
+  }
+
+  const handleUngroupSelected = () => {
+    if (selectedInPart.length === 0) {
+      toastError('Chọn ít nhất một câu trong nhóm tùy chỉnh để tách.')
+      return
+    }
+    const idx = selectedInPart[0]
+    const info = getAudioGroupInfo(questionsWithIds, idx)
+    if (!info.usesCustomGroup) {
+      toastError('Nhóm chuẩn TOEIC (3 câu/đoạn) không tách được — chỉ tách nhóm do bạn tạo thủ công.')
+      return
+    }
+    const next = ungroupAudioAtIndex(questionsWithIds, idx)
+    applyQuestions(next)
+    setSelectedIndices(new Set())
+    toastSuccess('Đã tách nhóm audio.')
+  }
 
   const countOk = questionsWithIds.length === TOEIC_FULL_QUESTIONS
 
@@ -287,6 +395,7 @@ export default function ToeicListeningQuestionBuilder({
             </p>
             <p className="text-xs text-indigo-700">
               Nên làm <strong>Bước 1</strong> (chọn ảnh/audio → sắp xếp → upload → gán Part), sau đó <strong>Bước 2</strong> (dán hoặc sửa từng câu).
+              Ở Bước 2 có thể <strong>chọn các câu liên tiếp → Gộp audio</strong> để học sinh nghe chung một đoạn (Part 3/4 mặc định 3 câu/nhóm).
             </p>
           </div>
         </div>
@@ -437,6 +546,47 @@ export default function ToeicListeningQuestionBuilder({
             activePart={activePart}
           />
 
+          {questionsWithIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-violet-200 bg-violet-50/60 px-3 py-2.5">
+              <p className="text-xs text-violet-900 flex-1 min-w-[200px]">
+                <strong>Gộp audio:</strong> tick các câu liên tiếp trong Part {activePart}, rồi bấm Gộp.
+                {selectedInPart.length > 0 && (
+                  <span className="ml-1 text-violet-700">
+                    Đang chọn: {selectedInPart.map((i) => i + 1).join(', ')}
+                  </span>
+                )}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                icon={Link2}
+                onClick={handleGroupSelected}
+                disabled={selectedInPart.length < 2}
+              >
+                Gộp audio ({selectedInPart.length || 0} câu)
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                icon={Unlink}
+                onClick={handleUngroupSelected}
+                disabled={selectedInPart.length === 0}
+              >
+                Tách nhóm
+              </Button>
+              {selectedInPart.length > 0 && (
+                <button
+                  type="button"
+                  className="text-xs text-violet-700 underline"
+                  onClick={() => setSelectedIndices(new Set())}
+                >
+                  Bỏ chọn
+                </button>
+              )}
+            </div>
+          )}
+
           {questionsWithIds.length === 0 ? (
             <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
               <Headphones className="h-10 w-10 text-gray-300 mx-auto mb-2" />
@@ -455,7 +605,10 @@ export default function ToeicListeningQuestionBuilder({
                     key={q.id || globalIdx}
                     globalIndex={globalIdx}
                     question={q}
-                    onUpdate={(updated) => updateAtIndex(globalIdx, updated)}
+                    questions={questionsWithIds}
+                    selected={selectedIndices.has(globalIdx)}
+                    onToggleSelect={() => toggleSelectIndex(globalIdx)}
+                    onUpdate={(updated, opts) => updateAtIndex(globalIdx, updated, opts)}
                   />
                 )
               })}

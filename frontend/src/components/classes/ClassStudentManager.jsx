@@ -10,6 +10,7 @@ import { useAuth } from '../../hooks/useAuth'
 import classesService from '../../services/classes.service'
 import studentsService from '../../services/students.service'
 import enrollmentRequestsService from '../../services/enrollmentRequests.service'
+import { formatDate } from '../../utils/formatDate'
 
 export default function ClassStudentManager({ classId, students = [], loading, onReload, readOnly = false }) {
   const [searchMode, setSearchMode] = useState(false)
@@ -19,6 +20,7 @@ export default function ClassStudentManager({ classId, students = [], loading, o
   const [showRemove, setShowRemove] = useState(false)
   const [removing, setRemoving] = useState(false)
   const [requestNote, setRequestNote] = useState('')
+  const [enrollmentDate, setEnrollmentDate] = useState(() => new Date().toISOString().slice(0, 10))
 
   // Multi-select states
   const [selectedToAdd, setSelectedToAdd] = useState(new Set())
@@ -118,7 +120,9 @@ export default function ClassStudentManager({ classId, students = [], loading, o
     try {
       if (isAdmin) {
         const ids = Array.from(selectedToAdd)
-        const result = await classesService.addStudentsBatch(classId, ids)
+        const result = await classesService.addStudentsBatch(classId, ids, {
+          enrollment_date: enrollmentDate,
+        })
         const data = result.data || result
         let msg = `Đã thêm ${data.added || ids.length} học sinh vào lớp`
         if (data.skipped > 0) msg += ` (${data.skipped} đã có sẵn)`
@@ -155,7 +159,7 @@ export default function ClassStudentManager({ classId, students = [], loading, o
     setAdding(true)
     try {
       if (isAdmin) {
-        await classesService.addStudent(classId, student.id)
+        await classesService.addStudent(classId, student.id, { enrollment_date: enrollmentDate })
         success(`Đã thêm "${student.full_name}" vào lớp`)
         onReload()
       } else if (isTeacher) {
@@ -249,6 +253,23 @@ export default function ClassStudentManager({ classId, students = [], loading, o
                 <Clock className="h-3.5 w-3.5 flex-shrink-0" />
                 Yêu cầu thêm học sinh sẽ cần admin duyệt trước khi có hiệu lực
               </p>
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <label className="text-xs font-medium text-gray-600 whitespace-nowrap">
+                Ngày nhập học (áp dụng cho HS được thêm):
+              </label>
+              <input
+                type="date"
+                value={enrollmentDate}
+                onChange={(e) => setEnrollmentDate(e.target.value)}
+                className="px-2 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+              <span className="text-[11px] text-gray-500">
+                Dùng để tính số tháng học phí đến ngày kết thúc lớp (tab Tổng quan).
+              </span>
             </div>
           )}
 
@@ -461,6 +482,27 @@ export default function ClassStudentManager({ classId, students = [], loading, o
                       <div>
                         <p className="text-sm font-medium text-gray-700">{student.full_name}</p>
                         <p className="text-xs text-gray-500">{student.email || student.phone || ''}</p>
+                        {(student.enrollment_date || student.tuition_months_to_class_end != null) && (
+                          <p className="text-[11px] text-gray-600 mt-1 leading-snug">
+                            {student.enrollment_date && (
+                              <span>Nhập học: {formatDate(student.enrollment_date)}</span>
+                            )}
+                            {student.tuition_months_to_class_end != null && (
+                              <span className="text-blue-700">
+                                {' '}
+                                · Ước tính{' '}
+                                <strong>{student.tuition_months_to_class_end}</strong> tháng học phí (đến khi
+                                lớp kết thúc)
+                              </span>
+                            )}
+                            {student.tuition_months_to_class_end == null && student.enrollment_date && (
+                              <span className="text-amber-700">
+                                {' '}
+                                · Chưa có ngày kết thúc lớp — không ước lượng được tháng học phí.
+                              </span>
+                            )}
+                          </p>
+                        )}
                       </div>
                     </div>
                     {isAdmin && (

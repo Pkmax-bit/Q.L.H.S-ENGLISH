@@ -4,7 +4,7 @@ import { ChevronRight, Home } from 'lucide-react'
 export default function Breadcrumb({ items = [] }) {
   return (
     <nav className="flex items-center gap-1.5 text-sm mb-4">
-      <Link to="/" className="text-gray-400 hover:text-primary-500 transition-colors">
+      <Link to="/dashboard" className="text-gray-400 hover:text-primary-500 transition-colors">
         <Home className="h-4 w-4" />
       </Link>
       {items.map((item, index) => (

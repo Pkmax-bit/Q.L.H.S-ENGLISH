@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, GraduationCap, BookOpen, School,
   FileText, ClipboardList, CalendarDays, Building2, Wallet,
   ChevronLeft, ChevronRight, X, BookCopy, UserCheck, Backpack,
-  PenLine, TableProperties, BarChart3, ListChecks, Library,
+  PenLine, TableProperties, BarChart3, ListChecks, Library, LayoutGrid, Package,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../hooks/useAuth'
@@ -16,10 +16,16 @@ import { useAuth } from '../../hooks/useAuth'
  */
 const menuItems = [
   {
-    path: '/',
+    path: '/dashboard',
     icon: LayoutDashboard,
     label: 'Tổng quan',
     roles: ['admin', 'teacher', 'student'],
+  },
+  {
+    path: '/admin-hub',
+    icon: LayoutGrid,
+    label: 'Trung tâm quản trị',
+    roles: ['admin'],
   },
   {
     path: '/learning',
@@ -106,6 +112,12 @@ const menuItems = [
     roles: ['admin', 'teacher'],
   },
   {
+    path: '/lesson-bundles',
+    icon: Package,
+    label: 'Bộ bài học',
+    roles: ['admin', 'teacher'],
+  },
+  {
     path: '/schedules',
     icon: CalendarDays,
     label: 'Thời khóa biểu',
@@ -172,8 +184,8 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
       <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
         {visibleMenuItems.map((item) => {
           const Icon = item.icon
-          const isActive = item.path === '/'
-            ? location.pathname === '/'
+          const isActive = item.path === '/dashboard'
+            ? location.pathname === '/dashboard'
             : location.pathname.startsWith(item.path)
 
           return (

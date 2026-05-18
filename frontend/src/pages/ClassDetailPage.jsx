@@ -1,6 +1,6 @@
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useContext } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Info, Users, BookOpen, ClipboardList, BarChart3 } from 'lucide-react'
+import { ArrowLeft, Info, Users, BookOpen, ClipboardList, BarChart3, Flag } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Button from '../components/common/Button'
 import ClassOverviewTab from '../components/classes/detail/ClassOverviewTab'
@@ -10,6 +10,7 @@ import ClassAssignmentsTab from '../components/classes/detail/ClassAssignmentsTa
 import ClassGradesTab from '../components/classes/detail/ClassGradesTab'
 import { useFetch } from '../hooks/useFetch'
 import { useAuth } from '../hooks/useAuth'
+import { ToastContext } from '../context/ToastContext'
 import classesService from '../services/classes.service'
 
 const ALL_TABS = [
@@ -24,7 +25,9 @@ export default function ClassDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('overview')
+  const [endingClass, setEndingClass] = useState(false)
   const { user } = useAuth()
+  const { success, error: showError } = useContext(ToastContext)
   const isStudent = user?.role === 'student'
 
   const tabs = useMemo(
@@ -44,6 +47,25 @@ export default function ClassDetailPage() {
   const fetchOverview = useCallback(() => classesService.getOverview(id), [id])
   const { data: overview, loading, execute: reload } = useFetch(fetchOverview)
 
+  const handleEndClass = async () => {
+    if (
+      !window.confirm(
+        'Gán ngày kết thúc lớp là hôm nay và đánh dấu lớp đã hoàn thành? (Phục vụ tính học phí đến cuối khóa.)'
+      )
+    )
+      return
+    setEndingClass(true)
+    try {
+      await classesService.endClass(id)
+      success('Đã kết thúc lớp')
+      reload()
+    } catch (err) {
+      showError(err.response?.data?.message || 'Không thể kết thúc lớp')
+    } finally {
+      setEndingClass(false)
+    }
+  }
+
   if (loading) return <LoadingSpinner message="Đang tải thông tin lớp học..." />
 
   if (!overview) {
@@ -58,6 +80,12 @@ export default function ClassDetailPage() {
   }
 
   const { classInfo, students, lessons, assignments, gradeMatrix, stats } = overview
+
+  const canEndClass =
+    !isStudent &&
+    classInfo.status !== 'completed' &&
+    (user?.role === 'admin' ||
+      (user?.role === 'teacher' && user?.id && user.id === classInfo.teacher_id))
 
   return (
     <div className="space-y-6">
@@ -79,17 +107,39 @@ export default function ClassDetailPage() {
             </p>
           </div>
         </div>
-        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-          classInfo.status === 'active'
-            ? 'bg-green-100 text-green-700'
-            : classInfo.status === 'upcoming'
-              ? 'bg-indigo-100 text-indigo-700'
-              : classInfo.status === 'completed'
-                ? 'bg-blue-100 text-blue-700'
-                : 'bg-gray-100 text-gray-600'
-        }`}>
-          {classInfo.status === 'active' ? 'Đang học' : classInfo.status === 'upcoming' ? 'Sắp mở' : classInfo.status === 'completed' ? 'Đã hoàn thành' : classInfo.status}
-        </span>
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          {canEndClass && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={Flag}
+              loading={endingClass}
+              onClick={handleEndClass}
+              className="border-amber-300 text-amber-800 hover:bg-amber-50"
+            >
+              Kết thúc lớp
+            </Button>
+          )}
+          <span
+            className={`px-3 py-1 rounded-full text-xs font-medium ${
+              classInfo.status === 'active'
+                ? 'bg-green-100 text-green-700'
+                : classInfo.status === 'upcoming'
+                  ? 'bg-indigo-100 text-indigo-700'
+                  : classInfo.status === 'completed'
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {classInfo.status === 'active'
+              ? 'Đang học'
+              : classInfo.status === 'upcoming'
+                ? 'Sắp mở'
+                : classInfo.status === 'completed'
+                  ? 'Đã hoàn thành'
+                  : classInfo.status}
+          </span>
+        </div>
       </div>
 
       {/* Quick stats — học sinh chỉ thấy bài học / bài tập (không thống kê chấm điểm cả lớp) */}
@@ -159,7 +209,7 @@ export default function ClassDetailPage() {
       {/* Tab content */}
       <div>
         {activeTab === 'overview' && (
-          <ClassOverviewTab classInfo={classInfo} stats={stats} forStudent={isStudent} />
+          <ClassOverviewTab classInfo={classInfo} stats={stats} forStudent={isStudent} onReload={reload} />
         )}
         {activeTab === 'students' && (
           <ClassStudentsTab

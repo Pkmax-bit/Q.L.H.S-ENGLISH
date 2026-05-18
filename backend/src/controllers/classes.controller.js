@@ -83,11 +83,11 @@ const getStudents = async (req, res, next) => {
 
 const addStudent = async (req, res, next) => {
   try {
-    const { student_id } = req.body;
+    const { student_id, enrollment_date } = req.body;
     if (!student_id) {
       return response.badRequest(res, 'student_id is required');
     }
-    const result = await classesService.addStudent(req.params.id, student_id);
+    const result = await classesService.addStudent(req.params.id, student_id, { enrollment_date });
     emitNotification('class:student_added', { class_id: req.params.id, student_id });
     return response.created(res, result, 'Student added to class');
   } catch (error) {
@@ -100,11 +100,11 @@ const addStudent = async (req, res, next) => {
 
 const addStudentsBatch = async (req, res, next) => {
   try {
-    const { student_ids } = req.body;
+    const { student_ids, enrollment_date } = req.body;
     if (!student_ids || !Array.isArray(student_ids) || student_ids.length === 0) {
       return response.badRequest(res, 'student_ids (array) is required');
     }
-    const result = await classesService.addStudentsBatch(req.params.id, student_ids);
+    const result = await classesService.addStudentsBatch(req.params.id, student_ids, { enrollment_date });
     emitNotification('class:students_added', { class_id: req.params.id, student_ids, ...result });
     return response.created(res, result, `Đã thêm ${result.added} học sinh vào lớp`);
   } catch (error) {
@@ -142,7 +142,24 @@ const removeStudent = async (req, res, next) => {
   }
 };
 
+const endClass = async (req, res, next) => {
+  try {
+    const cls = await classesService.endClass(req.params.id, req.user);
+    if (!cls) {
+      return response.notFound(res, 'Class not found');
+    }
+    emitNotification('class:updated', cls);
+    return response.success(res, cls, 'Đã kết thúc lớp');
+  } catch (error) {
+    if (error.statusCode) {
+      return response.error(res, error.message, error.statusCode);
+    }
+    next(error);
+  }
+};
+
 module.exports = {
   getAll, getById, getOverview, create, update, remove,
   getStudents, addStudent, addStudentsBatch, removeStudent, removeStudentsBatch,
+  endClass,
 };

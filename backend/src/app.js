@@ -26,6 +26,8 @@ const submissionsRoutes = require('./routes/submissions.routes');
 const uploadsRoutes = require('./routes/uploads.routes');
 const questionBankRoutes = require('./routes/questionBank.routes');
 const driveRoutes = require('./routes/drive.routes');
+const tuitionRoutes = require('./routes/tuition.routes');
+const lessonBundlesRoutes = require('./routes/lessonBundles.routes');
 
 const app = express();
 
@@ -79,6 +81,8 @@ app.use('/api/submissions', submissionsRoutes);
 app.use('/api/uploads', uploadsRoutes);
 app.use('/api/question-bank', questionBankRoutes);
 app.use('/api/drive-proxy', driveRoutes);
+app.use('/api/tuition', tuitionRoutes);
+app.use('/api/lesson-bundles', lessonBundlesRoutes);
 
 // Serve frontend static files in production
 const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');

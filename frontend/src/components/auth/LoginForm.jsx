@@ -1,5 +1,5 @@
 import { useState, useContext } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { School, Mail, Lock, Eye, EyeOff, ShieldCheck, GraduationCap, UserRound } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { ToastContext } from '../../context/ToastContext'
@@ -38,7 +38,7 @@ export default function LoginForm() {
     setLoading(true)
     try {
       await login(form)
-      navigate('/')
+      navigate('/dashboard')
     } catch (err) {
       const msg = err.response?.data?.message || 'Đăng nhập thất bại. Vui lòng thử lại.'
       showError(msg)
@@ -53,7 +53,7 @@ export default function LoginForm() {
     setLoading(true)
     try {
       await login({ email: account.email, password: account.password })
-      navigate('/')
+      navigate('/dashboard')
     } catch (err) {
       const msg = err.response?.data?.message || 'Đăng nhập thất bại. Vui lòng thử lại.'
       showError(msg)
@@ -72,7 +72,10 @@ export default function LoginForm() {
               <School className="h-8 w-8 text-white" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Đăng nhập</h1>
-            <p className="text-gray-500 text-sm mt-1">Trung Tâm Đào Tạo</p>
+            <p className="text-gray-500 text-sm mt-1">Q.L.H.S English</p>
+            <Link to="/" className="inline-block mt-2 text-xs text-primary-600 hover:text-primary-700 font-medium">
+              ← Về trang chủ
+            </Link>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">

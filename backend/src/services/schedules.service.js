@@ -54,7 +54,7 @@ const getAll = async (queryParams, currentUser = null) => {
     .from('schedules')
     .select(`
       *,
-      classes(name),
+      classes(name, start_date, end_date),
       facilities(name)
     `);
 
@@ -83,6 +83,8 @@ const getAll = async (queryParams, currentUser = null) => {
     return {
       ...rest,
       class_name: classes?.name || null,
+      class_start_date: classes?.start_date || null,
+      class_end_date: classes?.end_date || null,
       room_name: facilities?.name || null,
     };
   });
@@ -98,7 +100,7 @@ const getById = async (id) => {
     .from('schedules')
     .select(`
       *,
-      classes(name),
+      classes(name, start_date, end_date),
       facilities(name)
     `)
     .eq('id', id)
@@ -113,6 +115,8 @@ const getById = async (id) => {
   return {
     ...rest,
     class_name: classes?.name || null,
+    class_start_date: classes?.start_date || null,
+    class_end_date: classes?.end_date || null,
     room_name: facilities?.name || null,
   };
 };

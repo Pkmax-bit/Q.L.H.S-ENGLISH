@@ -17,19 +17,14 @@ import {
   TOEIC_PART_RANGES,
   TOEIC_FULL_QUESTIONS,
 } from '../../utils/toeicListening'
+import {
+  resolveQuestionAudioUrl,
+  isAudioGroupLeader,
+  hasMultiQuestionAudioGroup,
+  getAudioGroupInfo,
+} from '../../utils/toeicAudioGroups'
 import { mediaFileNameFromUrl } from '../../utils/mediaUrl'
 import { normalizeMediaUrl } from '../../utils/googleDrive'
-
-function pickGroupAudioUrl(questions, part, groupIndex) {
-  if (part !== 3 && part !== 4) return null
-  const base = part === 3 ? 31 : 70
-  for (let k = 0; k < 3; k++) {
-    const q = questions[base + groupIndex * 3 + k]
-    const u = q?.youtube_url?.trim()
-    if (u) return u
-  }
-  return null
-}
 
 /** Sau khi bấm "Bắt đầu thi": đếm ngược chuẩn bị trước khi vào audio câu 1 */
 const LISTENING_PREP_SECONDS = 10
@@ -281,12 +276,18 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
   const currentQuestion = questions[currentQ]
   const meta = useMemo(() => getToeicListeningMeta(currentQ), [currentQ])
 
-  const groupAudioUrl = useMemo(() => {
-    if (!currentQuestion || (meta.part !== 3 && meta.part !== 4)) return null
-    return pickGroupAudioUrl(questions, meta.part, meta.groupIndex)
-  }, [questions, currentQuestion, meta.part, meta.groupIndex])
+  const audioGroupInfo = useMemo(() => getAudioGroupInfo(questions, currentQ), [questions, currentQ])
+  const sharedAudioGroup = hasMultiQuestionAudioGroup(questions, currentQ)
 
-  const singleAudioUrl = currentQuestion?.youtube_url?.trim() || null
+  const groupAudioUrl = useMemo(() => {
+    if (!sharedAudioGroup) return null
+    return resolveQuestionAudioUrl(questions, currentQ)
+  }, [questions, currentQ, sharedAudioGroup])
+
+  const singleAudioUrl = useMemo(() => {
+    if (sharedAudioGroup) return null
+    return currentQuestion?.youtube_url?.trim() || null
+  }, [sharedAudioGroup, currentQuestion?.youtube_url])
 
   // Chuyển link Google Drive sang URL có thể dùng trực tiếp ở thẻ <audio>/<img>
   const groupAudioPlay = useMemo(() => normalizeMediaUrl(groupAudioUrl, 'audio'), [groupAudioUrl])
@@ -328,8 +329,8 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
 
     autoNextScheduledRef.current = false
 
-    // Part 3/4 — câu thứ 2/3 trong nhóm: audio đoạn đã phát ở câu đầu nhóm → nghỉ 5s rồi chuyển câu
-    if ((meta.part === 3 || meta.part === 4) && (meta.indexInGroup ?? 0) > 0) {
+    // Câu 2+ trong nhóm audio chung: đoạn đã phát ở câu đầu → nghỉ 5s rồi chuyển câu
+    if (sharedAudioGroup && !isAudioGroupLeader(questions, currentQ)) {
       setPhase(PHASE.ANSWER)
       setPhaseLeft(LISTENING_GAP_SECONDS)
       return
@@ -338,7 +339,7 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
     // Câu thường: chờ audio tự phát rồi nghỉ 5s
     setPhase(PHASE.AUDIO)
     setPhaseLeft(0)
-  }, [currentQ, examMode, examStarted, meta.part, meta.indexInGroup, questions.length, listeningPrepRemaining])
+  }, [currentQ, examMode, examStarted, questions, sharedAudioGroup, questions.length, listeningPrepRemaining])
 
   // === Đồng hồ phase ANSWER (nghỉ 5s) ===
   useEffect(() => {
@@ -392,14 +393,17 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
     if (!examMode || !examStarted) return
     if (phase !== PHASE.AUDIO) return
     let url = null
-    if (meta.part === 1 || meta.part === 2) url = singleAudioUrl
-    else if ((meta.part === 3 || meta.part === 4) && (meta.indexInGroup ?? 0) === 0) url = groupAudioUrl
+    if (sharedAudioGroup) {
+      if (isAudioGroupLeader(questions, currentQ)) url = groupAudioUrl
+    } else if (meta.part === 1 || meta.part === 2) {
+      url = singleAudioUrl
+    }
     if (!url || !isDirectAudioUrl(url)) {
       // Không có audio playable → nghỉ 5s rồi sang câu kế
       setPhase(PHASE.ANSWER)
       setPhaseLeft(LISTENING_GAP_SECONDS)
     }
-  }, [phase, examMode, examStarted, meta.part, meta.indexInGroup, singleAudioUrl, groupAudioUrl])
+  }, [phase, examMode, examStarted, meta.part, sharedAudioGroup, questions, currentQ, singleAudioUrl, groupAudioUrl])
 
   if (loading) return <LoadingSpinner message="Đang tải nội dung bài thi..." />
 
@@ -514,10 +518,10 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
   // - Exam mode: chỉ render khi phase >= AUDIO của câu thuộc loại có audio (P1/P2 hoặc câu đầu nhóm P3/P4),
   //   và phải tự autoplay (không có controls).
   const isPart1or2 = meta.part === 1 || meta.part === 2
-  const isPart34Head = (meta.part === 3 || meta.part === 4) && (meta.indexInGroup ?? 0) === 0
+  const isSharedGroupLeader = sharedAudioGroup && isAudioGroupLeader(questions, currentQ)
   const showAudioBlock = examMode
-    ? (isPart1or2 || isPart34Head)
-    : (isPart1or2 || (meta.part === 3 || meta.part === 4))
+    ? (isPart1or2 || isSharedGroupLeader)
+    : (isPart1or2 || sharedAudioGroup)
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -652,17 +656,22 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-sm font-semibold text-indigo-600">
                 Câu {currentQ + 1} / {questions.length}
-                {meta.part && (meta.part === 3 || meta.part === 4) && (
+                {sharedAudioGroup && (
                   <span className="text-gray-500 font-normal ml-2">
-                    · {meta.part === 3 ? 'Hội thoại' : 'Bài nói'} {(meta.groupIndex ?? 0) + 1}
-                    {meta.indexInGroup != null ? ` — câu ${meta.indexInGroup + 1}/3` : ''}
+                    · Nhóm audio — câu {audioGroupInfo.indexInGroup + 1}/{audioGroupInfo.groupSize}
+                    {!audioGroupInfo.usesCustomGroup && meta.part === 3 && (
+                      <span> · Hội thoại {(meta.groupIndex ?? 0) + 1}</span>
+                    )}
+                    {!audioGroupInfo.usesCustomGroup && meta.part === 4 && (
+                      <span> · Bài nói {(meta.groupIndex ?? 0) + 1}</span>
+                    )}
                   </span>
                 )}
               </span>
             </div>
 
             {/* Audio Part 3/4 (đoạn) */}
-            {(meta.part === 3 || meta.part === 4) && groupAudioUrl && showAudioBlock && (
+            {sharedAudioGroup && groupAudioUrl && showAudioBlock && (
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-800 mb-2">
                   <Headphones className="h-4 w-4 text-indigo-600" />
@@ -681,7 +690,7 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
                 )}
                 {isDirectAudioUrl(groupAudioUrl) ? (
                   examMode ? (
-                    isPart34Head && (
+                    isSharedGroupLeader && (
                       <audio
                         ref={audioRef}
                         key={`${groupAudioPlay}_${currentQ}`}
@@ -709,7 +718,7 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
                     </a>
                   )
                 )}
-                {examMode && (meta.part === 3 || meta.part === 4) && (meta.indexInGroup ?? 0) > 0 && (
+                {examMode && sharedAudioGroup && !isAudioGroupLeader(questions, currentQ) && (
                   <p className="text-xs text-gray-500 italic flex items-center gap-1.5">
                     <Volume2 className="h-3.5 w-3.5" /> Audio đoạn đã phát ở câu đầu nhóm.
                   </p>

@@ -1,5 +1,6 @@
 const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+const { countInclusiveCalendarMonths } = require('../utils/tuitionMonths');
 
 const getAll = async (queryParams, currentUser = null) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
@@ -166,17 +167,22 @@ const getOverview = async (classId) => {
     throw classErr;
   }
 
+  const { subjects, profiles, ...classRest } = classInfo;
+
   // 2. Students
   const { data: studentsRaw, error: studErr } = await supabase
     .from('class_students')
-    .select(`id, enrolled_at, status, profiles!class_students_student_id_fkey(id, full_name, email, phone, avatar_url)`)
+    .select(`id, enrolled_at, enrollment_date, status, profiles!class_students_student_id_fkey(id, full_name, email, phone, avatar_url)`)
     .eq('class_id', classId);
   if (studErr) throw studErr;
+  const classEnd = classRest.end_date || null;
   const students = (studentsRaw || []).map(r => ({
     ...(r.profiles || {}),
     enrollment_id: r.id,
     enrolled_at: r.enrolled_at,
+    enrollment_date: r.enrollment_date,
     enrollment_status: r.status,
+    tuition_months_to_class_end: countInclusiveCalendarMonths(r.enrollment_date, classEnd),
   })).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
 
   // 3. Lessons
@@ -243,8 +249,6 @@ const getOverview = async (classId) => {
     ? (grades.filter(g => g.status === 'graded').reduce((sum, g) => sum + (g.score || 0), 0) / gradedSubmissions).toFixed(1)
     : null;
 
-  const { subjects, profiles, ...classRest } = classInfo;
-
   // Auto-compute display status from dates
   const now2 = new Date();
   let displayStatus = classRest.status || 'active';
@@ -310,7 +314,8 @@ const create = async (data) => {
 };
 
 const update = async (id, data) => {
-  const { name, subject_id, teacher_id, max_students, status, start_date, end_date, description } = data;
+  const { name, subject_id, teacher_id, max_students, status, start_date, end_date, description,
+    fee_policy, fee_amount, billing_day, sessions_per_period } = data;
 
   const updateObj = {};
   if (name !== undefined) updateObj.name = name;
@@ -321,6 +326,10 @@ const update = async (id, data) => {
   if (start_date !== undefined) updateObj.start_date = start_date;
   if (end_date !== undefined) updateObj.end_date = end_date;
   if (description !== undefined) updateObj.description = description;
+  if (fee_policy !== undefined) updateObj.fee_policy = fee_policy || null;
+  if (fee_amount !== undefined) updateObj.fee_amount = fee_amount;
+  if (billing_day !== undefined) updateObj.billing_day = billing_day;
+  if (sessions_per_period !== undefined) updateObj.sessions_per_period = sessions_per_period;
   updateObj.updated_at = new Date().toISOString();
 
   const { data: row, error } = await supabase
@@ -353,11 +362,19 @@ const remove = async (id) => {
 };
 
 const getStudents = async (classId) => {
+  const { data: clsRow } = await supabase
+    .from('classes')
+    .select('end_date')
+    .eq('id', classId)
+    .maybeSingle();
+  const classEnd = clsRow?.end_date || null;
+
   const { data, error } = await supabase
     .from('class_students')
     .select(`
       id,
       enrolled_at,
+      enrollment_date,
       status,
       profiles!class_students_student_id_fkey(id, email, full_name, phone, avatar_url, is_active)
     `)
@@ -369,11 +386,13 @@ const getStudents = async (classId) => {
     ...(row.profiles || {}),
     enrollment_id: row.id,
     enrolled_at: row.enrolled_at,
+    enrollment_date: row.enrollment_date,
     enrollment_status: row.status,
+    tuition_months_to_class_end: countInclusiveCalendarMonths(row.enrollment_date, classEnd),
   })).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
 };
 
-const addStudent = async (classId, studentId) => {
+const addStudent = async (classId, studentId, options = {}) => {
   // Check class capacity
   const { data: classInfo, error: classError } = await supabase
     .from('classes')
@@ -407,9 +426,17 @@ const addStudent = async (classId, studentId) => {
     throw { statusCode: 409, message: 'Student already enrolled in this class' };
   }
 
+  const enrollDate = (options.enrollment_date && String(options.enrollment_date).slice(0, 10))
+    || new Date().toISOString().slice(0, 10);
+
   const { data, error } = await supabase
     .from('class_students')
-    .insert({ class_id: classId, student_id: studentId })
+    .insert({
+      class_id: classId,
+      student_id: studentId,
+      enrollment_date: enrollDate,
+      enrolled_at: `${enrollDate}T12:00:00.000Z`,
+    })
     .select()
     .single();
 
@@ -433,7 +460,7 @@ const removeStudent = async (classId, studentId) => {
   return data;
 };
 
-const addStudentsBatch = async (classId, studentIds) => {
+const addStudentsBatch = async (classId, studentIds, options = {}) => {
   // Check class capacity
   const { data: classInfo, error: classError } = await supabase
     .from('classes')
@@ -472,7 +499,14 @@ const addStudentsBatch = async (classId, studentIds) => {
 
   // Limit to remaining capacity
   const toAdd = newIds.slice(0, remaining);
-  const rows = toAdd.map(student_id => ({ class_id: classId, student_id }));
+  const enrollDate = (options.enrollment_date && String(options.enrollment_date).slice(0, 10))
+    || new Date().toISOString().slice(0, 10);
+  const rows = toAdd.map(student_id => ({
+    class_id: classId,
+    student_id,
+    enrollment_date: enrollDate,
+    enrolled_at: `${enrollDate}T12:00:00.000Z`,
+  }));
 
   const { data, error } = await supabase
     .from('class_students')
@@ -501,7 +535,28 @@ const removeStudentsBatch = async (classId, studentIds) => {
   return { removed: (data || []).length };
 };
 
+const endClass = async (classId, currentUser) => {
+  const { data: cls, error } = await supabase
+    .from('classes')
+    .select('id, teacher_id')
+    .eq('id', classId)
+    .single();
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+  if (!cls) return null;
+
+  if (currentUser.role !== 'admin' && cls.teacher_id !== currentUser.id) {
+    throw { statusCode: 403, message: 'Chỉ admin hoặc giáo viên chủ nhiệm mới kết thúc lớp' };
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  return update(classId, { end_date: today, status: 'completed' });
+};
+
 module.exports = {
   getAll, getById, getOverview, create, update, remove,
   getStudents, addStudent, addStudentsBatch, removeStudent, removeStudentsBatch,
+  endClass,
 };

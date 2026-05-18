@@ -77,20 +77,26 @@ function formatTime(timeStr) {
 
 /**
  * Check if a schedule slot is active on a given date.
- * A slot matches if:
- * 1. The date's day-of-week matches slot.day_of_week
- * 2. If slot has start_date → date >= start_date
- * 3. If slot has end_date → date <= end_date
+ * Slot is active when:
+ * 1. day-of-week matches
+ * 2. date is within slot.start_date / slot.end_date (if present)
+ * 3. date is within the owning class's start_date / end_date (if present)
+ *    → giải quyết trường hợp slot không gắn end_date riêng nhưng lớp đã kết thúc.
  */
 function isSlotActiveOnDate(slot, date) {
-  // Day of week must match
   if (slot.day_of_week !== date.getDay()) return false
 
-  // Check date range
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
-  if (slot.start_date && dateStr < slot.start_date) return false
-  if (slot.end_date && dateStr > slot.end_date) return false
+  const slotStart = slot.start_date ? String(slot.start_date).slice(0, 10) : null
+  const slotEnd = slot.end_date ? String(slot.end_date).slice(0, 10) : null
+  const classStart = slot.class_start_date ? String(slot.class_start_date).slice(0, 10) : null
+  const classEnd = slot.class_end_date ? String(slot.class_end_date).slice(0, 10) : null
+
+  if (slotStart && dateStr < slotStart) return false
+  if (slotEnd && dateStr > slotEnd) return false
+  if (classStart && dateStr < classStart) return false
+  if (classEnd && dateStr > classEnd) return false
 
   return true
 }
@@ -487,16 +493,16 @@ function ListView({ schedules, colorMap, onSlotClick, interactive = true }) {
   })
 
   const formatDateRange = (slot) => {
-    if (!slot.start_date && !slot.end_date) return null
+    const start = slot.start_date || slot.class_start_date
+    const end = slot.end_date || slot.class_end_date
+    if (!start && !end) return null
+    const fmt = (s) => {
+      const [y, m, d] = String(s).slice(0, 10).split('-')
+      return `${d}/${m}/${y}`
+    }
     const parts = []
-    if (slot.start_date) {
-      const [y, m, d] = slot.start_date.split('-')
-      parts.push(`${d}/${m}/${y}`)
-    }
-    if (slot.end_date) {
-      const [y, m, d] = slot.end_date.split('-')
-      parts.push(`${d}/${m}/${y}`)
-    }
+    if (start) parts.push(fmt(start))
+    if (end) parts.push(fmt(end))
     return parts.join(' → ')
   }
 

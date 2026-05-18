@@ -1,9 +1,10 @@
 import { useState, useContext, useCallback } from 'react'
-import { BookOpen, FileText, Youtube, HardDrive, Eye, EyeOff, Plus, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import { BookOpen, FileText, Youtube, HardDrive, Eye, EyeOff, Plus, Pencil, Trash2, ExternalLink, Copy } from 'lucide-react'
 import Button from '../../common/Button'
 import ConfirmDialog from '../../common/ConfirmDialog'
 import LessonDetail from '../../lessons/LessonDetail'
 import LessonForm from '../../lessons/LessonForm'
+import ApplyTemplatesModal from '../ApplyTemplatesModal'
 import { ToastContext } from '../../../context/ToastContext'
 import { useAuth } from '../../../hooks/useAuth'
 import { useFetch } from '../../../hooks/useFetch'
@@ -22,6 +23,7 @@ export default function ClassLessonsTab({ lessons: initialLessons, classId, onRe
   const [showForm, setShowForm] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
+  const [showApply, setShowApply] = useState(false)
   const [selected, setSelected] = useState(null)
   const [deleting, setDeleting] = useState(false)
   const { success, error: showError } = useContext(ToastContext)
@@ -94,9 +96,19 @@ export default function ClassLessonsTab({ lessons: initialLessons, classId, onRe
           <h3 className="text-sm font-semibold text-gray-700">
             Danh sách bài học ({lessons.length})
           </h3>
-          <Button size="sm" icon={Plus} onClick={handleAdd}>
-            Thêm bài học
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              icon={Copy}
+              onClick={() => setShowApply(true)}
+            >
+              Áp dụng từ mẫu
+            </Button>
+            <Button size="sm" icon={Plus} onClick={handleAdd}>
+              Thêm bài học
+            </Button>
+          </div>
         </div>
       )}
 
@@ -199,6 +211,20 @@ export default function ClassLessonsTab({ lessons: initialLessons, classId, onRe
         onClose={() => { setShowDetail(false); setSelected(null) }}
         lesson={selected}
       />
+
+      {/* Apply templates */}
+      {canManage && (
+        <ApplyTemplatesModal
+          isOpen={showApply}
+          onClose={() => setShowApply(false)}
+          type="lesson"
+          classId={classId}
+          onApplied={() => {
+            reloadLessons()
+            if (onReload) onReload()
+          }}
+        />
+      )}
 
       {/* Delete Confirm */}
       {isAdmin && (
