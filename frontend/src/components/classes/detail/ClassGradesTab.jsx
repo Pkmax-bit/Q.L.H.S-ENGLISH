@@ -62,7 +62,7 @@ export default function ClassGradesTab({ assignments, gradeMatrix, stats }) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Tìm học sinh..."
-            className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
         </div>
       </div>
@@ -87,7 +87,7 @@ export default function ClassGradesTab({ assignments, gradeMatrix, stats }) {
                     <div className="text-xs text-gray-400 font-normal">{a.total_points}đ</div>
                   </th>
                 ))}
-                <th className="text-center px-4 py-3 font-semibold text-gray-600 min-w-[80px] bg-blue-50">
+                <th className="text-center px-4 py-3 font-semibold text-gray-600 min-w-[80px] bg-amber-50">
                   TB
                 </th>
               </tr>
@@ -112,7 +112,7 @@ export default function ClassGradesTab({ assignments, gradeMatrix, stats }) {
                       </td>
                     )
                   })}
-                  <td className="text-center px-4 py-3 bg-blue-50/50">
+                  <td className="text-center px-4 py-3 bg-amber-50/50">
                     {row.avg !== null ? (
                       <span className={`font-bold text-base ${getScoreColor(parseFloat(row.avg))}`}>
                         {row.avg}
@@ -137,7 +137,7 @@ export default function ClassGradesTab({ assignments, gradeMatrix, stats }) {
           <span className="w-3 h-3 rounded bg-amber-100 border border-amber-300" /> Đã nộp (chờ chấm)
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded bg-blue-100 border border-blue-300" /> Đang làm
+          <span className="w-3 h-3 rounded bg-amber-100 border border-amber-300" /> Đang làm
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded bg-gray-100 border border-gray-300" /> Chưa làm
@@ -182,7 +182,7 @@ function ScoreCell({ submission, totalPoints }) {
 
   // in_progress
   return (
-    <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs bg-blue-100 text-blue-600">
+    <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs bg-amber-100 text-amber-700">
       Đang làm
     </span>
   )

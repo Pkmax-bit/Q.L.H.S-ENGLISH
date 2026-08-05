@@ -21,8 +21,11 @@ export default function RevenueChart({ data = [] }) {
   }, [chartData])
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-      <h3 className="text-base font-semibold text-gray-900 mb-4">Thu chi theo tháng</h3>
+    <div className="app-card p-5 h-full flex flex-col">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-base font-semibold text-stone-900">Thu chi theo tháng</h3>
+        <span className="text-xs text-stone-400">{new Date().getFullYear()}</span>
+      </div>
 
       {/* Legend */}
       <div className="flex items-center gap-4 mb-4 text-sm">

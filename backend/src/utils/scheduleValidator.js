@@ -10,7 +10,7 @@ const checkScheduleConflict = async (roomId, classId, dayOfWeek, startTime, endT
   if (roomId) {
     let query = supabase
       .from('schedules')
-      .select('*, facilities(name)')
+      .select('*')
       .eq('room_id', roomId)
       .eq('day_of_week', dayOfWeek)
       .lt('start_time', endTime)
@@ -25,9 +25,12 @@ const checkScheduleConflict = async (roomId, classId, dayOfWeek, startTime, endT
     if (error) throw error;
 
     if (roomConflicts && roomConflicts.length > 0) {
+      let roomName = 'Unknown';
+      const { data: room } = await supabase.from('facilities').select('name').eq('id', roomId).maybeSingle();
+      if (room?.name) roomName = room.name;
       conflicts.push({
         type: 'room',
-        message: `Room "${roomConflicts[0].facilities?.name || 'Unknown'}" is already booked at this time`,
+        message: `Room "${roomName}" is already booked at this time`,
         conflictingSchedules: roomConflicts,
       });
     }

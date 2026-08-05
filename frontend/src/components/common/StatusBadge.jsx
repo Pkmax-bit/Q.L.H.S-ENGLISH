@@ -5,7 +5,7 @@ const statusStyles = {
   inactive: { bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400', label: 'Ngừng' },
   pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', dot: 'bg-yellow-500', label: 'Chờ duyệt' },
   upcoming: { bg: 'bg-indigo-100', text: 'text-indigo-700', dot: 'bg-indigo-500', label: 'Sắp mở' },
-  completed: { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500', label: 'Đã hoàn thành' },
+  completed: { bg: 'bg-amber-100', text: 'text-amber-800', dot: 'bg-amber-500', label: 'Đã hoàn thành' },
   cancelled: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500', label: 'Đã hủy' },
   income: { bg: 'bg-green-100', text: 'text-green-700', dot: 'bg-green-500', label: 'Thu' },
   expense: { bg: 'bg-red-100', text: 'text-red-700', dot: 'bg-red-500', label: 'Chi' },

@@ -51,7 +51,7 @@ export default function CategoryManager() {
             </thead>
             <tbody>
               {categories.map((cat) => (
-                <tr key={cat.name} className="border-b border-gray-100 hover:bg-blue-50/30">
+                <tr key={cat.name} className="border-b border-gray-100 hover:bg-amber-50/30">
                   <td className="px-4 py-3 font-medium text-gray-700">{cat.name}</td>
                   <td className="px-4 py-3 text-gray-600">{cat.count}</td>
                   <td className="px-4 py-3 text-green-600 font-medium">

@@ -6,7 +6,7 @@ import classesService from '../../services/classes.service'
 import { formatDate } from '../../utils/formatDate'
 
 const CLASS_COLORS = [
-  'from-blue-500 to-blue-700',
+  'from-amber-500 to-blue-700',
   'from-green-500 to-green-700',
   'from-purple-500 to-purple-700',
   'from-amber-500 to-amber-700',
@@ -86,7 +86,7 @@ export default function StudentClassGrid({ onSelectClass }) {
 
               {/* Footer */}
               <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
-                <span className="text-sm font-medium text-blue-600 group-hover:text-blue-700 transition-colors">
+                <span className="text-sm font-medium text-amber-700 group-hover:text-amber-800 transition-colors">
                   Vào lớp học →
                 </span>
               </div>

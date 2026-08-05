@@ -1,68 +1,53 @@
-import { Users, GraduationCap, School, Wallet, BookOpen, ClipboardList } from 'lucide-react'
+import {
+  Users, GraduationCap, School, Wallet, BookOpen, ClipboardList, Building2, TrendingUp,
+} from 'lucide-react'
 import clsx from 'clsx'
 import { formatCurrency } from '../../utils/formatCurrency'
-import { useAuth } from '../../hooks/useAuth'
+import StatCard from './StatCard'
 
-const allStats = [
-  { key: 'teachers', label: 'Giáo viên', icon: Users, color: 'blue', value: 0, roles: ['admin'] },
-  { key: 'students', label: 'Học sinh', icon: GraduationCap, color: 'green', value: 0, roles: ['admin'] },
-  { key: 'classes', label: 'Lớp học', icon: School, color: 'purple', value: 0, roles: ['admin', 'teacher', 'student'] },
-  { key: 'revenue', label: 'Doanh thu tháng', icon: Wallet, color: 'amber', value: 0, roles: ['admin'] },
-  { key: 'lessons', label: 'Bài học', icon: BookOpen, color: 'blue', value: 0, roles: ['teacher', 'student'] },
-  { key: 'assignments', label: 'Bài tập', icon: ClipboardList, color: 'amber', value: 0, roles: ['teacher', 'student'] },
+const ADMIN_STATS = [
+  { key: 'teachers', label: 'Giáo viên', icon: Users, color: 'blue' },
+  { key: 'students', label: 'Học sinh', icon: GraduationCap, color: 'green' },
+  { key: 'classes', label: 'Lớp đang mở', icon: School, color: 'purple' },
+  { key: 'revenue', label: 'Doanh thu tháng', icon: Wallet, color: 'amber', format: 'currency' },
+  { key: 'active_subjects', label: 'Môn học', icon: BookOpen, color: 'blue' },
+  { key: 'total_facilities', label: 'Phòng học', icon: Building2, color: 'slate' },
+  { key: 'pending_enrollments', label: 'Yêu cầu nhập học', icon: ClipboardList, color: 'orange' },
+  { key: 'monthly_net', label: 'Lãi/lỗ tháng', icon: TrendingUp, color: 'green', format: 'currency' },
 ]
 
-const colorClasses = {
-  blue: { bg: 'bg-blue-50', icon: 'bg-blue-500', text: 'text-blue-600' },
-  green: { bg: 'bg-green-50', icon: 'bg-green-500', text: 'text-green-600' },
-  purple: { bg: 'bg-purple-50', icon: 'bg-purple-500', text: 'text-purple-600' },
-  amber: { bg: 'bg-amber-50', icon: 'bg-amber-500', text: 'text-amber-600' },
-}
-
-export default function DashboardStats({ stats }) {
-  const { user } = useAuth()
-  const userRole = user?.role || 'student'
-
-  const visibleStats = allStats.filter(
-    (item) => item.roles.includes(userRole)
-  )
-
-  const items = visibleStats.map((d) => ({
-    ...d,
-    value: stats?.[d.key] ?? d.value,
-  }))
-
-  // Dynamic grid columns based on visible items count
-  const gridCols = items.length <= 2
-    ? 'grid-cols-1 sm:grid-cols-2'
-    : items.length === 3
-      ? 'grid-cols-1 sm:grid-cols-3'
-      : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+export default function DashboardStats({ stats = {}, onNavigate }) {
+  const items = ADMIN_STATS.map((d) => {
+    let value = stats[d.key] ?? stats[d.key.replace(/s$/, '')] ?? 0
+    if (d.key === 'teachers') value = stats.teachers ?? stats.active_teachers ?? 0
+    if (d.key === 'students') value = stats.students ?? stats.active_students ?? 0
+    if (d.key === 'classes') value = stats.classes ?? stats.active_classes ?? 0
+    if (d.key === 'revenue') value = stats.revenue ?? stats.monthly_income ?? 0
+    if (d.format === 'currency') value = formatCurrency(value)
+    return { ...d, value }
+  })
 
   return (
-    <div className={clsx('grid gap-4', gridCols)}>
-      {items.map((item) => {
-        const Icon = item.icon
-        const colors = colorClasses[item.color]
-        return (
-          <div
-            key={item.key}
-            className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition-shadow"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500 mb-1">{item.label}</p>
-                <p className={clsx('text-2xl font-bold', colors.text)}>
-                  {item.key === 'revenue' ? formatCurrency(item.value) : item.value}
-                </p>
-              </div>
-              <div className={clsx('w-12 h-12 rounded-xl flex items-center justify-center', colors.icon)}>
-                <Icon className="h-6 w-6 text-white" />
-              </div>
-            </div>
-          </div>
-        )
-      })}
+    <div className={clsx('grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4')}>
+      {items.map((item) => (
+        <StatCard
+          key={item.key}
+          label={item.label}
+          value={item.value}
+          icon={item.icon}
+          color={item.color}
+          onClick={
+            item.key === 'pending_enrollments' && onNavigate
+              ? () => onNavigate('/enrollment-requests')
+              : undefined
+          }
+          hint={
+            item.key === 'pending_enrollments' && (stats.pending_enrollments || 0) > 0
+              ? 'Cần duyệt'
+              : undefined
+          }
+        />
+      ))}
     </div>
   )
 }

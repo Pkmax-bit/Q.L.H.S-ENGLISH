@@ -117,7 +117,7 @@ export default function MyAssignmentDetailPage() {
       <div className="max-w-2xl mx-auto text-center py-16">
         <AlertTriangle className="h-14 w-14 text-amber-400 mx-auto mb-3" />
         <p className="text-gray-700 font-medium">Không tải được bài tập hoặc bài không tồn tại.</p>
-        <Link to="/my-assignments" className="inline-block mt-4 text-blue-600 hover:underline text-sm">
+        <Link to="/my-assignments" className="inline-block mt-4 text-amber-700 hover:underline text-sm">
           ← Quay lại danh sách
         </Link>
       </div>
@@ -133,7 +133,7 @@ export default function MyAssignmentDetailPage() {
       <div className="max-w-2xl mx-auto text-center py-16">
         <AlertTriangle className="h-14 w-14 text-amber-400 mx-auto mb-3" />
         <p className="text-gray-700 font-medium">Bạn không thuộc lớp của bài tập này.</p>
-        <Link to="/my-assignments" className="inline-block mt-4 text-blue-600 hover:underline text-sm">
+        <Link to="/my-assignments" className="inline-block mt-4 text-amber-700 hover:underline text-sm">
           ← Quay lại danh sách
         </Link>
       </div>
@@ -331,7 +331,7 @@ export default function MyAssignmentDetailPage() {
                           <button
                             type="button"
                             onClick={() => setResultId(row.id)}
-                            className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                            className="text-xs font-medium text-amber-700 hover:text-amber-900"
                           >
                             Xem chi tiết
                           </button>

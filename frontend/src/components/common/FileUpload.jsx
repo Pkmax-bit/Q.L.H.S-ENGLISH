@@ -93,7 +93,7 @@ export default function FileUpload({ onFileSelect, accept, multiple = false, max
             <div key={index} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
               <div className="flex-shrink-0">
                 {isImage(file) ? (
-                  <Image className="h-5 w-5 text-blue-500" />
+                  <Image className="h-5 w-5 text-amber-600" />
                 ) : (
                   <FileText className="h-5 w-5 text-gray-500" />
                 )}

@@ -50,6 +50,9 @@ import ScheduleForm from '../components/schedules/ScheduleForm'
 
 import ClassFeeSummary from '../components/tuition/ClassFeeSummary'
 import TuitionPaymentDesk from '../components/tuition/TuitionPaymentDesk'
+import StudentsReceivables from '../components/tuition/StudentsReceivables'
+import FinanceCashflowPanel from '../components/finances/FinanceCashflowPanel'
+import TeacherPayrollPanel from '../components/finances/TeacherPayrollPanel'
 import TuitionInvoiceList from '../components/tuition/TuitionInvoiceList'
 import ReceivablesReport from '../components/tuition/ReceivablesReport'
 import FinanceList from '../components/finances/FinanceList'
@@ -78,10 +81,13 @@ const SECTIONS = [
 ]
 
 const FINANCE_TABS = [
+  { key: 'student_debt', label: 'Công nợ học sinh' },
   { key: 'class_fee', label: 'Học phí theo lớp' },
   { key: 'tuition_payment', label: 'Thu học phí' },
   { key: 'tuition_invoices', label: 'Hóa đơn' },
   { key: 'receivables', label: 'Công nợ' },
+  { key: 'cashflow', label: 'Thu — Chi' },
+  { key: 'teacher_payroll', label: 'Lương GV' },
   { key: 'list', label: 'Sổ thu chi' },
   { key: 'summary', label: 'Tổng quan tài chính' },
   { key: 'categories', label: 'Danh mục' },
@@ -104,7 +110,7 @@ export default function SchoolAdminHubPage() {
   const { user } = useContext(AuthContext) || {}
   const navigate = useNavigate()
   const [section, setSection] = useState('overview')
-  const [financeTab, setFinanceTab] = useState('class_fee')
+  const [financeTab, setFinanceTab] = useState('student_debt')
   const [selectedClassId, setSelectedClassId] = useState('')
   const [creating, setCreating] = useState(null) // 'teacher' | 'student' | ...
   const [refreshKeys, setRefreshKeys] = useState({})
@@ -162,7 +168,7 @@ export default function SchoolAdminHubPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <LayoutGrid className="h-6 w-6 text-blue-600" />
+            <LayoutGrid className="h-6 w-6 text-amber-700" />
             Trung tâm quản trị
           </h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -460,13 +466,13 @@ function ClassOperationsPanel({
   }
 
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 p-4 sm:p-5 space-y-4">
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-amber-200 p-4 sm:p-5 space-y-4">
       <div className="flex items-center gap-2">
-        <School className="h-5 w-5 text-blue-600" />
+        <School className="h-5 w-5 text-amber-700" />
         <h2 className="text-base font-semibold text-blue-900">
           Trung tâm thao tác lớp học
         </h2>
-        <span className="text-[11px] text-blue-700 bg-white/70 px-2 py-0.5 rounded-full">
+        <span className="text-[11px] text-amber-800 bg-white/70 px-2 py-0.5 rounded-full">
           Sửa thông tin · ngày · môn · GV · học sinh · bài học · bài tập
         </span>
       </div>
@@ -714,7 +720,7 @@ function OverviewPanel({ classCount, onJump, onQuickCreate, navigate }) {
   ]
 
   const colorMap = {
-    blue: 'bg-blue-50 text-blue-700 border-blue-100 hover:border-blue-300',
+    blue: 'bg-amber-50 text-amber-800 border-blue-100 hover:border-amber-300',
     emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100 hover:border-emerald-300',
     indigo: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:border-indigo-300',
     sky: 'bg-sky-50 text-sky-700 border-sky-100 hover:border-sky-300',
@@ -765,7 +771,7 @@ function OverviewPanel({ classCount, onJump, onQuickCreate, navigate }) {
 
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-          <ExternalLink className="h-4 w-4 text-blue-600" />
+          <ExternalLink className="h-4 w-4 text-amber-700" />
           Lối tắt khác
         </h3>
         <div className="flex flex-wrap gap-2">
@@ -819,10 +825,13 @@ function FinanceSection({ activeTab, setActiveTab }) {
         </nav>
       </div>
 
+      {activeTab === 'student_debt' && <StudentsReceivables />}
       {activeTab === 'class_fee' && <ClassFeeSummary />}
       {activeTab === 'tuition_payment' && <TuitionPaymentDesk />}
       {activeTab === 'tuition_invoices' && <TuitionInvoiceList />}
       {activeTab === 'receivables' && <ReceivablesReport />}
+      {activeTab === 'cashflow' && <FinanceCashflowPanel />}
+      {activeTab === 'teacher_payroll' && <TeacherPayrollPanel />}
       {activeTab === 'list' && <FinanceList />}
       {activeTab === 'summary' && <FinanceSummary />}
       {activeTab === 'categories' && <CategoryManager />}

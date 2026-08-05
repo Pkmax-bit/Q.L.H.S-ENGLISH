@@ -1,4 +1,4 @@
-import { useState, useContext } from 'react'
+import { useState, useContext, useEffect } from 'react'
 import Modal from '../common/Modal'
 import Select from '../common/Select'
 import Input from '../common/Input'
@@ -6,14 +6,26 @@ import Button from '../common/Button'
 import { ToastContext } from '../../context/ToastContext'
 import tuitionService from '../../services/tuition.service'
 
-export default function GenerateInvoicesModal({ isOpen, onClose, classes = [], onSuccess }) {
+export default function GenerateInvoicesModal({
+  isOpen, onClose, classes = [], onSuccess, defaultClassId = '',
+}) {
   const { success, error: showError } = useContext(ToastContext)
   const [form, setForm] = useState({
-    mode: 'class', // class | all_monthly
-    class_id: '',
+    mode: 'class',
+    class_id: defaultClassId || '',
     year_month: new Date().toISOString().slice(0, 7),
   })
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      setForm((f) => ({
+        ...f,
+        class_id: defaultClassId || f.class_id,
+        year_month: new Date().toISOString().slice(0, 7),
+      }))
+    }
+  }, [isOpen, defaultClassId])
 
   const handleSubmit = async () => {
     if (!form.year_month) {
@@ -98,7 +110,7 @@ export default function GenerateInvoicesModal({ isOpen, onClose, classes = [], o
           required
         />
 
-        <div className="text-sm text-gray-500 bg-blue-50 border border-blue-100 rounded-lg p-3">
+        <div className="text-sm text-gray-500 bg-amber-50 border border-blue-100 rounded-lg p-3">
           Hệ thống sẽ tự bỏ qua những hóa đơn đã tồn tại cho cùng học sinh + lớp + kỳ.
         </div>
       </div>

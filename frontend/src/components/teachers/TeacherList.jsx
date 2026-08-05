@@ -11,6 +11,7 @@ import { useExcelExport } from '../../hooks/useExcelExport'
 import { ToastContext } from '../../context/ToastContext'
 import teachersService from '../../services/teachers.service'
 import { formatDate } from '../../utils/formatDate'
+import UserAvatar from '../common/UserAvatar'
 
 export default function TeacherList() {
   const [showForm, setShowForm] = useState(false)
@@ -27,6 +28,11 @@ export default function TeacherList() {
   const teacherList = Array.isArray(teachers) ? teachers : teachers?.teachers || []
 
   const columns = [
+    {
+      key: 'avatar',
+      label: '',
+      render: (row) => <UserAvatar name={row.full_name} avatarUrl={row.avatar_url} size="sm" />,
+    },
     { key: 'full_name', label: 'Họ tên' },
     { key: 'email', label: 'Email' },
     { key: 'phone', label: 'Số điện thoại' },

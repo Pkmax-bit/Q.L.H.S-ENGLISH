@@ -34,7 +34,7 @@ function getDueDateLabel(dateStr) {
   if (days === 0) return { text: 'Hết hạn hôm nay!', color: 'text-red-600', bg: 'bg-red-50 border-red-200' }
   if (days === 1) return { text: 'Hết hạn ngày mai', color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' }
   if (days <= 3) return { text: `Còn ${days} ngày`, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200' }
-  if (days <= 7) return { text: `Còn ${days} ngày`, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-200' }
+  if (days <= 7) return { text: `Còn ${days} ngày`, color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' }
   return { text: `Còn ${days} ngày`, color: 'text-gray-500', bg: 'bg-gray-50 border-gray-200' }
 }
 
@@ -186,7 +186,7 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
                 <div className="text-xs text-gray-500">Bài đã làm</div>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-                <ClipboardList className="h-5 w-5 text-blue-500 mx-auto mb-1" />
+                <ClipboardList className="h-5 w-5 text-amber-600 mx-auto mb-1" />
                 <div className="text-xl font-bold text-gray-900">
                   {classStats.totalCount - classStats.completedCount}
                 </div>
@@ -220,21 +220,21 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
           <div className="space-y-3 mb-6">
             {/* New assignments */}
             {newAssignments.length > 0 && (
-              <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                <Sparkles className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+              <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                <Sparkles className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
                 <div className="flex-1">
-                  <p className="text-sm font-semibold text-blue-700">
+                  <p className="text-sm font-semibold text-amber-800">
                     {newAssignments.length} bài tập mới
                   </p>
                   <div className="mt-1 space-y-0.5">
                     {newAssignments.slice(0, 3).map(a => (
-                      <p key={a.id} className="text-xs text-blue-600">
+                      <p key={a.id} className="text-xs text-amber-700">
                         • {a.title}
                         {a.due_date && <span className="ml-1 opacity-70">— hạn {formatDate(a.due_date)}</span>}
                       </p>
                     ))}
                     {newAssignments.length > 3 && (
-                      <p className="text-xs text-blue-500 font-medium">+{newAssignments.length - 3} bài khác</p>
+                      <p className="text-xs text-amber-600 font-medium">+{newAssignments.length - 3} bài khác</p>
                     )}
                   </div>
                 </div>
@@ -292,7 +292,7 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
               onClick={() => setActiveTab('lessons')}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 activeTab === 'lessons'
-                  ? 'bg-white text-blue-700 shadow-sm'
+                  ? 'bg-white text-amber-800 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -303,7 +303,7 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
               onClick={() => setActiveTab('assignments')}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 activeTab === 'assignments'
-                  ? 'bg-white text-blue-700 shadow-sm'
+                  ? 'bg-white text-amber-800 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -327,18 +327,18 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
                     <button
                       key={lesson.id}
                       onClick={() => setSelectedLesson(lesson)}
-                      className="w-full text-left bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-blue-200 transition-all group"
+                      className="w-full text-left bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-amber-200 transition-all group"
                     >
                       <div className="flex items-start gap-4">
                         {/* Lesson number */}
-                        <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-sm flex-shrink-0 group-hover:bg-blue-200 transition-colors">
+                        <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 font-bold text-sm flex-shrink-0 group-hover:bg-blue-200 transition-colors">
                           {lesson.order_index ?? idx + 1}
                         </div>
 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-700 transition-colors">
+                              <h3 className="text-base font-semibold text-gray-900 group-hover:text-amber-800 transition-colors">
                                 {lesson.title}
                               </h3>
                               <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
@@ -349,7 +349,7 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
                                 )}
                                 {lesson.content_type === 'text' && (
                                   <span className="flex items-center gap-1">
-                                    <FileText className="h-3.5 w-3.5 text-blue-500" /> Văn bản
+                                    <FileText className="h-3.5 w-3.5 text-amber-600" /> Văn bản
                                   </span>
                                 )}
                                 {lesson.content_type === 'file' && (
@@ -363,7 +363,7 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
                                 </span>
                               </div>
                             </div>
-                            <ChevronRight className="h-5 w-5 text-gray-300 group-hover:text-blue-500 flex-shrink-0 transition-colors" />
+                            <ChevronRight className="h-5 w-5 text-gray-300 group-hover:text-amber-600 flex-shrink-0 transition-colors" />
                           </div>
 
                           {/* Linked assignments */}
@@ -451,7 +451,7 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
                           {linkedLesson && (
                             <button
                               onClick={() => setSelectedLesson(linkedLesson)}
-                              className="flex items-center gap-1.5 mt-2 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                              className="flex items-center gap-1.5 mt-2 text-xs text-amber-700 hover:text-amber-900 transition-colors"
                             >
                               <BookOpen className="h-3.5 w-3.5" />
                               Bài học: {linkedLesson.title}
@@ -604,7 +604,7 @@ function LessonViewer({ lesson, linkedAssignments = [], submissionMap = {}, onBa
                     href={lesson.file_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 hover:bg-blue-100 transition-colors"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900 hover:bg-amber-100 transition-colors"
                   >
                     <Link className="h-4 w-4" />
                     Tệp đính kèm

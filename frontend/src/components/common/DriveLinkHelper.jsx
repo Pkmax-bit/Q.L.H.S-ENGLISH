@@ -58,7 +58,7 @@ export default function DriveLinkHelper({ url, kind = 'auto', className = '' }) 
 
   return (
     <div className={`mt-1 flex flex-wrap items-center gap-2 text-xs ${className}`}>
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-medium">
         <Cloud className="h-3 w-3" /> Google Drive · {fileId.slice(0, 8)}…{fileId.slice(-4)}
       </span>
 
@@ -76,7 +76,7 @@ export default function DriveLinkHelper({ url, kind = 'auto', className = '' }) 
         href={proxyHref}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-blue-600 hover:underline"
+        className="text-amber-700 hover:underline"
       >
         Mở thử (qua proxy)
       </a>

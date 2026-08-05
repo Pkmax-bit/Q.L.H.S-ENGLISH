@@ -7,8 +7,19 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "migrate": "node src/migrations/run.js",
+    "migrate:apply": "node src/migrations/apply-one.js",
+    "migrate:all": "node src/migrations/apply-one.js --all",
+    "migrate:fresh": "node src/migrations/apply-one.js --fresh",
+    "migrate:status": "node src/migrations/apply-one.js --status",
+    "migrate:022": "node src/migrations/apply-one.js 022_attendance_payroll.sql",
+    "migrate:023": "node src/migrations/apply-one.js 023_session_lesson_reviews.sql",
     "seed": "node src/migrations/seed.js",
-    "seed:test-classes": "node src/scripts/seed-test-classes.js"
+    "seed:admin": "node src/scripts/seed-admin.js",
+    "seed:test-classes": "node src/scripts/seed-test-classes.js",
+    "seed:demo": "node src/scripts/seed-demo-data.js",
+    "seed:schedules": "node src/scripts/seed-schedules-demo.js",
+    "test": "node --test test/**/*.test.js",
+    "check": "node --check server.js && node --check src/app.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
@@ -16,10 +27,12 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.6.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.2",
+    "pg": "^8.21.0",
     "socket.io": "^4.8.1",
     "xlsx": "^0.18.5"
   },

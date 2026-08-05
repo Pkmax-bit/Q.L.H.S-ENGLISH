@@ -139,7 +139,7 @@ export default function ClassLessonsTab({ lessons: initialLessons, classId, onRe
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-gray-800 hover:text-blue-600 transition-colors truncate">
+                      <p className="text-sm font-medium text-gray-800 hover:text-amber-700 transition-colors truncate">
                         {lesson.title}
                       </p>
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-500">
@@ -171,7 +171,7 @@ export default function ClassLessonsTab({ lessons: initialLessons, classId, onRe
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleEdit(lesson) }}
-                        className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-500 transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-600 transition-colors"
                         title="Chỉnh sửa"
                       >
                         <Pencil className="h-4 w-4" />

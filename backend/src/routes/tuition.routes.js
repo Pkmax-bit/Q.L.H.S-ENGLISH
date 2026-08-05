@@ -17,6 +17,7 @@ router.post('/invoices/:id/payments', auth, authorize('admin'), ctrl.recordPayme
 router.delete('/payments/:paymentId', auth, authorize('admin'), ctrl.removePayment);
 
 router.get('/reports/receivables', auth, authorize('admin'), ctrl.getReceivables);
+router.get('/reports/students-receivables', auth, authorize('admin'), ctrl.getStudentsReceivables);
 router.get('/reports/receivables/export', auth, authorize('admin'), ctrl.exportReceivables);
 router.get('/reports/revenue', auth, authorize('admin'), ctrl.getRevenue);
 

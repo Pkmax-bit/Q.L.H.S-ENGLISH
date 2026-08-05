@@ -472,7 +472,7 @@ export default function InvoiceForm({
             />
           </div>
 
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
+          <div className="bg-amber-50 border border-blue-100 rounded-lg p-3 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600">Tạm tính ({items.length} dòng)</span>
               <span className="font-medium">{formatCurrency(subtotal)}</span>
@@ -483,9 +483,9 @@ export default function InvoiceForm({
                 <span>- {formatCurrency(form.discount)}</span>
               </div>
             )}
-            <div className="flex justify-between border-t border-blue-200 pt-1 mt-1">
+            <div className="flex justify-between border-t border-amber-200 pt-1 mt-1">
               <span className="text-gray-700 font-medium">Tổng</span>
-              <span className="font-bold text-blue-700">{formatCurrency(total)}</span>
+              <span className="font-bold text-amber-800">{formatCurrency(total)}</span>
             </div>
           </div>
 
@@ -514,7 +514,7 @@ export default function InvoiceForm({
                 </div>
               ))}
             </div>
-            <label className="inline-flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 text-sm text-gray-600">
+            <label className="inline-flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-amber-50 text-sm text-gray-600">
               {uploading ? (
                 <span>Đang tải...</span>
               ) : (

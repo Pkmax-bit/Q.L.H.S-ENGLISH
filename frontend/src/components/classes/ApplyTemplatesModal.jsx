@@ -58,7 +58,7 @@ export default function ApplyTemplatesModal({
               onClick={() => setMode('templates')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
                 mode === 'templates'
-                  ? 'bg-white text-blue-700 shadow-sm'
+                  ? 'bg-white text-amber-800 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -150,7 +150,7 @@ function TemplatePicker({ isLesson, classId, isOpen, onApplied, onClose }) {
 
   const Icon = isLesson ? BookOpen : FileText
   const accent = isLesson
-    ? 'border-blue-500 bg-blue-50/40'
+    ? 'border-blue-500 bg-amber-50/40'
     : 'border-purple-500 bg-purple-50/40'
   const checkboxAccent = isLesson
     ? 'bg-blue-600 border-blue-600'
@@ -165,7 +165,7 @@ function TemplatePicker({ isLesson, classId, isOpen, onApplied, onClose }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={`Tìm mẫu ${isLesson ? 'bài học' : 'bài tập'}...`}
-          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
         />
       </div>
 
@@ -180,7 +180,7 @@ function TemplatePicker({ isLesson, classId, isOpen, onApplied, onClose }) {
                   : items.map((i) => i.id),
               )
             }
-            className="text-blue-600 hover:text-blue-800 font-medium"
+            className="text-amber-700 hover:text-amber-900 font-medium"
           >
             {selectedIds.length === items.length
               ? 'Bỏ chọn tất cả'
@@ -232,7 +232,7 @@ function TemplatePicker({ isLesson, classId, isOpen, onApplied, onClose }) {
                     <p className="text-sm font-semibold text-gray-800 truncate">
                       {it.title}
                     </p>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
                       Mẫu
                     </span>
                   </div>
@@ -578,7 +578,7 @@ function BundlePicker({ classId, isOpen, onApplied, onClose }) {
                                   {l.title}
                                 </span>
                                 {l.is_template && (
-                                  <span className="text-[10px] px-1 py-0.5 rounded bg-blue-100 text-blue-700">
+                                  <span className="text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800">
                                     Mẫu
                                   </span>
                                 )}

@@ -1,6 +1,33 @@
 const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+const studentsService = require('./students.service');
 const { countInclusiveCalendarMonths } = require('../utils/tuitionMonths');
+const { enrichClassRows, loadProfilesByIds } = require('../utils/enrichClassRows');
+
+function validateClassDates(start_date, end_date) {
+  const start = start_date ? String(start_date).slice(0, 10) : '';
+  if (!start) {
+    const err = new Error('Ngày bắt đầu không được để trống');
+    err.statusCode = 400;
+    throw err;
+  }
+  const end = end_date ? String(end_date).slice(0, 10) : '';
+  if (!end) {
+    const err = new Error('Ngày kết thúc không được để trống');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (end < start) {
+    const err = new Error('Ngày kết thúc không được trước ngày bắt đầu');
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
+function normalizeEndDate(end_date) {
+  if (end_date === undefined) return undefined;
+  return end_date ? String(end_date).slice(0, 10) : null;
+}
 
 const getAll = async (queryParams, currentUser = null) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
@@ -45,14 +72,8 @@ const getAll = async (queryParams, currentUser = null) => {
   const { count: total, error: countError } = await countQuery;
   if (countError) throw countError;
 
-  // Data query — join subjects and profiles (teacher)
-  let dataQuery = supabase
-    .from('classes')
-    .select(`
-      *,
-      subjects(name, code),
-      profiles!classes_teacher_id_fkey(full_name)
-    `);
+  // Data query — không embed FK (Supabase có thể thiếu quan hệ trong schema cache)
+  let dataQuery = supabase.from('classes').select('*');
 
   if (search) {
     dataQuery = dataQuery.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
@@ -75,8 +96,10 @@ const getAll = async (queryParams, currentUser = null) => {
   const { data, error } = await dataQuery;
   if (error) throw error;
 
+  const enrichedRows = await enrichClassRows(data || []);
+
   // Get student counts for these classes
-  const classIds = (data || []).map(c => c.id);
+  const classIds = enrichedRows.map((c) => c.id);
   let studentCounts = {};
   if (classIds.length > 0) {
     const { data: csData, error: csError } = await supabase
@@ -91,8 +114,7 @@ const getAll = async (queryParams, currentUser = null) => {
   }
 
   const now = new Date();
-  const rows = (data || []).map(row => {
-    const { subjects, profiles, ...rest } = row;
+  const rows = enrichedRows.map((rest) => {
     // Auto-compute display status from dates
     let displayStatus = rest.status || 'active';
     if (rest.start_date && rest.end_date) {
@@ -109,10 +131,7 @@ const getAll = async (queryParams, currentUser = null) => {
     return {
       ...rest,
       status: displayStatus,
-      subject_name: subjects?.name || null,
-      subject_code: subjects?.code || null,
-      teacher_name: profiles?.full_name || null,
-      student_count: studentCounts[row.id] || 0,
+      student_count: studentCounts[rest.id] || 0,
     };
   });
 
@@ -125,11 +144,7 @@ const getAll = async (queryParams, currentUser = null) => {
 const getById = async (id) => {
   const { data, error } = await supabase
     .from('classes')
-    .select(`
-      *,
-      subjects(name, code),
-      profiles!classes_teacher_id_fkey(full_name)
-    `)
+    .select('*')
     .eq('id', id)
     .single();
 
@@ -145,12 +160,9 @@ const getById = async (id) => {
     .eq('class_id', id);
   if (countError) throw countError;
 
-  const { subjects, profiles, ...rest } = data;
+  const [enriched] = await enrichClassRows([data]);
   return {
-    ...rest,
-    subject_name: subjects?.name || null,
-    subject_code: subjects?.code || null,
-    teacher_name: profiles?.full_name || null,
+    ...enriched,
     student_count: count || 0,
   };
 };
@@ -159,7 +171,7 @@ const getOverview = async (classId) => {
   // 1. Class info
   const { data: classInfo, error: classErr } = await supabase
     .from('classes')
-    .select(`*, subjects(name, code), profiles!classes_teacher_id_fkey(full_name, email, phone)`)
+    .select('*')
     .eq('id', classId)
     .single();
   if (classErr) {
@@ -167,17 +179,19 @@ const getOverview = async (classId) => {
     throw classErr;
   }
 
-  const { subjects, profiles, ...classRest } = classInfo;
+  const [classRow] = await enrichClassRows([classInfo]);
+  const classRest = classRow;
 
   // 2. Students
   const { data: studentsRaw, error: studErr } = await supabase
     .from('class_students')
-    .select(`id, enrolled_at, enrollment_date, status, profiles!class_students_student_id_fkey(id, full_name, email, phone, avatar_url)`)
+    .select('id, enrolled_at, enrollment_date, status, student_id')
     .eq('class_id', classId);
   if (studErr) throw studErr;
   const classEnd = classRest.end_date || null;
-  const students = (studentsRaw || []).map(r => ({
-    ...(r.profiles || {}),
+  const profileMap = await loadProfilesByIds((studentsRaw || []).map((r) => r.student_id));
+  const students = (studentsRaw || []).map((r) => ({
+    ...(profileMap.get(String(r.student_id)) || {}),
     enrollment_id: r.id,
     enrolled_at: r.enrolled_at,
     enrollment_date: r.enrollment_date,
@@ -268,11 +282,6 @@ const getOverview = async (classId) => {
     classInfo: {
       ...classRest,
       status: displayStatus,
-      subject_name: subjects?.name || null,
-      subject_code: subjects?.code || null,
-      teacher_name: profiles?.full_name || null,
-      teacher_email: profiles?.email || null,
-      teacher_phone: profiles?.phone || null,
     },
     students,
     lessons: lessons || [],
@@ -294,6 +303,8 @@ const getOverview = async (classId) => {
 
 const create = async (data) => {
   const { name, subject_id, teacher_id, max_students, status, start_date, end_date, description } = data;
+  validateClassDates(start_date, end_date);
+  const normalizedEnd = normalizeEndDate(end_date);
   const { data: row, error } = await supabase
     .from('classes')
     .insert({
@@ -302,8 +313,8 @@ const create = async (data) => {
       teacher_id,
       max_students: max_students || 30,
       status: status || 'active',
-      start_date,
-      end_date,
+      start_date: String(start_date).slice(0, 10),
+      end_date: normalizedEnd,
       description,
     })
     .select()
@@ -315,7 +326,20 @@ const create = async (data) => {
 
 const update = async (id, data) => {
   const { name, subject_id, teacher_id, max_students, status, start_date, end_date, description,
-    fee_policy, fee_amount, billing_day, sessions_per_period } = data;
+    fee_policy, fee_amount, billing_day, sessions_per_period,
+    teacher_pay_policy, teacher_pay_amount } = data;
+
+  if (start_date !== undefined || end_date !== undefined) {
+    const { data: current, error: curErr } = await supabase
+      .from('classes')
+      .select('start_date, end_date')
+      .eq('id', id)
+      .single();
+    if (curErr) throw curErr;
+    const nextStart = start_date !== undefined ? start_date : current.start_date;
+    const nextEnd = end_date !== undefined ? normalizeEndDate(end_date) : current.end_date;
+    validateClassDates(nextStart, nextEnd);
+  }
 
   const updateObj = {};
   if (name !== undefined) updateObj.name = name;
@@ -323,13 +347,15 @@ const update = async (id, data) => {
   if (teacher_id !== undefined) updateObj.teacher_id = teacher_id;
   if (max_students !== undefined) updateObj.max_students = max_students;
   if (status !== undefined) updateObj.status = status;
-  if (start_date !== undefined) updateObj.start_date = start_date;
-  if (end_date !== undefined) updateObj.end_date = end_date;
+  if (start_date !== undefined) updateObj.start_date = String(start_date).slice(0, 10);
+  if (end_date !== undefined) updateObj.end_date = normalizeEndDate(end_date);
   if (description !== undefined) updateObj.description = description;
   if (fee_policy !== undefined) updateObj.fee_policy = fee_policy || null;
   if (fee_amount !== undefined) updateObj.fee_amount = fee_amount;
   if (billing_day !== undefined) updateObj.billing_day = billing_day;
   if (sessions_per_period !== undefined) updateObj.sessions_per_period = sessions_per_period;
+  if (teacher_pay_policy !== undefined) updateObj.teacher_pay_policy = teacher_pay_policy || 'none';
+  if (teacher_pay_amount !== undefined) updateObj.teacher_pay_amount = teacher_pay_amount;
   updateObj.updated_at = new Date().toISOString();
 
   const { data: row, error } = await supabase
@@ -371,19 +397,15 @@ const getStudents = async (classId) => {
 
   const { data, error } = await supabase
     .from('class_students')
-    .select(`
-      id,
-      enrolled_at,
-      enrollment_date,
-      status,
-      profiles!class_students_student_id_fkey(id, email, full_name, phone, avatar_url, is_active)
-    `)
+    .select('id, enrolled_at, enrollment_date, status, student_id')
     .eq('class_id', classId);
 
   if (error) throw error;
 
-  return (data || []).map(row => ({
-    ...(row.profiles || {}),
+  const profileMap = await loadProfilesByIds((data || []).map((r) => r.student_id));
+
+  return (data || []).map((row) => ({
+    ...(profileMap.get(String(row.student_id)) || {}),
     enrollment_id: row.id,
     enrolled_at: row.enrolled_at,
     enrollment_date: row.enrollment_date,
@@ -522,6 +544,35 @@ const addStudentsBatch = async (classId, studentIds, options = {}) => {
   };
 };
 
+/** Tạo tài khoản học sinh mới và ghi danh vào lớp trong một bước */
+const createStudentAndEnroll = async (classId, studentData, options = {}) => {
+  const { full_name, email, phone, password } = studentData || {};
+  if (!full_name?.trim()) {
+    throw { statusCode: 400, message: 'Họ tên học sinh không được để trống' };
+  }
+  if (!email?.trim() && !phone?.trim()) {
+    throw { statusCode: 400, message: 'Cần ít nhất email hoặc số điện thoại' };
+  }
+
+  let student;
+  try {
+    student = await studentsService.create({
+      full_name: full_name.trim(),
+      email: email?.trim() || null,
+      phone: phone?.trim() || null,
+      password: password || 'changeme123',
+    });
+  } catch (err) {
+    if (err.code === '23505' || /duplicate|unique/i.test(err.message || '')) {
+      throw { statusCode: 409, message: 'Email đã được sử dụng bởi tài khoản khác' };
+    }
+    throw err;
+  }
+
+  const enrollment = await addStudent(classId, student.id, options);
+  return { student, enrollment };
+};
+
 const removeStudentsBatch = async (classId, studentIds) => {
   const { data, error } = await supabase
     .from('class_students')
@@ -557,6 +608,7 @@ const endClass = async (classId, currentUser) => {
 
 module.exports = {
   getAll, getById, getOverview, create, update, remove,
-  getStudents, addStudent, addStudentsBatch, removeStudent, removeStudentsBatch,
+  getStudents, addStudent, addStudentsBatch, createStudentAndEnroll,
+  removeStudent, removeStudentsBatch,
   endClass,
 };

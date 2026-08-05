@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useContext, useMemo } from 'react'
-import { Download, AlertTriangle } from 'lucide-react'
+import { Download, AlertTriangle, DollarSign } from 'lucide-react'
+import RecordPaymentForm from './RecordPaymentForm'
 import Button from '../common/Button'
 import Select from '../common/Select'
 import Input from '../common/Input'
@@ -19,6 +20,8 @@ export default function ReceivablesReport() {
   const { exportToExcel } = useExcelExport()
   const [filters, setFilters] = useState({ class_id: '', period_start: '', period_end: '' })
   const [classes, setClasses] = useState([])
+  const [payTarget, setPayTarget] = useState(null)
+  const [payLoading, setPayLoading] = useState(false)
 
   useEffect(() => {
     classesService.getAll({ limit: 200 }).then((res) => {
@@ -31,7 +34,7 @@ export default function ReceivablesReport() {
     () => tuitionService.getReceivables(stripEmpty(filters)),
     [filters]
   )
-  const { data, loading } = useFetch(fetchData, [filters])
+  const { data, loading, execute: refetch } = useFetch(fetchData, [filters])
 
   const summary = data?.summary || { invoice_count: 0, total_amount: 0, total_paid: 0, total_outstanding: 0, total_overdue: 0 }
   const rows = data?.rows || []
@@ -40,6 +43,20 @@ export default function ReceivablesReport() {
     () => classes.map((c) => ({ value: c.id, label: c.name })),
     [classes]
   )
+
+  const handlePay = async (row) => {
+    if (Number(row.balance) <= 0) return
+    setPayLoading(true)
+    try {
+      const res = await tuitionService.getInvoiceById(row.id)
+      const inv = res.data?.data || res.data
+      setPayTarget(inv)
+    } catch (err) {
+      showError(err.response?.data?.message || 'Không tải được hóa đơn')
+    } finally {
+      setPayLoading(false)
+    }
+  }
 
   const handleExport = () => {
     if (!rows.length) return
@@ -120,6 +137,7 @@ export default function ReceivablesReport() {
                 <th className="px-4 py-3 font-medium text-right">Đã thu</th>
                 <th className="px-4 py-3 font-medium text-right">Còn lại</th>
                 <th className="px-4 py-3 font-medium">Trạng thái</th>
+                <th className="px-4 py-3 font-medium text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -145,11 +163,35 @@ export default function ReceivablesReport() {
                   <td className="px-4 py-2">
                     <StatusBadge status={r.is_overdue ? 'overdue' : r.status} />
                   </td>
+                  <td className="px-4 py-2 text-right">
+                    {Number(r.balance) > 0 && (
+                      <Button
+                        size="sm"
+                        icon={DollarSign}
+                        onClick={() => handlePay(r)}
+                        disabled={payLoading}
+                      >
+                        Thu tiền
+                      </Button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {payTarget && (
+        <RecordPaymentForm
+          isOpen={!!payTarget}
+          invoice={payTarget}
+          onClose={() => setPayTarget(null)}
+          onSuccess={() => {
+            setPayTarget(null)
+            refetch()
+          }}
+        />
       )}
     </div>
   )

@@ -89,6 +89,13 @@ const getReceivables = async (req, res, next) => {
   } catch (e) { next(e); }
 };
 
+const getStudentsReceivables = async (req, res, next) => {
+  try {
+    const r = await tuitionService.getStudentsReceivables(req.query);
+    return response.success(res, r, 'Student receivables retrieved');
+  } catch (e) { next(e); }
+};
+
 const getRevenue = async (req, res, next) => {
   try {
     const r = await tuitionService.getRevenueReport(req.query);
@@ -153,6 +160,6 @@ const getClassFeeProjection = async (req, res, next) => {
 module.exports = {
   getInvoices, getInvoiceById, createInvoice, updateInvoice, removeInvoice,
   generateInvoices, recordPayment, removePayment,
-  getReceivables, getRevenue, getStudentLedger, exportReceivables,
+  getReceivables, getStudentsReceivables, getRevenue, getStudentLedger, exportReceivables,
   getClassesSummary, getClassStudents, getClassFeeProjection,
 };

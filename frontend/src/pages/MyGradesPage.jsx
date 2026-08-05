@@ -55,7 +55,7 @@ export default function MyGradesPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Tìm theo tên bài tập hoặc lớp..."
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
         />
       </div>
 
@@ -110,7 +110,7 @@ export default function MyGradesPage() {
                         <Clock className="h-4 w-4" /> Chờ chấm
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium">
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg text-sm font-medium">
                         <Eye className="h-4 w-4" /> Đang làm
                       </div>
                     )}
@@ -132,7 +132,7 @@ export default function MyGradesPage() {
                 )}
 
                 {sub.feedback && (
-                  <div className="mt-2 p-2 bg-blue-50 rounded-lg text-xs text-blue-700">
+                  <div className="mt-2 p-2 bg-amber-50 rounded-lg text-xs text-amber-800">
                     💬 {sub.feedback}
                   </div>
                 )}
@@ -147,7 +147,7 @@ export default function MyGradesPage() {
 
 function StatCard({ icon, label, value, color }) {
   const colors = {
-    blue: 'bg-blue-50 text-blue-700',
+    blue: 'bg-amber-50 text-amber-800',
     green: 'bg-green-50 text-green-700',
     amber: 'bg-amber-50 text-amber-700',
     purple: 'bg-purple-50 text-purple-700',
@@ -163,7 +163,7 @@ function StatCard({ icon, label, value, color }) {
 
 function getGrade(pct) {
   if (pct >= 90) return { label: 'Xuất sắc', color: 'text-green-600', bg: 'bg-green-100', emoji: '🏆' }
-  if (pct >= 75) return { label: 'Giỏi', color: 'text-blue-600', bg: 'bg-blue-100', emoji: '⭐' }
+  if (pct >= 75) return { label: 'Giỏi', color: 'text-amber-700', bg: 'bg-amber-100', emoji: '⭐' }
   if (pct >= 50) return { label: 'Khá', color: 'text-amber-600', bg: 'bg-amber-100', emoji: '👍' }
   return { label: 'Cần cố gắng', color: 'text-red-600', bg: 'bg-red-100', emoji: '📚' }
 }

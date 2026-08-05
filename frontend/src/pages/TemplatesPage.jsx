@@ -134,7 +134,7 @@ export default function TemplatesPage() {
           <button
             onClick={() => { setTab('lessons'); setSelectedIds([]) }}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              tab === 'lessons' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              tab === 'lessons' ? 'bg-white text-amber-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
             }`}
           >
             <BookOpen className="h-4 w-4" /> Bài học ({lessons.length})
@@ -156,7 +156,7 @@ export default function TemplatesPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Tìm mẫu..."
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
           />
         </div>
       </div>
@@ -164,7 +164,7 @@ export default function TemplatesPage() {
       {/* Select all */}
       {items.length > 0 && (
         <div className="flex items-center gap-3 mb-3">
-          <button onClick={selectAll} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
+          <button onClick={selectAll} className="text-xs text-amber-700 hover:text-amber-900 font-medium">
             {selectedIds.length === items.length ? 'Bỏ chọn tất cả' : `Chọn tất cả (${items.length})`}
           </button>
           {selectedIds.length > 0 && (
@@ -194,7 +194,7 @@ export default function TemplatesPage() {
               <div
                 key={lesson.id}
                 className={`bg-white rounded-xl border-2 p-4 transition-all cursor-pointer hover:shadow-md ${
-                  isSelected ? 'border-blue-500 bg-blue-50/30 shadow-md' : 'border-gray-200'
+                  isSelected ? 'border-blue-500 bg-amber-50/30 shadow-md' : 'border-gray-200'
                 }`}
                 onClick={() => toggleSelect(lesson.id)}
               >
@@ -211,24 +211,24 @@ export default function TemplatesPage() {
                     {isAdmin && (
                       <button
                         onClick={(e) => { e.stopPropagation(); openPermissions(lesson) }}
-                        className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-blue-600 transition-colors"
+                        className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-amber-700 transition-colors"
                         title="Quản lý quyền"
                       >
                         <Shield className="h-4 w-4" />
                       </button>
                     )}
-                    <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">Mẫu</span>
+                    <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">Mẫu</span>
                   </div>
                 </div>
                 <h3 className="text-sm font-semibold text-gray-800 mb-1 line-clamp-2">{lesson.title}</h3>
                 <div className="flex gap-2 mt-2">
                   {lesson.youtube_url && <span className="text-xs px-1.5 py-0.5 bg-red-50 text-red-600 rounded">🎬 Video</span>}
-                  {lesson.file_url && <span className="text-xs px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">📎 File</span>}
+                  {lesson.file_url && <span className="text-xs px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded">📎 File</span>}
                   {lesson.drive_url && <span className="text-xs px-1.5 py-0.5 bg-yellow-50 text-yellow-600 rounded">📁 Drive</span>}
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); setPreviewItem({ ...lesson, _type: 'lesson' }) }}
-                  className="text-xs text-blue-600 hover:text-blue-800 mt-2 font-medium"
+                  className="text-xs text-amber-700 hover:text-amber-900 mt-2 font-medium"
                 >
                   Xem trước →
                 </button>
@@ -476,7 +476,7 @@ function TemplatePermissionsModal({ isOpen, onClose, templateType, templateId, t
                 >
                   <div className="flex items-center gap-2">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                      p.is_all_teachers ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                      p.is_all_teachers ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-800'
                     }`}>
                       {p.is_all_teachers ? <Users className="h-4 w-4" /> : p.teacher_name?.charAt(0) || '?'}
                     </div>

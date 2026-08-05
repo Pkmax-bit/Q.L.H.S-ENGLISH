@@ -17,6 +17,7 @@ router.delete('/:id', auth, authorize('admin'), classesController.remove);
 router.get('/:id/students', auth, classesController.getStudents);
 // Only admin can add/remove students directly; teacher uses enrollment-requests
 router.post('/:id/students', auth, authorize('admin'), classesController.addStudent);
+router.post('/:id/students/create-enroll', auth, authorize('admin'), classesController.createStudentAndEnroll);
 router.post('/:id/students/batch', auth, authorize('admin'), classesController.addStudentsBatch);
 router.delete('/:id/students/:studentId', auth, authorize('admin'), classesController.removeStudent);
 router.post('/:id/students/batch-remove', auth, authorize('admin'), classesController.removeStudentsBatch);

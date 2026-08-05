@@ -1,17 +1,122 @@
 import { useCallback } from 'react'
 import {
-  Users, GraduationCap, School, Wallet, BookOpen, ClipboardList,
-  Clock, AlertTriangle, CheckCircle2, BarChart3, Trophy, Calendar
+  School, GraduationCap, BookOpen, ClipboardList, Clock, AlertTriangle,
+  CheckCircle2, BarChart3, Trophy, FileCheck, UserPlus, ChevronRight,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import DashboardHero from '../components/dashboard/DashboardHero'
 import DashboardStats from '../components/dashboard/DashboardStats'
+import StatCard from '../components/dashboard/StatCard'
 import RevenueChart from '../components/dashboard/RevenueChart'
 import RecentActivity from '../components/dashboard/RecentActivity'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import { useFetch } from '../hooks/useFetch'
 import { useAuth } from '../hooks/useAuth'
-import { formatDate } from '../utils/formatDate'
 import api from '../services/api'
+import shopService from '../services/shop.service'
+
+function DashboardSection({ title, icon: Icon, children, action }) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-display text-base sm:text-lg font-semibold text-stone-900 flex items-center gap-2">
+          {Icon && <Icon className="h-5 w-5 text-primary-600" />}
+          {title}
+        </h2>
+        {action}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function AlertBanner({ tone, icon: Icon, title, subtitle, onClick }) {
+  const tones = {
+    red: 'bg-red-50/90 border-red-200 text-red-800 hover:bg-red-100/90',
+    amber: 'bg-amber-50/90 border-amber-200 text-amber-800 hover:bg-amber-100/90',
+    blue: 'bg-blue-50/90 border-blue-200 text-blue-800 hover:bg-blue-100/90',
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left flex items-center gap-3 p-4 rounded-2xl border transition-colors ${tones[tone]} ${onClick ? 'cursor-pointer' : ''}`}
+    >
+      <Icon className="h-5 w-5 flex-shrink-0 opacity-80" />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold">{title}</p>
+        {subtitle && <p className="text-xs opacity-80 mt-0.5">{subtitle}</p>}
+      </div>
+      {onClick && <ChevronRight className="h-4 w-4 opacity-50 shrink-0" />}
+    </button>
+  )
+}
+
+function ClassGrid({ classes, onSelect }) {
+  if (!classes?.length) return null
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {classes.map((cls) => (
+        <button
+          key={cls.id}
+          type="button"
+          onClick={() => onSelect(cls.id)}
+          className="app-card-hover p-4 text-left group"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="text-sm font-semibold text-stone-900 group-hover:text-primary-700 transition-colors">
+              {cls.name}
+            </h3>
+            <ChevronRight className="h-4 w-4 text-stone-300 group-hover:text-primary-400 shrink-0 mt-0.5" />
+          </div>
+          {cls.teacher_name && (
+            <p className="text-xs text-stone-500 mt-2">GV: {cls.teacher_name}</p>
+          )}
+          {cls.max_students != null && (
+            <p className="text-xs text-stone-400 mt-1">Sĩ số tối đa: {cls.max_students}</p>
+          )}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function DeadlineList({ deadlines }) {
+  if (!deadlines?.length) return null
+  return (
+    <div className="space-y-2">
+      {deadlines.map((d) => {
+        const daysLeft = Math.ceil((new Date(d.due_date) - new Date()) / (1000 * 60 * 60 * 24))
+        const urgent = daysLeft <= 1
+        const soon = daysLeft <= 3
+        return (
+          <div
+            key={d.id}
+            className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${
+              urgent ? 'bg-red-50/80 border-red-200' :
+              soon ? 'bg-amber-50/80 border-amber-200' :
+              'app-card !p-3'
+            }`}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <ClipboardList className="h-4 w-4 text-stone-400 shrink-0" />
+              <span className="text-sm font-medium text-stone-800 truncate">{d.title}</span>
+            </div>
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${
+              urgent ? 'bg-red-100 text-red-700' :
+              soon ? 'bg-amber-100 text-amber-700' :
+              'bg-stone-100 text-stone-600'
+            }`}>
+              {daysLeft <= 0 ? 'Hôm nay!' :
+               daysLeft === 1 ? 'Ngày mai' :
+               `Còn ${daysLeft} ngày`}
+            </span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export default function DashboardPage() {
   const { user } = useAuth()
@@ -20,40 +125,62 @@ export default function DashboardPage() {
   const isTeacher = user?.role === 'teacher'
   const isStudent = user?.role === 'student'
 
-  // Admin dashboard
-  const fetchAdminDash = useCallback(() => isAdmin ? api.get('/dashboard/stats') : Promise.resolve({ data: null }), [isAdmin])
+  const fetchAdminDash = useCallback(
+    () => (isAdmin ? api.get('/dashboard/stats') : Promise.resolve({ data: null })),
+    [isAdmin]
+  )
   const { data: adminStats, loading: adminLoading } = useFetch(fetchAdminDash)
 
-  const fetchActivity = useCallback(() => isAdmin ? api.get('/dashboard/recent-activity') : Promise.resolve({ data: null }), [isAdmin])
+  const fetchActivity = useCallback(
+    () => (isAdmin ? api.get('/dashboard/recent-activity') : Promise.resolve({ data: null })),
+    [isAdmin]
+  )
   const { data: activityData } = useFetch(fetchActivity)
 
-  // Teacher dashboard
-  const fetchTeacherDash = useCallback(() => isTeacher ? api.get('/dashboard/teacher') : Promise.resolve({ data: null }), [isTeacher])
+  const fetchTeacherDash = useCallback(
+    () => (isTeacher ? api.get('/dashboard/teacher') : Promise.resolve({ data: null })),
+    [isTeacher]
+  )
   const { data: teacherData, loading: teacherLoading } = useFetch(fetchTeacherDash)
 
-  // Student dashboard
-  const fetchStudentDash = useCallback(() => isStudent ? api.get('/dashboard/student') : Promise.resolve({ data: null }), [isStudent])
+  const fetchStudentDash = useCallback(
+    () => (isStudent ? api.get('/dashboard/student') : Promise.resolve({ data: null })),
+    [isStudent]
+  )
   const { data: studentData, loading: studentLoading } = useFetch(fetchStudentDash)
+
+  const fetchWallet = useCallback(
+    () => (isStudent ? shopService.getWallet() : Promise.resolve({ data: null })),
+    [isStudent]
+  )
+  const { data: wallet } = useFetch(fetchWallet)
 
   const loading = adminLoading || teacherLoading || studentLoading
   if (loading) return <LoadingSpinner message="Đang tải tổng quan..." />
 
-  const roleLabel = { admin: 'Quản trị viên', teacher: 'Giáo viên', student: 'Học sinh' }
-  const roleEmoji = { admin: '🔑', teacher: '👨‍🏫', student: '🎓' }
+  const streak = isStudent ? studentData?.streak : isTeacher ? teacherData?.streak : null
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          {roleEmoji[user?.role]} Xin chào, {user?.name || 'bạn'}!
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">{roleLabel[user?.role] || user?.role}</p>
-      </div>
+    <div className="max-w-[1280px] mx-auto space-y-6 animate-fade-in">
+      <DashboardHero user={user} streak={streak} wallet={wallet} />
 
-      {/* ===== ADMIN DASHBOARD ===== */}
+      {/* ===== ADMIN ===== */}
       {isAdmin && (
         <>
-          <DashboardStats stats={adminStats || {}} />
+          {(adminStats?.pending_enrollments || 0) > 0 && (
+            <AlertBanner
+              tone="amber"
+              icon={UserPlus}
+              title={`${adminStats.pending_enrollments} yêu cầu nhập học chờ duyệt`}
+              subtitle="Nhấn để xem và phê duyệt"
+              onClick={() => navigate('/enrollment-requests')}
+            />
+          )}
+
+          <DashboardSection title="Chỉ số tổng quan" icon={BarChart3}>
+            <DashboardStats stats={adminStats || {}} onNavigate={navigate} />
+          </DashboardSection>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <RevenueChart data={adminStats?.revenueChart || []} />
             <RecentActivity activities={activityData || []} />
@@ -61,175 +188,102 @@ export default function DashboardPage() {
         </>
       )}
 
-      {/* ===== TEACHER DASHBOARD ===== */}
+      {/* ===== TEACHER ===== */}
       {isTeacher && teacherData && (
         <>
-          {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <QuickStat icon="🏫" label="Lớp đang dạy" value={teacherData.stats?.classes || 0} color="blue" />
-            <QuickStat icon="👨‍🎓" label="Học sinh" value={teacherData.stats?.students || 0} color="green" />
-            <QuickStat icon="📖" label="Bài học" value={teacherData.stats?.lessons || 0} color="purple" />
-            <QuickStat icon="📝" label="Bài tập" value={teacherData.stats?.assignments || 0} color="amber" />
-            <QuickStat
-              icon="📋" label="Chờ chấm" value={teacherData.stats?.pending_grading || 0}
-              color={teacherData.stats?.pending_grading > 0 ? 'red' : 'gray'}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <StatCard label="Lớp đang dạy" value={teacherData.stats?.classes || 0} icon={School} color="blue" onClick={() => navigate('/classes')} />
+            <StatCard label="Học sinh" value={teacherData.stats?.students || 0} icon={GraduationCap} color="green" />
+            <StatCard label="Bài học" value={teacherData.stats?.lessons || 0} icon={BookOpen} color="purple" />
+            <StatCard label="Bài tập" value={teacherData.stats?.assignments || 0} icon={ClipboardList} color="amber" />
+            <StatCard
+              label="Chờ chấm"
+              value={teacherData.stats?.pending_grading || 0}
+              icon={FileCheck}
+              color={teacherData.stats?.pending_grading > 0 ? 'red' : 'slate'}
               onClick={() => navigate('/submissions')}
+              hint={teacherData.stats?.pending_grading > 0 ? 'Cần xử lý' : undefined}
             />
-            <QuickStat
-              icon="📩" label="Yêu cầu thêm HS" value={teacherData.stats?.pending_requests || 0}
-              color={teacherData.stats?.pending_requests > 0 ? 'amber' : 'gray'}
+            <StatCard
+              label="Yêu cầu thêm HS"
+              value={teacherData.stats?.pending_requests || 0}
+              icon={UserPlus}
+              color={teacherData.stats?.pending_requests > 0 ? 'orange' : 'slate'}
               onClick={() => navigate('/enrollment-requests')}
             />
           </div>
 
-          {/* Alert: Pending grading */}
           {teacherData.stats?.pending_grading > 0 && (
-            <div
+            <AlertBanner
+              tone="red"
+              icon={AlertTriangle}
+              title={`Có ${teacherData.stats.pending_grading} bài nộp chờ chấm điểm`}
+              subtitle="Nhấn để vào trang chấm bài"
               onClick={() => navigate('/submissions')}
-              className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl cursor-pointer hover:bg-red-100 transition-colors"
-            >
-              <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-red-700">
-                  Có {teacherData.stats.pending_grading} bài nộp chờ chấm điểm
-                </p>
-                <p className="text-xs text-red-600">Nhấn để vào trang chấm bài</p>
-              </div>
-            </div>
+            />
           )}
 
-          {/* My classes */}
-          {teacherData.classes?.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">🏫 Lớp đang dạy</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {teacherData.classes.map(cls => (
-                  <div
-                    key={cls.id}
-                    onClick={() => navigate(`/classes/${cls.id}`)}
-                    className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
-                  >
-                    <h3 className="text-sm font-semibold text-gray-900">{cls.name}</h3>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Sĩ số tối đa: {cls.max_students || '—'}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <DashboardSection title="Lớp đang dạy" icon={School}>
+            <ClassGrid classes={teacherData.classes} onSelect={(id) => navigate(`/classes/${id}`)} />
+          </DashboardSection>
         </>
       )}
 
-      {/* ===== STUDENT DASHBOARD ===== */}
+      {/* ===== STUDENT ===== */}
       {isStudent && studentData && (
         <>
-          {/* Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <QuickStat icon="🏫" label="Lớp tham gia" value={studentData.stats?.classes || 0} color="blue" />
-            <QuickStat icon="📝" label="Tổng bài tập" value={studentData.stats?.total_assignments || 0} color="purple" />
-            <QuickStat
-              icon="⏳" label="Chưa làm" value={studentData.stats?.todo_assignments || 0}
-              color={studentData.stats?.todo_assignments > 0 ? 'amber' : 'gray'}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <StatCard label="Lớp tham gia" value={studentData.stats?.classes || 0} icon={School} color="blue" onClick={() => navigate('/learning')} />
+            <StatCard label="Tổng bài tập" value={studentData.stats?.total_assignments || 0} icon={ClipboardList} color="purple" />
+            <StatCard
+              label="Chưa làm"
+              value={studentData.stats?.todo_assignments || 0}
+              icon={Clock}
+              color={studentData.stats?.todo_assignments > 0 ? 'amber' : 'slate'}
               onClick={() => navigate('/my-assignments')}
             />
-            <QuickStat
-              icon="✅" label="Đã nộp" value={studentData.stats?.completed_assignments || 0}
+            <StatCard
+              label="Đã nộp"
+              value={studentData.stats?.completed_assignments || 0}
+              icon={CheckCircle2}
               color="green"
               onClick={() => navigate('/my-grades')}
             />
-            <QuickStat icon="📊" label="Điểm TB" value={studentData.stats?.avg_score || '—'} color="blue" />
-            <QuickStat icon="🏆" label="Đã chấm" value={studentData.stats?.graded_count || 0} color="green" />
+            <StatCard label="Điểm TB" value={studentData.stats?.avg_score ?? '—'} icon={BarChart3} color="blue" />
+            <StatCard label="Đã chấm" value={studentData.stats?.graded_count || 0} icon={Trophy} color="green" />
           </div>
 
-          {/* Alert: Todo assignments */}
           {studentData.stats?.todo_assignments > 0 && (
-            <div
+            <AlertBanner
+              tone="amber"
+              icon={Clock}
+              title={`Bạn còn ${studentData.stats.todo_assignments} bài tập chưa làm`}
+              subtitle="Nhấn để xem danh sách bài tập"
               onClick={() => navigate('/my-assignments')}
-              className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl cursor-pointer hover:bg-amber-100 transition-colors"
-            >
-              <Clock className="h-5 w-5 text-amber-500 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-amber-700">
-                  Bạn còn {studentData.stats.todo_assignments} bài tập chưa làm
-                </p>
-                <p className="text-xs text-amber-600">Nhấn để xem danh sách bài tập</p>
-              </div>
-            </div>
+            />
           )}
 
-          {/* Upcoming deadlines */}
+          {!studentData.streak?.active_today && (
+            <AlertBanner
+              tone="blue"
+              icon={Trophy}
+              title="Học hôm nay để giữ chuỗi lửa!"
+              subtitle="Làm bài tập hoặc tham gia buổi học để tính vào chuỗi"
+              onClick={() => navigate('/my-assignments')}
+            />
+          )}
+
           {studentData.upcoming_deadlines?.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">⏰ Sắp hết hạn</h2>
-              <div className="space-y-2">
-                {studentData.upcoming_deadlines.map(d => {
-                  const daysLeft = Math.ceil((new Date(d.due_date) - new Date()) / (1000 * 60 * 60 * 24))
-                  return (
-                    <div key={d.id} className={`flex items-center justify-between p-3 rounded-xl border ${
-                      daysLeft <= 1 ? 'bg-red-50 border-red-200' :
-                      daysLeft <= 3 ? 'bg-amber-50 border-amber-200' :
-                      'bg-white border-gray-200'
-                    }`}>
-                      <div className="flex items-center gap-3">
-                        <ClipboardList className="h-4 w-4 text-gray-400" />
-                        <span className="text-sm font-medium text-gray-800">{d.title}</span>
-                      </div>
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                        daysLeft <= 1 ? 'bg-red-100 text-red-700' :
-                        daysLeft <= 3 ? 'bg-amber-100 text-amber-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {daysLeft === 0 ? 'Hôm nay!' :
-                         daysLeft === 1 ? 'Ngày mai' :
-                         `Còn ${daysLeft} ngày`}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+            <DashboardSection title="Sắp hết hạn" icon={Clock}>
+              <DeadlineList deadlines={studentData.upcoming_deadlines} />
+            </DashboardSection>
           )}
 
-          {/* My classes */}
-          {studentData.classes?.length > 0 && (
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">📚 Lớp của tôi</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {studentData.classes.map(cls => (
-                  <div
-                    key={cls.id}
-                    onClick={() => navigate(`/classes/${cls.id}`)}
-                    className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer"
-                  >
-                    <h3 className="text-sm font-semibold text-gray-900">{cls.name}</h3>
-                    {cls.teacher_name && (
-                      <p className="text-xs text-gray-500 mt-1">GV: {cls.teacher_name}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <DashboardSection title="Lớp của tôi" icon={BookOpen}>
+            <ClassGrid classes={studentData.classes} onSelect={(id) => navigate(`/classes/${id}`)} />
+          </DashboardSection>
         </>
       )}
-    </div>
-  )
-}
-
-function QuickStat({ icon, label, value, color, onClick }) {
-  const colors = {
-    blue: 'text-blue-700', green: 'text-green-700', purple: 'text-purple-700',
-    amber: 'text-amber-700', red: 'text-red-700', gray: 'text-gray-500',
-  }
-  return (
-    <div
-      onClick={onClick}
-      className={`bg-white rounded-xl border border-gray-200 p-4 text-center ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
-    >
-      <div className="text-2xl mb-1">{icon}</div>
-      <div className={`text-xl font-bold ${colors[color] || 'text-gray-900'}`}>{value}</div>
-      <div className="text-xs text-gray-500">{label}</div>
     </div>
   )
 }

@@ -20,13 +20,28 @@ const generateRefreshToken = (user) => {
 };
 
 const login = async (email, password) => {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+
   const { data: user, error } = await supabase
     .from('profiles')
     .select('id, email, password_hash, role, full_name, phone, avatar_url, is_active')
-    .eq('email', email)
+    .eq('email', normalizedEmail)
     .single();
 
-  if (error || !user) {
+  if (error) {
+    const msg = error.message || '';
+    if (msg.includes('fetch failed') || error.code === '' || error.details?.includes('fetch failed')) {
+      throw {
+        statusCode: 503,
+        message: 'Không kết nối được cơ sở dữ liệu. Kiểm tra mạng và SUPABASE_URL trong backend/.env',
+      };
+    }
+    if (error.code !== 'PGRST116') {
+      throw { statusCode: 503, message: 'Lỗi truy vấn tài khoản. Thử lại sau hoặc kiểm tra Supabase.' };
+    }
+  }
+
+  if (!user) {
     throw { statusCode: 401, message: 'Invalid email or password' };
   }
 
@@ -112,7 +127,7 @@ const logoutAll = async () => {
 const getMe = async (userId) => {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, email, role, full_name, phone, avatar_url, is_active, created_at, updated_at')
+    .select('id, email, role, full_name, phone, avatar_url, cover_url, bio, is_active, created_at, updated_at')
     .eq('id', userId)
     .single();
 
@@ -120,6 +135,38 @@ const getMe = async (userId) => {
     throw { statusCode: 404, message: 'User not found' };
   }
 
+  return data;
+};
+
+const updateMe = async (userId, payload) => {
+  const updateObj = { updated_at: new Date().toISOString() };
+
+  if (payload.full_name !== undefined) {
+    const name = String(payload.full_name || '').trim();
+    if (!name) throw { statusCode: 400, message: 'Họ tên không được để trống' };
+    updateObj.full_name = name;
+  }
+  if (payload.phone !== undefined) {
+    updateObj.phone = String(payload.phone || '').trim() || null;
+  }
+  if (payload.bio !== undefined) {
+    updateObj.bio = String(payload.bio || '').trim().slice(0, 500) || null;
+  }
+  if (payload.avatar_url !== undefined) {
+    updateObj.avatar_url = payload.avatar_url || null;
+  }
+  if (payload.cover_url !== undefined) {
+    updateObj.cover_url = payload.cover_url || null;
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(updateObj)
+    .eq('id', userId)
+    .select('id, email, role, full_name, phone, avatar_url, cover_url, bio, is_active, created_at, updated_at')
+    .single();
+
+  if (error) throw error;
   return data;
 };
 
@@ -189,6 +236,7 @@ module.exports = {
   logout,
   logoutAll,
   getMe,
+  updateMe,
   changePassword,
   register,
 };

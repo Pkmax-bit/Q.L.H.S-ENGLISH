@@ -1,6 +1,81 @@
 const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
+async function enrichScheduleRows(rows) {
+  if (!rows?.length) return [];
+
+  const classIds = [...new Set(rows.map((r) => r.class_id).filter(Boolean))];
+  const roomIds = [...new Set(rows.map((r) => r.room_id).filter(Boolean))];
+
+  const classMap = new Map();
+  const roomMap = new Map();
+  const teacherMap = new Map();
+
+  if (classIds.length) {
+    const { data: classes, error } = await supabase
+      .from('classes')
+      .select('id, name, start_date, end_date, teacher_id, subject_id')
+      .in('id', classIds);
+    if (error) throw error;
+    for (const c of classes || []) classMap.set(String(c.id), c);
+
+    const teacherIds = [...new Set((classes || []).map((c) => c.teacher_id).filter(Boolean))];
+    if (teacherIds.length) {
+      const { data: teachers, error: tErr } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', teacherIds);
+      if (tErr) throw tErr;
+      for (const t of teachers || []) teacherMap.set(String(t.id), t.full_name);
+    }
+
+    const subjectIds = [...new Set((classes || []).map((c) => c.subject_id).filter(Boolean))];
+    const subjectMap = new Map();
+    if (subjectIds.length) {
+      const { data: subjects, error: sErr } = await supabase
+        .from('subjects')
+        .select('id, name, code')
+        .in('id', subjectIds);
+      if (sErr) throw sErr;
+      for (const s of subjects || []) subjectMap.set(String(s.id), s);
+    }
+
+    for (const [id, cls] of classMap) {
+      const sub = cls.subject_id ? subjectMap.get(String(cls.subject_id)) : null;
+      classMap.set(id, {
+        ...cls,
+        subject_name: sub?.name || null,
+        subject_code: sub?.code || null,
+      });
+    }
+  }
+
+  if (roomIds.length) {
+    const { data: rooms, error } = await supabase
+      .from('facilities')
+      .select('id, name, parent_id')
+      .in('id', roomIds);
+    if (error) throw error;
+    for (const r of rooms || []) roomMap.set(String(r.id), r);
+  }
+
+  return rows.map((row) => {
+    const cls = classMap.get(String(row.class_id));
+    const room = roomMap.get(String(row.room_id));
+    return {
+      ...row,
+      class_name: cls?.name || null,
+      class_start_date: cls?.start_date || null,
+      class_end_date: cls?.end_date || null,
+      subject_id: cls?.subject_id || null,
+      subject_name: cls?.subject_name || null,
+      subject_code: cls?.subject_code || null,
+      teacher_name: cls?.teacher_id ? teacherMap.get(String(cls.teacher_id)) || null : null,
+      room_name: room?.name || null,
+    };
+  });
+}
+
 const getAll = async (queryParams, currentUser = null) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
   const allowedSort = ['day_of_week', 'start_time', 'created_at'];
@@ -49,14 +124,8 @@ const getAll = async (queryParams, currentUser = null) => {
   const { count: total, error: countError } = await countQuery;
   if (countError) throw countError;
 
-  // Data query
-  let dataQuery = supabase
-    .from('schedules')
-    .select(`
-      *,
-      classes(name, start_date, end_date),
-      facilities(name)
-    `);
+  // Data query — không embed join (Supabase có thể thiếu FK schedules→classes)
+  let dataQuery = supabase.from('schedules').select('*');
 
   if (classId) {
     dataQuery = dataQuery.eq('class_id', classId);
@@ -78,16 +147,7 @@ const getAll = async (queryParams, currentUser = null) => {
   const { data, error } = await dataQuery;
   if (error) throw error;
 
-  const rows = (data || []).map(row => {
-    const { classes, facilities, ...rest } = row;
-    return {
-      ...rest,
-      class_name: classes?.name || null,
-      class_start_date: classes?.start_date || null,
-      class_end_date: classes?.end_date || null,
-      room_name: facilities?.name || null,
-    };
-  });
+  const rows = await enrichScheduleRows(data || []);
 
   return {
     data: rows,
@@ -98,11 +158,7 @@ const getAll = async (queryParams, currentUser = null) => {
 const getById = async (id) => {
   const { data, error } = await supabase
     .from('schedules')
-    .select(`
-      *,
-      classes(name, start_date, end_date),
-      facilities(name)
-    `)
+    .select('*')
     .eq('id', id)
     .single();
 
@@ -111,14 +167,8 @@ const getById = async (id) => {
     throw error;
   }
 
-  const { classes, facilities, ...rest } = data;
-  return {
-    ...rest,
-    class_name: classes?.name || null,
-    class_start_date: classes?.start_date || null,
-    class_end_date: classes?.end_date || null,
-    room_name: facilities?.name || null,
-  };
+  const [row] = await enrichScheduleRows([data]);
+  return row || null;
 };
 
 const create = async (data) => {
@@ -235,7 +285,7 @@ const checkScheduleConflict = async (roomId, classId, dayOfWeek, startTime, endT
   if (roomId) {
     let query = supabase
       .from('schedules')
-      .select('*, facilities(name), classes(name)')
+      .select('*')
       .eq('room_id', roomId)
       .eq('day_of_week', dayOfWeek)
       .lt('start_time', endTime)
@@ -247,11 +297,13 @@ const checkScheduleConflict = async (roomId, classId, dayOfWeek, startTime, endT
     const { data: roomConflicts, error } = await query;
     if (error) throw error;
 
-    if (roomConflicts && roomConflicts.length > 0) {
-      for (const rc of roomConflicts) {
+    const enriched = await enrichScheduleRows(roomConflicts || []);
+
+    if (enriched.length > 0) {
+      for (const rc of enriched) {
         conflicts.push({
           type: 'room',
-          message: `Phòng "${rc.facilities?.name || '?'}" đã có lớp "${rc.classes?.name || '?'}" vào ${dayNames[dayOfWeek]} ${rc.start_time?.substring(0,5)}-${rc.end_time?.substring(0,5)}`,
+          message: `Phòng "${rc.room_name || '?'}" đã có lớp "${rc.class_name || '?'}" vào ${dayNames[dayOfWeek]} ${rc.start_time?.substring(0, 5)}-${rc.end_time?.substring(0, 5)}`,
           schedule: rc,
         });
       }
@@ -281,7 +333,7 @@ const checkScheduleConflict = async (roomId, classId, dayOfWeek, startTime, endT
 
         let query = supabase
           .from('schedules')
-          .select('*, facilities(name)')
+          .select('*')
           .in('class_id', otherClassIds)
           .eq('day_of_week', dayOfWeek)
           .lt('start_time', endTime)
@@ -325,11 +377,7 @@ const checkScheduleConflict = async (roomId, classId, dayOfWeek, startTime, endT
 const getConflictPreview = async (dayOfWeek, startTime, endTime) => {
   const { data, error } = await supabase
     .from('schedules')
-    .select(`
-      *,
-      classes(id, name, teacher_id),
-      facilities(id, name, parent_id)
-    `)
+    .select('*')
     .eq('day_of_week', dayOfWeek)
     .lt('start_time', endTime)
     .gt('end_time', startTime)
@@ -338,29 +386,27 @@ const getConflictPreview = async (dayOfWeek, startTime, endTime) => {
 
   if (error) throw error;
 
-  // Enrich with teacher names
-  const teacherIds = [...new Set((data || []).map(s => s.classes?.teacher_id).filter(Boolean))];
-  let teacherMap = {};
-  if (teacherIds.length > 0) {
-    const { data: teachers } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .in('id', teacherIds);
-    if (teachers) teachers.forEach(t => { teacherMap[t.id] = t.full_name; });
+  const enriched = await enrichScheduleRows(data || []);
+
+  const classIds = [...new Set(enriched.map((s) => s.class_id).filter(Boolean))];
+  let teacherIdByClass = {};
+  if (classIds.length) {
+    const { data: classes } = await supabase.from('classes').select('id, teacher_id').in('id', classIds);
+    for (const c of classes || []) teacherIdByClass[c.id] = c.teacher_id;
   }
 
-  return (data || []).map(s => ({
+  return enriched.map((s) => ({
     id: s.id,
     class_id: s.class_id,
-    class_name: s.classes?.name || null,
-    teacher_id: s.classes?.teacher_id || null,
-    teacher_name: teacherMap[s.classes?.teacher_id] || null,
+    class_name: s.class_name,
+    teacher_id: teacherIdByClass[s.class_id] || null,
+    teacher_name: s.teacher_name,
     day_of_week: s.day_of_week,
     start_time: s.start_time,
     end_time: s.end_time,
     room_id: s.room_id,
-    room_name: s.facilities?.name || null,
-    facility_parent_id: s.facilities?.parent_id || null,
+    room_name: s.room_name,
+    facility_parent_id: null,
   }));
 };
 
@@ -433,4 +479,4 @@ const bulkCreate = async (data) => {
   };
 };
 
-module.exports = { getAll, getById, create, update, remove, bulkCreate, getConflictPreview };
+module.exports = { getAll, getById, create, update, remove, bulkCreate, getConflictPreview, enrichScheduleRows };

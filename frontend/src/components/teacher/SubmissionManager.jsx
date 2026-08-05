@@ -319,7 +319,7 @@ function GradingModal({ submissionId, onClose, onGraded }) {
                           value={currentGrade.score ?? ''}
                           onChange={(e) => updateGrade(answer.id, 'score', e.target.value)}
                           placeholder={`/${q.points || 0}`}
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                         />
                       </div>
                       <div className="col-span-3">
@@ -329,13 +329,13 @@ function GradingModal({ submissionId, onClose, onGraded }) {
                           value={currentGrade.feedback || ''}
                           onChange={(e) => updateGrade(answer.id, 'feedback', e.target.value)}
                           placeholder="Nhận xét cho câu này..."
-                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                         />
                       </div>
                     </div>
                   ) : isAlreadyGraded && (
                     <p className="text-xs">
-                      <span className="font-medium text-blue-600">{answer.score ?? '—'}/{q.points} điểm</span>
+                      <span className="font-medium text-amber-700">{answer.score ?? '—'}/{q.points} điểm</span>
                       {answer.feedback && <span className="text-gray-500 ml-2">— {answer.feedback}</span>}
                     </p>
                   )}
@@ -354,14 +354,14 @@ function GradingModal({ submissionId, onClose, onGraded }) {
               onChange={(e) => setOverallFeedback(e.target.value)}
               placeholder="Nhận xét chung cho bài làm..."
               rows={3}
-              className="w-full mt-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full mt-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
           </div>
         )}
 
         {isAlreadyGraded && submission.feedback && (
-          <div className="p-3 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-700 flex items-center gap-1.5">
+          <div className="p-3 bg-amber-50 rounded-lg">
+            <p className="text-sm text-amber-800 flex items-center gap-1.5">
               <MessageSquare className="h-4 w-4" />
               <strong>Nhận xét:</strong> {submission.feedback}
             </p>

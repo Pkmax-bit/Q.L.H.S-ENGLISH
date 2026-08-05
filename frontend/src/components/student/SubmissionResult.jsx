@@ -76,7 +76,7 @@ function QuestionMediaPanel({ question: q, assignmentTitle, questionIndex }) {
                 href={normalizeMediaUrl(fileUrl, 'file')}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+                className="inline-flex items-center gap-1.5 text-sm text-amber-700 hover:underline"
               >
                 <FileText className="h-4 w-4" /> Mở tệp
               </a>
@@ -121,7 +121,7 @@ export default function SubmissionResult({ submissionId, onBack }) {
 
   const getGrade = (percent) => {
     if (percent >= 90) return { label: 'Xuất sắc', color: 'text-green-600', bg: 'bg-green-50', emoji: '🏆' }
-    if (percent >= 75) return { label: 'Giỏi', color: 'text-blue-600', bg: 'bg-blue-50', emoji: '⭐' }
+    if (percent >= 75) return { label: 'Giỏi', color: 'text-amber-700', bg: 'bg-amber-50', emoji: '⭐' }
     if (percent >= 50) return { label: 'Khá', color: 'text-amber-600', bg: 'bg-amber-50', emoji: '👍' }
     return { label: 'Cần cố gắng', color: 'text-red-600', bg: 'bg-red-50', emoji: '📚' }
   }
@@ -203,11 +203,11 @@ export default function SubmissionResult({ submissionId, onBack }) {
 
         {submission.feedback && (
           <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg">
-              <MessageSquare className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+            <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg">
+              <MessageSquare className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
               <div>
-                <p className="text-xs font-medium text-blue-700 mb-0.5">Nhận xét của giáo viên:</p>
-                <p className="text-sm text-blue-800">{submission.feedback}</p>
+                <p className="text-xs font-medium text-amber-800 mb-0.5">Nhận xét của giáo viên:</p>
+                <p className="text-sm text-amber-900">{submission.feedback}</p>
               </div>
             </div>
           </div>
@@ -237,7 +237,7 @@ export default function SubmissionResult({ submissionId, onBack }) {
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900">
-                        <span className="text-blue-600 mr-2">Câu {idx + 1}.</span>
+                        <span className="text-amber-700 mr-2">Câu {idx + 1}.</span>
                         {qText.includes('<') ? (
                           <RichContentViewer content={qText} className="inline" />
                         ) : (
@@ -315,9 +315,9 @@ export default function SubmissionResult({ submissionId, onBack }) {
 
                   {/* Per-answer feedback */}
                   {answer.feedback && (
-                    <div className="flex items-start gap-2 p-2.5 bg-blue-50 rounded-lg">
-                      <MessageSquare className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-xs text-blue-700">{answer.feedback}</p>
+                    <div className="flex items-start gap-2 p-2.5 bg-amber-50 rounded-lg">
+                      <MessageSquare className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-amber-800">{answer.feedback}</p>
                     </div>
                   )}
                     </div>

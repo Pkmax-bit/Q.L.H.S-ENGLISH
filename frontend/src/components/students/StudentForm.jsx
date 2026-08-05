@@ -100,7 +100,7 @@ export default function StudentForm({ isOpen, onClose, student, onSuccess }) {
             name="is_active"
             checked={form.is_active}
             onChange={handleChange}
-            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            className="h-4 w-4 rounded border-gray-300 text-amber-700 focus:ring-amber-500"
           />
           <label htmlFor="is_active" className="text-sm text-gray-700">
             Đang hoạt động

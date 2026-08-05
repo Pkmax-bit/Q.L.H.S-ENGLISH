@@ -67,6 +67,18 @@ const getMe = async (req, res, next) => {
   }
 };
 
+const updateMe = async (req, res, next) => {
+  try {
+    const user = await authService.updateMe(req.user.id, req.body);
+    return response.success(res, user, 'Profile updated');
+  } catch (error) {
+    if (error.statusCode) {
+      return response.error(res, error.message, error.statusCode);
+    }
+    next(error);
+  }
+};
+
 const changePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -115,4 +127,4 @@ const register = async (req, res, next) => {
   }
 };
 
-module.exports = { login, refresh, logout, logoutAll, getMe, changePassword, register };
+module.exports = { login, refresh, logout, logoutAll, getMe, updateMe, changePassword, register };

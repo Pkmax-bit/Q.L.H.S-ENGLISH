@@ -1,8 +1,8 @@
-# Render Blueprint - Education Center Management System
-# Deploy cả backend API và frontend
+# Render Blueprint — single origin (API + SPA)
+# Frontend is built during deploy and served by Express from frontend/dist.
+# Set VITE_* so the SPA calls the same host for API and Socket.IO.
 
 services:
-  # Backend API Service (Node.js + Express)
   - type: web
     name: education-center-api
     runtime: node
@@ -34,25 +34,10 @@ services:
         sync: false
       - key: UPLOAD_DIR
         value: uploads
-
-  # Frontend Static Site (React + Vite)
-  - type: web
-    name: education-center-web
-    runtime: static
-    buildCommand: cd frontend && npm install --include=dev && npm run build
-    staticPublishPath: frontend/dist
-    autoDeploy: true
-    branch: main
-    envVars:
+      - key: QUESTION_BANK_BUCKET
+        value: question-bank
+      # Same-origin SPA: set both to your Render public URL (no trailing slash)
       - key: VITE_API_URL
         sync: false
       - key: VITE_SOCKET_URL
         sync: false
-    headers:
-      - path: /*
-        name: Cache-Control
-        value: public, max-age=0, must-revalidate
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html

@@ -456,7 +456,7 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
               name="is_published"
               checked={form.is_published}
               onChange={handleChange}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 rounded border-gray-300 text-amber-700 focus:ring-amber-500"
             />
             <label htmlFor="is_published" className="text-sm text-gray-700">
               Đã xuất bản
@@ -469,7 +469,7 @@ export default function AssignmentForm({ isOpen, onClose, assignment, onSuccess,
               name="allow_retake"
               checked={form.allow_retake}
               onChange={handleChange}
-              className="h-4 w-4 mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 mt-0.5 rounded border-gray-300 text-amber-700 focus:ring-amber-500"
             />
             <label htmlFor="allow_retake" className="text-sm text-gray-700 leading-snug">
               Cho phép học sinh làm lại sau khi đã nộp

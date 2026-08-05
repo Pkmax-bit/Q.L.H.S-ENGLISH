@@ -70,7 +70,13 @@ export default function ClassFeeConfigCard({ classInfo, onUpdated }) {
             <Row label="Ngày chốt sổ" value={`Ngày ${classInfo.billing_day || 1} hàng tháng`} />
           )}
           {classInfo.fee_policy === 'per_session' && (
-            <Row label="Số buổi / kỳ" value={classInfo.sessions_per_period || 0} />
+            <>
+              <Row
+                label="Số buổi / kỳ"
+                value={classInfo.sessions_per_period || 0}
+                sub="Dùng khi chưa có TKB; nếu đã có lịch thì hệ thống tính buổi tự động"
+              />
+            </>
           )}
           {!classInfo.fee_policy && (
             <div className="bg-amber-50 border border-amber-200 text-amber-700 text-xs rounded p-2 mt-2">
@@ -130,11 +136,14 @@ export default function ClassFeeConfigCard({ classInfo, onUpdated }) {
   )
 }
 
-function Row({ label, value }) {
+function Row({ label, value, sub }) {
   return (
-    <div className="flex justify-between items-center">
-      <span className="text-gray-500">{label}</span>
-      <span className="font-medium text-gray-800">{value}</span>
+    <div>
+      <div className="flex justify-between items-center">
+        <span className="text-gray-500">{label}</span>
+        <span className="font-medium text-gray-800">{value}</span>
+      </div>
+      {sub && <p className="text-[10px] text-gray-400 mt-0.5 text-right">{sub}</p>}
     </div>
   )
 }

@@ -1,5 +1,7 @@
 const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
+const { enrichClassRows } = require('../utils/enrichClassRows');
+const { enrichScheduleRows } = require('./schedules.service');
 
 const getAll = async (queryParams) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
@@ -130,25 +132,14 @@ const remove = async (id) => {
 };
 
 const getClasses = async (teacherId) => {
-  // In the new schema, classes.teacher_id points directly to profiles
   const { data, error } = await supabase
     .from('classes')
-    .select(`
-      *,
-      subjects(name, code)
-    `)
+    .select('*')
     .eq('teacher_id', teacherId);
 
   if (error) throw error;
 
-  return (data || []).map(row => {
-    const { subjects, ...rest } = row;
-    return {
-      ...rest,
-      subject_name: subjects?.name || null,
-      subject_code: subjects?.code || null,
-    };
-  });
+  return enrichClassRows(data || []);
 };
 
 const getSchedule = async (teacherId) => {
@@ -165,11 +156,7 @@ const getSchedule = async (teacherId) => {
 
   const { data, error } = await supabase
     .from('schedules')
-    .select(`
-      *,
-      classes(name),
-      facilities(name)
-    `)
+    .select('*')
     .in('class_id', classIds)
     .eq('is_active', true)
     .order('day_of_week', { ascending: true })
@@ -177,14 +164,7 @@ const getSchedule = async (teacherId) => {
 
   if (error) throw error;
 
-  return (data || []).map(row => {
-    const { classes, facilities, ...rest } = row;
-    return {
-      ...rest,
-      class_name: classes?.name || null,
-      room_name: facilities?.name || null,
-    };
-  });
+  return enrichScheduleRows(data || []);
 };
 
 const getAllForExport = async (queryParams) => {

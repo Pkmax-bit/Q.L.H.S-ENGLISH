@@ -113,7 +113,7 @@ export default function EnrollmentRequestList() {
             onClick={() => setStatusFilter(key)}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
               statusFilter === key
-                ? 'bg-white text-blue-700 shadow-sm'
+                ? 'bg-white text-amber-800 shadow-sm'
                 : 'text-gray-500 hover:text-gray-700'
             }`}
           >
@@ -156,7 +156,7 @@ export default function EnrollmentRequestList() {
                         {req.student_name}
                       </span>
                       <span className="text-gray-400">→</span>
-                      <span className="text-sm font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                      <span className="text-sm font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
                         {req.class_name}
                       </span>
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${statusCfg.color}`}>
@@ -266,7 +266,7 @@ export default function EnrollmentRequestList() {
                 </p>
                 <p className="text-sm">
                   <span className="text-gray-500">Lớp:</span>{' '}
-                  <span className="font-semibold text-blue-600">{selectedRequest.class_name}</span>
+                  <span className="font-semibold text-amber-700">{selectedRequest.class_name}</span>
                 </p>
                 <p className="text-sm">
                   <span className="text-gray-500">Đề xuất bởi:</span>{' '}
@@ -288,7 +288,7 @@ export default function EnrollmentRequestList() {
                   value={reviewNote}
                   onChange={(e) => setReviewNote(e.target.value)}
                   placeholder={reviewAction === 'reject' ? 'Lý do từ chối...' : 'Ghi chú thêm...'}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                   rows={3}
                 />
               </div>

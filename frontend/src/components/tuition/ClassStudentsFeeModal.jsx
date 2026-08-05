@@ -20,7 +20,7 @@ export default function ClassStudentsFeeModal({ isOpen, classInfo, yearMonth, on
   const { success, error: showError } = useContext(ToastContext)
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all') // all | unpaid | paid | no_invoice
+  const [filter, setFilter] = useState('all') // all | unpaid | partial | paid | no_invoice
   const [payInvoice, setPayInvoice] = useState(null)
   const [detailId, setDetailId] = useState(null)
   const [createFor, setCreateFor] = useState(null) // { student_id, student_name }
@@ -76,7 +76,8 @@ export default function ClassStudentsFeeModal({ isOpen, classInfo, yearMonth, on
 
   const filtered = rows.filter((r) => {
     if (filter === 'all') return true
-    if (filter === 'unpaid') return r.status === 'unpaid' || r.status === 'partial'
+    if (filter === 'unpaid') return r.status === 'unpaid'
+    if (filter === 'partial') return r.status === 'partial'
     if (filter === 'paid') return r.status === 'paid'
     if (filter === 'no_invoice') return r.status === 'no_invoice'
     return true
@@ -85,10 +86,13 @@ export default function ClassStudentsFeeModal({ isOpen, classInfo, yearMonth, on
   const counts = rows.reduce((acc, r) => {
     acc.all += 1
     if (r.status === 'paid') acc.paid += 1
-    if (r.status === 'unpaid' || r.status === 'partial') acc.unpaid += 1
+    if (r.status === 'partial') acc.partial += 1
+    if (r.status === 'unpaid') acc.unpaid += 1
     if (r.status === 'no_invoice') acc.no_invoice += 1
+    acc.collected += Number(r.paid) || 0
+    acc.outstanding += Number(r.balance) || 0
     return acc
-  }, { all: 0, paid: 0, unpaid: 0, no_invoice: 0 })
+  }, { all: 0, paid: 0, partial: 0, unpaid: 0, no_invoice: 0, collected: 0, outstanding: 0 })
 
   const handlePaid = () => {
     setPayInvoice(null)
@@ -128,7 +132,7 @@ export default function ClassStudentsFeeModal({ isOpen, classInfo, yearMonth, on
     >
       <div className="mb-5 pb-5 border-b border-gray-200">
         <div className="flex items-center gap-2 mb-3">
-          <Users className="h-5 w-5 text-blue-600" />
+          <Users className="h-5 w-5 text-amber-700" />
           <h4 className="text-base font-semibold text-gray-900">Học sinh trong lớp</h4>
         </div>
         <p className="text-xs text-gray-500 mb-3">
@@ -145,6 +149,17 @@ export default function ClassStudentsFeeModal({ isOpen, classInfo, yearMonth, on
 
       <h4 className="text-base font-semibold text-gray-900 mb-2">Thu học phí & hóa đơn</h4>
 
+      {!loading && rows.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+          <FeeStat label="Tổng HS" value={counts.all} />
+          <FeeStat label="Đã đóng đủ" value={counts.paid} tone="emerald" />
+          <FeeStat label="Đóng thiếu" value={counts.partial} tone="amber" />
+          <FeeStat label="Chưa đóng" value={counts.unpaid} tone="rose" />
+          <FeeStat label="Đã thu" value={formatCurrency(counts.collected)} tone="emerald" money />
+          <FeeStat label="Còn nợ" value={formatCurrency(counts.outstanding)} tone="rose" money />
+        </div>
+      )}
+
       {loading ? (
         <LoadingSpinner />
       ) : (
@@ -152,6 +167,13 @@ export default function ClassStudentsFeeModal({ isOpen, classInfo, yearMonth, on
           <div className="flex flex-wrap items-center gap-2">
             <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>
               Tất cả ({counts.all})
+            </FilterChip>
+            <FilterChip
+              active={filter === 'partial'}
+              onClick={() => setFilter('partial')}
+              tone="amber"
+            >
+              Đóng thiếu ({counts.partial})
             </FilterChip>
             <FilterChip
               active={filter === 'unpaid'}
@@ -267,8 +289,9 @@ export default function ClassStudentsFeeModal({ isOpen, classInfo, yearMonth, on
 
 function FilterChip({ active, onClick, tone = 'blue', children }) {
   const tones = {
-    blue: active ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100',
+    blue: active ? 'bg-blue-600 text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-100',
     rose: active ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100',
+    amber: active ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-800 hover:bg-amber-100',
     emerald: active ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100',
     gray: active ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
   }
@@ -280,6 +303,21 @@ function FilterChip({ active, onClick, tone = 'blue', children }) {
     >
       {children}
     </button>
+  )
+}
+
+function FeeStat({ label, value, tone = 'slate', money = false }) {
+  const colors = {
+    emerald: 'text-emerald-700',
+    amber: 'text-amber-700',
+    rose: 'text-rose-700',
+    slate: 'text-gray-900',
+  }
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+      <div className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</div>
+      <div className={`${money ? 'text-sm' : 'text-lg'} font-bold ${colors[tone]}`}>{value}</div>
+    </div>
   )
 }
 
@@ -338,7 +376,7 @@ function StudentRow({ row, onPay, onView, onCreate, onEdit, onDelete }) {
                     {formatCurrency(inv.balance)}
                   </span>
                   <button
-                    className="p-1 rounded hover:bg-blue-100 text-blue-600"
+                    className="p-1 rounded hover:bg-amber-100 text-amber-700"
                     title="Xem chi tiết"
                     onClick={() => onView(inv.id)}
                   >

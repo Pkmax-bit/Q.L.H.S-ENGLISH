@@ -115,7 +115,7 @@ export default function GradeBook() {
                     <div className="text-[10px] text-gray-400 font-normal">{a.total_points} điểm</div>
                   </th>
                 ))}
-                <th className="border-b border-gray-200 px-3 py-2.5 text-center text-xs font-semibold text-blue-600 min-w-[100px] bg-blue-50">
+                <th className="border-b border-gray-200 px-3 py-2.5 text-center text-xs font-semibold text-amber-700 min-w-[100px] bg-amber-50">
                   Tổng
                 </th>
               </tr>
@@ -150,8 +150,8 @@ export default function GradeBook() {
                         </td>
                       )
                     })}
-                    <td className="border-b border-gray-200 px-3 py-2 text-center bg-blue-50/50">
-                      <span className="text-sm font-bold text-blue-700">{total}</span>
+                    <td className="border-b border-gray-200 px-3 py-2 text-center bg-amber-50/50">
+                      <span className="text-sm font-bold text-amber-800">{total}</span>
                       <span className="text-xs text-gray-400">/{maxTotal}</span>
                       <div className="text-[10px] text-gray-400">{percent}%</div>
                     </td>

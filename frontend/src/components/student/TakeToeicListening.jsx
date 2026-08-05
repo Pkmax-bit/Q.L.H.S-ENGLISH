@@ -633,7 +633,7 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
       )}
 
       {assignment?.description && String(assignment.description).trim() && (
-        <div className="bg-blue-50/80 border border-blue-100 rounded-xl p-4 mb-4">
+        <div className="bg-amber-50/80 border border-blue-100 rounded-xl p-4 mb-4">
           <p className="text-xs font-semibold text-blue-900 mb-2 uppercase tracking-wide">Nội dung / hướng dẫn</p>
           <RichContentViewer content={assignment.description} />
         </div>
@@ -712,7 +712,7 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
                       href={groupAudioUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-blue-600 underline"
+                      className="text-sm text-amber-700 underline"
                     >
                       Mở file / liên kết âm thanh
                     </a>
@@ -760,7 +760,7 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
                   )
                 ) : (
                   !examMode && (
-                    <a href={singleAudioUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline">
+                    <a href={singleAudioUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-amber-700 underline">
                       Mở liên kết âm thanh
                     </a>
                   )
@@ -821,7 +821,7 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
                   )
                 ) : (
                   !examMode && (
-                    <a href={singleAudioUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline">
+                    <a href={singleAudioUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-amber-700 underline">
                       Mở liên kết âm thanh
                     </a>
                   )
@@ -951,7 +951,7 @@ export default function TakeToeicListening({ assignmentId, onBack, onComplete, p
 function PhaseBanner({ phase, phaseLeft, cfg, meta }) {
   if (phase === PHASE.AUDIO) {
     return (
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 mb-4 text-sm text-blue-900 flex items-center gap-2">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 mb-4 text-sm text-blue-900 flex items-center gap-2">
         <Volume2 className="h-4 w-4 animate-pulse" />
         <span>
           <strong>Audio đang phát…</strong> Bạn có thể tích đáp án ngay trong khi nghe; sau khi audio kết thúc còn 5s để chốt.

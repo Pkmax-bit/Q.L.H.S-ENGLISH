@@ -52,7 +52,7 @@ export default function AssignmentDetail({ isOpen, onClose, assignment, studentV
             <span>Loại: {typeLabelMap[assignment.assignment_type] || assignment.assignment_type}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="font-medium text-blue-600">
+            <span className="font-medium text-amber-700">
               {assignment.total_points ?? '—'} điểm
             </span>
           </div>
@@ -153,7 +153,7 @@ export default function AssignmentDetail({ isOpen, onClose, assignment, studentV
                         <span>{body || '(Chưa có nội dung)'}</span>
                       )}
                     </div>
-                    <span className="text-xs text-blue-600 font-medium whitespace-nowrap">
+                    <span className="text-xs text-amber-700 font-medium whitespace-nowrap">
                       {q.points ?? '—'} điểm
                     </span>
                   </div>
@@ -191,7 +191,7 @@ export default function AssignmentDetail({ isOpen, onClose, assignment, studentV
 
                   {q.file_url && (
                     <div className="mt-2">
-                      <a href={q.file_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                      <a href={q.file_url} target="_blank" rel="noopener noreferrer" className="text-xs text-amber-700 hover:underline">
                         Tệp đính kèm
                       </a>
                     </div>

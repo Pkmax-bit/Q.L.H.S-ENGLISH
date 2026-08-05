@@ -53,12 +53,15 @@ export default function ClassFeeSummary() {
     (acc, c) => {
       acc.classes += 1
       acc.enrolled += c.enrolled_count
-      acc.paid += c.paid_count
-      acc.unpaid += c.unpaid_count
-      acc.outstanding += c.total_outstanding
+      acc.paid += c.paid_count || 0
+      acc.partial += c.partial_count || 0
+      acc.unpaid += c.unpaid_count || 0
+      acc.no_invoice += c.no_invoice_count || 0
+      acc.collected += c.total_paid || 0
+      acc.outstanding += c.total_outstanding || 0
       return acc
     },
-    { classes: 0, enrolled: 0, paid: 0, unpaid: 0, outstanding: 0 }
+    { classes: 0, enrolled: 0, paid: 0, partial: 0, unpaid: 0, no_invoice: 0, collected: 0, outstanding: 0 }
   )
 
   return (
@@ -77,7 +80,7 @@ export default function ClassFeeSummary() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
                 type="text"
-                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                 placeholder="Tên lớp..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -92,11 +95,14 @@ export default function ClassFeeSummary() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         <SummaryCard label="Số lớp" value={overall.classes} />
         <SummaryCard label="Tổng HS" value={overall.enrolled} icon={Users} />
-        <SummaryCard label="Đã đóng" value={overall.paid} color="text-emerald-600" />
+        <SummaryCard label="Đã đóng đủ" value={overall.paid} color="text-emerald-600" />
+        <SummaryCard label="Đóng thiếu" value={overall.partial} color="text-amber-600" />
         <SummaryCard label="Chưa đóng" value={overall.unpaid} color="text-rose-600" />
+        <SummaryCard label="Chưa có HĐ" value={overall.no_invoice} color="text-slate-500" />
+        <SummaryCard label="Đã thu" value={formatCurrency(overall.collected)} color="text-emerald-700" />
         <SummaryCard label="Còn nợ" value={formatCurrency(overall.outstanding)} color="text-rose-700" />
       </div>
 
@@ -105,26 +111,32 @@ export default function ClassFeeSummary() {
       ) : data.length === 0 ? (
         <EmptyState message="Không có lớp phù hợp" />
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+          <table className="w-full text-sm min-w-[900px]">
             <thead>
               <tr className="bg-gray-50/60 border-b border-gray-100 text-left text-gray-600">
                 <th className="px-4 py-3 font-medium">Lớp</th>
                 <th className="px-4 py-3 font-medium">Chế độ</th>
                 <th className="px-4 py-3 font-medium text-center">Sĩ số</th>
                 <th className="px-4 py-3 font-medium text-center">Đã đóng</th>
+                <th className="px-4 py-3 font-medium text-center">Thiếu</th>
                 <th className="px-4 py-3 font-medium text-center">Chưa đóng</th>
+                <th className="px-4 py-3 font-medium text-center">Chưa HĐ</th>
+                <th className="px-4 py-3 font-medium text-right">Đã thu</th>
                 <th className="px-4 py-3 font-medium text-right">Còn nợ</th>
                 <th className="px-4 py-3 font-medium text-right w-32">Thao tác</th>
               </tr>
             </thead>
             <tbody>
               {data.map((c) => (
-                <tr key={c.id} className="border-b border-gray-50 hover:bg-blue-50/30">
+                <tr key={c.id} className="border-b border-gray-50 hover:bg-amber-50/30">
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900">{c.name}</div>
                     <div className="text-xs text-gray-500">
                       GV: {c.teacher_name || '—'}
+                      {c.overdue_count > 0 && (
+                        <span className="ml-1 text-red-600">· {c.overdue_count} HĐ quá hạn</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -139,23 +151,19 @@ export default function ClassFeeSummary() {
                   </td>
                   <td className="px-4 py-3 text-center font-medium">{c.enrolled_count}</td>
                   <td className="px-4 py-3 text-center">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
-                      {c.paid_count}
-                    </span>
+                    <CountBadge value={c.paid_count} tone="emerald" />
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        c.unpaid_count > 0
-                          ? 'bg-rose-100 text-rose-700'
-                          : 'bg-gray-100 text-gray-500'
-                      }`}
-                    >
-                      {c.unpaid_count}
-                      {c.overdue_count > 0 && (
-                        <span className="ml-1 text-red-700">({c.overdue_count} quá hạn)</span>
-                      )}
-                    </span>
+                    <CountBadge value={c.partial_count} tone="amber" />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <CountBadge value={c.unpaid_count} tone="rose" />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <CountBadge value={c.no_invoice_count} tone="gray" />
+                  </td>
+                  <td className="px-4 py-3 text-right font-medium text-emerald-700">
+                    {formatCurrency(c.total_paid)}
                   </td>
                   <td className="px-4 py-3 text-right font-semibold text-rose-600">
                     {formatCurrency(c.total_outstanding)}
@@ -211,5 +219,19 @@ function SummaryCard({ label, value, color = 'text-gray-900', icon: Icon }) {
       </div>
       <div className={`text-base font-semibold ${color}`}>{value}</div>
     </div>
+  )
+}
+
+function CountBadge({ value, tone }) {
+  const tones = {
+    emerald: 'bg-emerald-100 text-emerald-700',
+    amber: value > 0 ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-400',
+    rose: value > 0 ? 'bg-rose-100 text-rose-700' : 'bg-gray-100 text-gray-400',
+    gray: value > 0 ? 'bg-slate-100 text-slate-600' : 'bg-gray-100 text-gray-400',
+  }
+  return (
+    <span className={`inline-flex items-center justify-center min-w-[1.75rem] px-2 py-0.5 rounded-full text-xs font-medium ${tones[tone]}`}>
+      {value ?? 0}
+    </span>
   )
 }

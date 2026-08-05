@@ -159,7 +159,7 @@ function SortableQuestion({ question, index, onUpdate, onRemove }) {
                     value={opt.text || ''}
                     onChange={(e) => handleOptionChange(optIdx, 'text', e.target.value)}
                     placeholder={`Đáp án ${String.fromCharCode(65 + optIdx)}`}
-                    className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
                   />
                   <button
                     type="button"
@@ -175,7 +175,7 @@ function SortableQuestion({ question, index, onUpdate, onRemove }) {
                 type="button"
                 onClick={addOption}
                 disabled={optCount >= MCQ_OPTION_COUNT_MAX}
-                className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 mt-1 disabled:opacity-40 disabled:pointer-events-none"
+                className="flex items-center gap-1.5 text-sm text-amber-700 hover:text-amber-900 mt-1 disabled:opacity-40 disabled:pointer-events-none"
               >
                 <CirclePlus className="h-4 w-4" />
                 Thêm đáp án ({MCQ_OPTION_COUNT_MIN}–{MCQ_OPTION_COUNT_MAX})
@@ -301,16 +301,16 @@ function ExcelImportPanel({ onImport, onClose }) {
   }
 
   return (
-    <div className="border border-blue-200 bg-blue-50/50 rounded-xl p-5 space-y-4">
+    <div className="border border-amber-200 bg-amber-50/50 rounded-xl p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <FileSpreadsheet className="h-5 w-5 text-blue-600" />
-          <h4 className="text-sm font-semibold text-blue-800">Import câu hỏi từ Excel</h4>
+          <FileSpreadsheet className="h-5 w-5 text-amber-700" />
+          <h4 className="text-sm font-semibold text-amber-900">Import câu hỏi từ Excel</h4>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="p-1 rounded-lg hover:bg-blue-100 text-blue-400 hover:text-blue-600"
+          className="p-1 rounded-lg hover:bg-amber-100 text-blue-400 hover:text-amber-700"
         >
           <X className="h-4 w-4" />
         </button>
@@ -318,7 +318,7 @@ function ExcelImportPanel({ onImport, onClose }) {
 
       {/* Step 1: Download template */}
       <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-blue-100">
-        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">1</span>
+        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold">1</span>
         <div className="flex-1">
           <p className="text-sm text-gray-700">
             Tải file mẫu gồm <strong>Trắc nghiệm</strong> (có thêm cột URL ảnh / âm thanh), <strong>Part 1 (TOEIC)</strong> và <strong>Tự luận</strong>
@@ -327,7 +327,7 @@ function ExcelImportPanel({ onImport, onClose }) {
         <button
           type="button"
           onClick={handleDownloadTemplate}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors"
         >
           <Download className="h-3.5 w-3.5" />
           Tải file mẫu
@@ -336,7 +336,7 @@ function ExcelImportPanel({ onImport, onClose }) {
 
       {/* Step 2: Upload file */}
       <div className="flex items-start gap-3 p-3 bg-white rounded-lg border border-blue-100">
-        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold mt-0.5">2</span>
+        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold mt-0.5">2</span>
         <div className="flex-1 space-y-3">
           <p className="text-sm text-gray-700">Điền câu hỏi vào file rồi upload lên</p>
 
@@ -348,10 +348,10 @@ function ExcelImportPanel({ onImport, onClose }) {
             onClick={() => fileInputRef.current?.click()}
             className={`relative border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
               dragActive
-                ? 'border-blue-400 bg-blue-50'
+                ? 'border-blue-400 bg-amber-50'
                 : file
                   ? 'border-green-300 bg-green-50/50'
-                  : 'border-gray-300 hover:border-blue-300 hover:bg-gray-50'
+                  : 'border-gray-300 hover:border-amber-300 hover:bg-gray-50'
             }`}
           >
             <input
@@ -383,7 +383,7 @@ function ExcelImportPanel({ onImport, onClose }) {
               <>
                 <Upload className="h-6 w-6 mx-auto text-gray-400 mb-1" />
                 <p className="text-sm text-gray-500">
-                  Kéo thả hoặc <span className="text-blue-600 font-medium">chọn file Excel</span>
+                  Kéo thả hoặc <span className="text-amber-700 font-medium">chọn file Excel</span>
                 </p>
                 <p className="text-xs text-gray-400">.xlsx, .xls — tối đa 10MB</p>
               </>
@@ -429,7 +429,7 @@ function ExcelImportPanel({ onImport, onClose }) {
             <div className="flex-1">
               <p className="text-sm font-medium text-gray-800">Kết quả đọc file</p>
               <div className="mt-2 flex flex-wrap gap-3">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                   📝 Tổng: {result.summary?.total || 0} câu
                 </span>
                 {(result.summary?.multiple_choice || 0) > 0 && (

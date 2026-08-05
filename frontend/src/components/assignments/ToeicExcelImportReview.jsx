@@ -218,7 +218,7 @@ export default function ToeicExcelImportReview({
         )}
 
         {/* Bước chọn file */}
-        <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+        <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold text-blue-900 flex items-center gap-2">
               <FileSpreadsheet className="h-5 w-5" /> File Excel — sheet &quot;Part 1 (TOEIC)&quot; và/hoặc &quot;Trắc nghiệm&quot;
@@ -227,7 +227,7 @@ export default function ToeicExcelImportReview({
               <button
                 type="button"
                 onClick={handleDownloadTemplate}
-                className="text-xs font-medium text-blue-700 hover:underline"
+                className="text-xs font-medium text-amber-800 hover:underline"
               >
                 Tải mẫu ({TEMPLATE_LABEL[templateVariant] || templateVariant})
               </button>

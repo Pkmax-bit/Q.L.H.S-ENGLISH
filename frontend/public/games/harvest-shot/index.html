@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <title>Harvest Shot — English Farm</title>
+  <style>
+    /* Harvest Shot — web polish · offline Three.js */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden; background: #0a1410;
+      font-family: "Trebuchet MS", "Segoe UI", Candara, sans-serif;
+      -webkit-tap-highlight-color: transparent; touch-action: none;
+      overscroll-behavior: none;
+    }
+    #c { display: block; width: 100%; height: 100%; }
+    #ui { position: fixed; inset: 0; pointer-events: none; color: #f5f0e6; text-shadow: 0 1px 3px #000; z-index: 20; }
+    #crosshair {
+      position: absolute; left: 50%; top: 50%; width: 26px; height: 26px;
+      margin: -13px 0 0 -13px; border: 2px solid rgba(255,229,102,0.9); border-radius: 50%;
+      box-shadow: 0 0 12px rgba(157,255,122,0.4);
+      display: none;
+    }
+    #crosshair::before, #crosshair::after {
+      content: ""; position: absolute; background: rgba(255,229,102,0.85);
+    }
+    #crosshair::before { left: 50%; top: 5px; bottom: 5px; width: 2px; margin-left: -1px; }
+    #crosshair::after { top: 50%; left: 5px; right: 5px; height: 2px; margin-top: -1px; }
+    #timer-ring {
+      position: absolute; left: 50%; top: 50%; width: 48px; height: 48px;
+      margin: -24px 0 0 -24px; border-radius: 50%;
+      border: 3px solid rgba(157,255,122,0.2); border-top-color: #9dff7a;
+      display: none; opacity: 0.85; transition: border-top-color 0.15s;
+    }
+    #hud-farm, #hud-lesson { position: absolute; inset: 0; }
+    #hud-lesson { display: none; }
+    .panel {
+      position: absolute; left: 14px; top: 14px;
+      background: rgba(8,18,12,0.62);
+      padding: 12px 16px; border-radius: 14px; font-size: 15px; line-height: 1.5;
+      border: 1px solid rgba(157,255,122,0.28); min-width: 210px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    #player-portrait {
+      width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #5a9e3e, #2a5a2a);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-weight: 800; color: #ffe566; margin-right: 8px; vertical-align: middle;
+      border: 2px solid #ffe56666;
+    }
+    #season-badge {
+      position: absolute; right: 14px; top: 14px; padding: 10px 16px; border-radius: 12px;
+      background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.15); font-weight: 700;
+    }
+    #season-badge .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+    #farm-actions {
+      position: absolute; left: 14px; bottom: 78px; display: flex; flex-direction: column; gap: 8px;
+      pointer-events: auto; z-index: 40;
+    }
+    #farm-actions button, .screen button.btn, #seed-bar button, #touch-bar button {
+      pointer-events: auto; cursor: pointer; border: none; border-radius: 10px;
+      padding: 12px 16px; font-weight: 700; font-size: 14px; color: #fff;
+      background: #5a9e3e; box-shadow: 0 4px 0 #3d6e2a;
+      min-height: 44px;
+    }
+    #farm-actions button:active, .screen button.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #3d6e2a; }
+    #farm-actions button.alt { background: #3d6a9e; box-shadow: 0 4px 0 #2a4a6e; }
+    #farm-actions button.warn { background: #9e6a3d; box-shadow: 0 4px 0 #6e4a2a; }
+    #seed-bar {
+      position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%);
+      display: flex; gap: 8px; pointer-events: auto; flex-wrap: nowrap; justify-content: flex-start;
+      max-width: min(720px, 70vw); overflow-x: auto; padding: 8px 10px;
+      z-index: 40;
+      background: rgba(8, 16, 10, 0.72);
+      border: 1px solid rgba(157,255,122,0.28);
+      border-radius: 14px;
+      backdrop-filter: blur(6px);
+    }
+    #seed-bar button {
+      padding: 8px 12px; font-size: 12px; line-height: 1.25; background: #3a4a3a;
+      box-shadow: 0 3px 0 #2a322a; min-width: 76px; flex-shrink: 0;
+      color: #fff; text-shadow: none; display: flex; flex-direction: column; align-items: center; gap: 2px;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    #seed-bar button .seed-name { font-weight: 800; font-size: 13px; color: #ffe566; }
+    #seed-bar button .seed-qty { font-size: 11px; opacity: 0.95; color: #f5f0e6; }
+    #seed-bar button.on { background: #5a9e3e; box-shadow: 0 3px 0 #3d6e2a; border-color: #9dff7a; }
+    #seed-bar button.on .seed-name { color: #fff; }
+    #seed-bar button:disabled { opacity: 0.35; cursor: default; }
+    #farm-actions button {
+      color: #fff; text-shadow: none; font-weight: 800; letter-spacing: 0.01em;
+      border: 1px solid rgba(255,255,255,0.18);
+      min-width: 148px;
+    }
+    #question-box {
+      position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
+      width: min(760px, 94vw); text-align: center; background: rgba(0,0,0,0.65);
+      padding: 14px 18px; border-radius: 12px; border: 1px solid #6b8f4e;
+    }
+    #question-box .stage { font-size: 12px; opacity: 0.75; margin-bottom: 4px; }
+    #question-box .q { font-size: 22px; font-weight: 700; color: #ffe566; }
+    #question-box .vi { font-size: 14px; color: #9dff7a; margin-top: 4px; display: none; }
+    #question-box .hint { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+    #question-box .progress { margin-top: 8px; font-size: 13px; }
+    #ls-timer {
+      font-size: 22px; font-weight: 800; margin-top: 8px; color: #9dff7a;
+      font-variant-numeric: tabular-nums;
+    }
+    #ls-timer.warn { color: #ffe566; }
+    #ls-timer.danger { color: #ff6b5a; animation: pulse 0.5s infinite alternate; }
+    @keyframes pulse { from { opacity: 1; } to { opacity: 0.55; } }
+    #prog-bar { height: 8px; background: #1a2a1a; border-radius: 4px; margin-top: 6px; overflow: hidden; }
+    #prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #5a9e3e, #ffe566); transition: width 0.25s; }
+    #built-word {
+      position: absolute; left: 50%; top: 155px; transform: translateX(-50%);
+      font-size: 30px; letter-spacing: 8px; font-weight: 800; color: #9dff7a;
+      background: rgba(0,0,0,0.45); padding: 10px 18px; border-radius: 10px; min-width: 140px; text-align: center;
+      display: none;
+    }
+    #boss-hp-wrap {
+      position: absolute; left: 50%; top: 155px; transform: translateX(-50%); width: min(400px, 80vw);
+      display: none; text-align: center;
+    }
+    #boss-hp-wrap .label { font-size: 13px; margin-bottom: 4px; font-weight: 700; color: #ff8a7a; }
+    #boss-hp-bar { height: 14px; background: #3a1a1a; border-radius: 7px; overflow: hidden; border: 1px solid #ff6b5a; }
+    #boss-hp-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ff3a2a, #ffe566); transition: width 0.2s; }
+    #player-hp { position: absolute; right: 14px; top: 14px; background: rgba(0,0,0,0.5); padding: 10px 14px; border-radius: 10px; display: none; }
+    #hint {
+      position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+      background: rgba(0,0,0,0.55); padding: 8px 14px; border-radius: 8px; font-size: 12px; text-align: center;
+    }
+    #toast {
+      position: fixed; left: 50%; top: 18%; transform: translateX(-50%);
+      font-size: 22px; font-weight: 800; opacity: 0; transition: opacity 0.15s;
+      white-space: nowrap; z-index: 120; pointer-events: none;
+      background: rgba(0,0,0,0.72); padding: 12px 22px; border-radius: 12px;
+      border: 2px solid #6b8f4e; text-shadow: none;
+    }
+    #toast.show { opacity: 1; }
+    #toast.good { color: #ffe566; border-color: #9dff7a; }
+    #toast.bad { color: #ff6b5a; border-color: #ff6b5a; }
+    #shop-flash {
+      min-height: 1.4em; margin: 0 0 10px; font-weight: 700; font-size: 15px;
+      color: #9dff7a; transition: opacity 0.2s;
+    }
+    #shop-flash.bad { color: #ff6b5a; }
+    .screen {
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(6, 14, 8, 0.93); z-index: 40; pointer-events: auto; color: #f5f0e6;
+    }
+    .screen.open { display: flex; }
+    .card {
+      width: min(860px, 94vw); max-height: 92vh; overflow: auto;
+      background:
+        radial-gradient(ellipse at 18% 0%, rgba(255,229,102,0.14), transparent 42%),
+        radial-gradient(ellipse at 90% 10%, rgba(90,158,62,0.2), transparent 40%),
+        linear-gradient(165deg, #2f4530 0%, #1a281c 50%, #121c14 100%);
+      border: 2px solid #7aa35a; border-radius: 20px; padding: 26px;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
+    }
+    .card h1 {
+      color: #ffe566; font-size: 38px; margin-bottom: 8px;
+      text-shadow: 0 2px 0 #3a5020, 0 8px 24px rgba(0,0,0,0.35);
+    }
+    .asset-credit { font-size: 11px; opacity: 0.65; margin-top: 12px; line-height: 1.45; }
+    .asset-credit a { color: #9dff7a; }
+    .card h2 { color: #ffe566; font-size: 24px; margin-bottom: 10px; }
+    .card p { opacity: 0.92; line-height: 1.55; margin-bottom: 10px; }
+    .steps { display: flex; gap: 10px; margin: 16px 0; flex-wrap: wrap; }
+    .steps .s {
+      flex: 1; min-width: 140px; background: rgba(0,0,0,0.28); border-radius: 12px; padding: 14px; text-align: center;
+      border: 1px solid #3a5238;
+    }
+    .steps .n { font-size: 22px; color: #ffe566; font-weight: 800; }
+    #name-wrap { margin: 16px 0 8px; text-align: left; }
+    #name-wrap label { display: block; font-size: 13px; margin-bottom: 6px; opacity: 0.9; }
+    #player-name-input {
+      width: 100%; padding: 12px 14px; border-radius: 10px; border: 2px solid #6b8f4e;
+      background: #1a2a1a; color: #f5f0e6; font-size: 16px; font-weight: 600;
+    }
+    #player-name-input:focus { outline: none; border-color: #ffe566; }
+    #start-welcome { font-size: 14px; color: #9dff7a; margin-bottom: 8px; min-height: 1.2em; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+    .col h3 {
+      font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #a8c98a;
+      border-bottom: 1px solid #3a5238; padding-bottom: 6px; margin-bottom: 8px;
+    }
+    .lvl {
+      display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.25);
+      border-radius: 10px; padding: 10px; margin-bottom: 6px;
+    }
+    .lvl .meta { flex: 1; }
+    .lvl .name { font-weight: 700; font-size: 14px; }
+    .lvl .desc { font-size: 11px; opacity: 0.75; }
+    .lvl .reward { color: #ffe566; font-weight: 700; font-size: 13px; }
+    button.btn { background: #5a9e3e; }
+    button.btn:hover { filter: brightness(1.08); }
+    button.btn:disabled { background: #445544; color: #99aa99; cursor: default; box-shadow: none; }
+    button.btn.secondary { background: #3d5238; width: 100%; margin-top: 12px; padding: 12px; box-shadow: none; }
+    button.btn.boss { background: #9e3d3d; }
+    #shop-money { color: #9dff7a; font-size: 18px; margin-bottom: 12px; }
+    .shop-row {
+      display: flex; gap: 10px; align-items: center; background: rgba(0,0,0,0.22);
+      padding: 10px; border-radius: 10px; margin-bottom: 6px;
+    }
+    .shop-row .info { flex: 1; }
+    .shop-row .price { color: #ffe566; font-weight: 700; width: 56px; text-align: right; }
+    #shop .shop-head, #lessons .shop-head, #progress .shop-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; margin-bottom: 8px; position: sticky; top: 0; z-index: 3;
+      background: linear-gradient(180deg, #2f4530 65%, rgba(47,69,48,0));
+      padding: 4px 0 10px; margin-top: -4px;
+    }
+    #shop .shop-head h2, #lessons .shop-head h2, #progress .shop-head h2 { margin: 0; flex: 1; }
+    .card-close {
+      width: 40px; height: 40px; flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,0.28); border-radius: 12px;
+      background: rgba(0,0,0,0.55); color: #fff; font-size: 24px; font-weight: 800;
+      line-height: 1; cursor: pointer; pointer-events: auto;
+      display: inline-flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    }
+    .card-close:hover { background: #9e3d3d; border-color: #ff8a7a; }
+    .stars { color: #ffe566; font-size: 28px; letter-spacing: 4px; margin: 8px 0; }
+    #result-vi {
+      text-align: left; background: rgba(0,0,0,0.28); border-radius: 10px;
+      padding: 12px; margin: 10px 0; font-size: 13px; line-height: 1.55; max-height: 180px; overflow: auto;
+      display: none; white-space: pre-wrap;
+    }
+    #tutorial {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 50; display: none;
+      align-items: center; justify-content: center; pointer-events: auto; color: #f5f0e6;
+    }
+    #tutorial.open { display: flex; }
+    #tutorial .box {
+      background: #243124; border: 2px solid #ffe566; border-radius: 14px; padding: 22px; max-width: 420px; text-align: center;
+    }
+    #audio-dock {
+      position: fixed; right: 14px; bottom: 18px; z-index: 45; pointer-events: auto;
+      display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,0.55);
+      padding: 8px 12px; border-radius: 10px;
+    }
+    #mute-btn {
+      border: none; border-radius: 8px; padding: 8px 12px; font-weight: 700;
+      background: #3d5238; color: #f5f0e6; cursor: pointer; font-size: 13px;
+    }
+    #vol-slider { width: 80px; accent-color: #5a9e3e; }
+    .prog-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; text-align: left;
+    }
+    @media (max-width: 720px) { .prog-grid { grid-template-columns: 1fr; } }
+    .prog-card {
+      background: rgba(0,0,0,0.28); border: 1px solid #3a5238; border-radius: 12px; padding: 14px;
+    }
+    .prog-card .label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #a8c98a; margin-bottom: 6px; }
+    .prog-card .value { font-size: 22px; font-weight: 800; color: #ffe566; }
+    .prog-card .sub { font-size: 13px; opacity: 0.85; margin-top: 4px; line-height: 1.4; }
+    .prog-bar-wrap { height: 10px; background: #1a2a1a; border-radius: 5px; margin-top: 8px; overflow: hidden; }
+    .prog-bar-fill { height: 100%; background: linear-gradient(90deg, #5a9e3e, #ffe566); width: 0%; transition: width 0.3s; }
+    #prog-vip-list, #prog-boss-list { font-size: 13px; line-height: 1.55; margin-top: 4px; }
+    #touch-ui {
+      position: fixed; inset: 0; z-index: 25; pointer-events: none; display: none;
+    }
+    #touch-ui.on { display: block; }
+    #stick-zone {
+      position: absolute; left: 18px; bottom: 24px; width: 120px; height: 120px;
+      pointer-events: auto; touch-action: none;
+    }
+    #stick-base {
+      width: 120px; height: 120px; border-radius: 50%;
+      background: rgba(0,0,0,0.35); border: 2px solid rgba(157,255,122,0.35);
+      position: relative;
+    }
+    #stick-knob {
+      width: 52px; height: 52px; border-radius: 50%;
+      background: rgba(90,158,62,0.85); border: 2px solid #ffe566;
+      position: absolute; left: 34px; top: 34px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    #touch-bar {
+      position: absolute; right: 14px; bottom: 24px;
+      display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
+    }
+    #touch-bar button {
+      width: 72px; height: 72px; border-radius: 50%; padding: 0; font-size: 13px;
+      box-shadow: 0 6px 0 #3d6e2a; line-height: 1.15;
+    }
+    #touch-bar button.fire { background: #c45a3a; box-shadow: 0 6px 0 #8a3a28; width: 84px; height: 84px; font-size: 15px; }
+    #touch-bar button.plant { background: #3d6a9e; box-shadow: 0 6px 0 #2a4a6e; }
+    #touch-bar button.water { background: #2a8a9e; box-shadow: 0 6px 0 #1a5a6e; }
+    #touch-hint {
+      position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%);
+      background: rgba(0,0,0,0.55); padding: 8px 12px; border-radius: 8px;
+      font-size: 12px; text-align: center; pointer-events: none; max-width: 90vw;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 18px; border-radius: 14px; }
+      .card h1 { font-size: 28px; }
+      .panel { font-size: 14px; min-width: 160px; padding: 10px 12px; }
+      #farm-actions { bottom: 160px; }
+      #farm-actions button { padding: 14px 16px; font-size: 15px; }
+      #seed-bar { bottom: 148px; }
+      #hint { display: none; }
+      #audio-dock { bottom: auto; top: 12px; right: 12px; left: auto; }
+      #season-badge { top: auto; bottom: 148px; right: 14px; }
+      #question-box .q { font-size: 18px; }
+      #toast { font-size: 18px; white-space: normal; max-width: 90vw; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <div id="start" class="screen open">
+    <div class="card" style="text-align:center;max-width:560px">
+      <h1>HARVEST SHOT</h1>
+      <p>Học tiếng Anh bằng cách <b>bắn đáp án</b> · nông trại <b>6 mùa</b> · <b>VIP Garden</b> · boss mở cây đặc biệt.</p>
+      <div id="start-welcome"></div>
+      <div id="name-wrap">
+        <label for="player-name-input">Tên nông dân của bạn</label>
+        <input id="player-name-input" type="text" maxlength="40" placeholder="Nhập tên..." autocomplete="off" />
+      </div>
+      <div class="steps">
+        <div class="s"><div class="n">1</div>Học bài<br/><small>≥70% đạt</small></div>
+        <div class="s"><div class="n">2</div>Mua hạt<br/><small>cửa hàng</small></div>
+        <div class="s"><div class="n">3</div>Trồng &amp; bắn<br/><small>F tưới nước</small></div>
+      </div>
+      <button class="btn" id="btn-start" style="font-size:17px;padding:14px 32px">Vào nông trại</button>
+      <button type="button" class="btn secondary" id="btn-back-web" style="margin-top:10px">Quay về web</button>
+      <p class="asset-credit">
+        3D props: <a href="https://kenney.nl/assets/nature-kit" target="_blank" rel="noreferrer">Kenney Nature Kit</a> (CC0)
+      </p>
+    </div>
+  </div>
+
+  <div id="tutorial">
+    <div class="box" style="position:relative">
+      <button type="button" class="card-close" id="btn-tut-x" title="Đóng" aria-label="Đóng" style="position:absolute;top:10px;right:10px">×</button>
+      <h2 style="color:#ffe566;margin-bottom:10px;padding-right:36px">Hướng dẫn nhanh</h2>
+      <p id="tut-text" style="line-height:1.5;margin-bottom:14px"></p>
+      <button class="btn" id="tut-ok">Đã hiểu <span style="opacity:.75;font-size:13px;margin-left:6px">[F]</span></button>
+    </div>
+  </div>
+
+  <div id="lessons" class="screen">
+    <div class="card">
+      <div class="shop-head">
+        <h2>Bài học &amp; Boss</h2>
+        <button type="button" class="card-close" id="btn-lessons-x" title="Đóng" aria-label="Đóng">×</button>
+      </div>
+      <p>Hoàn thành ≥6 màn thường để mở <b>Word Worm</b>. Đạt ≥70% đúng mới mở khóa màn. Streak đúng = bonus coins.</p>
+      <div class="grid">
+        <div class="col"><h3>Điền từ (theo số câu · timer)</h3><div id="fill-list"></div></div>
+        <div class="col"><h3>Từ vựng (ghép chữ)</h3><div id="vocab-list"></div></div>
+      </div>
+      <div class="col" style="margin-top:14px"><h3>Boss VIP</h3><div id="boss-list"></div></div>
+    </div>
+  </div>
+
+  <div id="progress" class="screen">
+    <div class="card" style="max-width:640px">
+      <div class="shop-head">
+        <h2>Tiến độ học</h2>
+        <button type="button" class="card-close" id="btn-progress-x" title="Đóng" aria-label="Đóng">×</button>
+      </div>
+      <p id="prog-player-line" style="margin-bottom:4px">Nông dân</p>
+      <div class="prog-grid">
+        <div class="prog-card">
+          <div class="label">Điền từ</div>
+          <div class="value" id="prog-fill">0 / 0</div>
+          <div class="prog-bar-wrap"><div class="prog-bar-fill" id="prog-fill-bar"></div></div>
+        </div>
+        <div class="prog-card">
+          <div class="label">Từ vựng</div>
+          <div class="value" id="prog-vocab">0 / 0</div>
+          <div class="prog-bar-wrap"><div class="prog-bar-fill" id="prog-vocab-bar"></div></div>
+        </div>
+        <div class="prog-card">
+          <div class="label">Boss đã thắng</div>
+          <div class="value" id="prog-boss">0 / 0</div>
+          <div class="sub" id="prog-boss-list"></div>
+        </div>
+        <div class="prog-card">
+          <div class="label">Streak tốt nhất</div>
+          <div class="value" id="prog-streak">0</div>
+          <div class="sub" id="prog-daily">Daily: —</div>
+        </div>
+      </div>
+      <div class="prog-card" style="margin-bottom:12px">
+        <div class="label">VIP Garden đã mở</div>
+        <div id="prog-vip-list" class="sub">Chưa có</div>
+      </div>
+      <div class="prog-card" style="margin-bottom:14px">
+        <div class="label">Tổng quan</div>
+        <div class="value" id="prog-total" style="font-size:18px">0%</div>
+        <div class="prog-bar-wrap"><div class="prog-bar-fill" id="prog-total-bar"></div></div>
+        <div class="sub" id="prog-coins-line" style="margin-top:8px"></div>
+      </div>
+      <button class="btn secondary" id="btn-progress-close">Đóng</button>
+    </div>
+  </div>
+
+  <div id="shop" class="screen">
+    <div class="card">
+      <div class="shop-head">
+        <h2>Cửa hàng</h2>
+        <button type="button" class="card-close" id="btn-shop-x" title="Đóng cửa hàng" aria-label="Đóng">×</button>
+      </div>
+      <div id="shop-money">Coins: 0</div>
+      <div id="shop-flash"></div>
+      <h3 style="color:#a8c98a;font-size:13px;margin:8px 0">Hạt thường — đất giữa</h3>
+      <div id="shop-normal"></div>
+      <h3 style="color:#ffe566;font-size:13px;margin:12px 0 8px">Hạt VIP — chỉ VIP Garden</h3>
+      <div id="shop-vip"></div>
+      <div class="shop-row" style="margin-top:10px">
+        <div class="info"><b>Mở thêm đất (+3 ô)</b><div style="font-size:12px;opacity:.75">Tối đa 5 hàng · đất thường</div></div>
+        <div class="price">50¢</div>
+        <button class="btn" id="buy-land">Mua</button>
+      </div>
+      <button class="btn secondary" id="btn-shop-close">Đóng cửa hàng</button>
+    </div>
+  </div>
+
+  <div id="result" class="screen">
+    <div class="card" style="text-align:center;max-width:480px;position:relative">
+      <button type="button" class="card-close" id="btn-result-x" title="Đóng" aria-label="Đóng" style="position:absolute;top:14px;right:14px">×</button>
+      <h2 id="result-title" style="padding-right:36px">Hoàn thành!</h2>
+      <div class="stars" id="result-stars">★★★</div>
+      <p id="result-body"></p>
+      <div id="result-vi"></div>
+      <button class="btn" id="btn-result-ok" style="padding:12px 24px;margin-top:8px">Về nông trại</button>
+    </div>
+  </div>
+
+  <div id="audio-dock">
+    <button type="button" id="mute-btn" title="Bật/tắt âm thanh">🔊 Âm</button>
+    <input type="range" id="vol-slider" min="0" max="1" step="0.05" value="0.7" title="Âm lượng" />
+  </div>
+
+  <div id="ui">
+    <div id="crosshair"></div>
+    <div id="timer-ring"></div>
+    <div id="hud-farm">
+      <div class="panel">
+        <div style="margin-bottom:6px">
+          <span id="player-portrait">?</span>
+          <span style="font-weight:700;color:#ffe566" id="hud-player-name">Nông dân</span>
+        </div>
+        <div>Coins: <b id="coins">0</b></div>
+        <div id="seed-counts" style="font-size:12px;margin-top:4px"></div>
+        <div style="font-size:12px;opacity:.8;margin-top:4px">Đất: <span id="plots">9</span> · VIP: 6 ô</div>
+        <div style="font-size:11px;opacity:.7;margin-top:4px">F = tưới cây đang lớn</div>
+      </div>
+      <div id="season-badge"><span class="dot" id="season-dot"></span><span id="season-name">Xuân</span></div>
+      <div id="farm-actions">
+        <button type="button" id="ui-lessons">Học bài / Boss</button>
+        <button type="button" class="alt" id="ui-shop">Cửa hàng</button>
+        <button type="button" class="warn" id="ui-season">Đổi mùa</button>
+        <button type="button" id="ui-progress" style="background:#6a5a9e;box-shadow:0 4px 0 #4a3a6e">Tiến độ</button>
+      </div>
+      <div id="seed-bar"></div>
+      <div id="hint">Giữ chuột phải để nhìn · Click nút menu / hạt giống · E trồng · F tưới · LMB thu</div>
+    </div>
+    <div id="hud-lesson">
+      <div id="question-box">
+        <div class="stage" id="ls-stage">Stage</div>
+        <div class="q" id="ls-q">Question</div>
+        <div class="vi" id="ls-vi"></div>
+        <div class="hint" id="ls-hint"></div>
+        <div id="ls-timer">⏱ 10s</div>
+        <div class="progress" id="ls-prog">1 / 10 · Streak: <span id="ls-streak">0</span></div>
+        <div id="prog-bar"><div id="prog-fill"></div></div>
+      </div>
+      <div id="built-word">_</div>
+      <div id="boss-hp-wrap">
+        <div class="label" id="boss-name-label">Boss</div>
+        <div id="boss-hp-bar"><div id="boss-hp-fill"></div></div>
+      </div>
+      <div id="player-hp">HP: <span id="p-hp">3</span></div>
+      <div class="panel" style="right:14px;left:auto;top:14px" id="lesson-stats">
+        <div>Đúng: <span id="ls-correct">0</span></div>
+        <div>Sai: <span id="ls-wrong">0</span></div>
+      </div>
+      <div id="hint">Bắn mục tiêu đúng · mỗi câu 10s · ESC thoát</div>
+    </div>
+    <div id="toast"></div>
+  </div>
+  <div id="touch-ui">
+    <div id="stick-zone" aria-label="Di chuyển">
+      <div id="stick-base"><div id="stick-knob"></div></div>
+    </div>
+    <div id="touch-bar">
+      <button type="button" class="fire" id="touch-fire">Bắn</button>
+      <button type="button" class="plant" id="touch-plant">Trồng</button>
+      <button type="button" class="water" id="touch-water">Tưới</button>
+    </div>
+    <div id="touch-hint">Kéo màn hình để nhìn · Stick trái để đi · Bắn / Trồng / Tưới bên phải</div>
+  </div>
+
+  <canvas id="c"></canvas>
+
+  <!-- Offline-first three@0.160.0; sync CDN fallback nếu thiếu vendor -->
+  <script src="vendor/three.min.js"></script>
+  <script>
+    if (typeof THREE === "undefined") {
+      document.write("<scr" + "ipt src=\"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js\"></scr" + "ipt>");
+    }
+  </script>
+  <script>
+    (function () {
+      if (typeof THREE !== "undefined") return;
+      var box = document.createElement("div");
+      box.style.cssText = "position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#0a1410;color:#f5f0e6;font:16px Trebuchet MS,Segoe UI,sans-serif;padding:24px;text-align:center";
+      box.innerHTML = "<div><h2 style='color:#ffe566;margin-bottom:12px'>Không tải được Three.js</h2><p>Thiếu <code>vendor/three.min.js</code> và không có mạng.</p><p style='opacity:.7;margin-top:10px;font-size:13px'>Chạy <code>download-vendor.ps1</code> trong thư mục prototype.</p></div>";
+      document.body.appendChild(box);
+    })();
+  </script>
+  <script src="vendor/GLTFLoader.js"></script>
+  <script src="js/content.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/plants.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/models.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

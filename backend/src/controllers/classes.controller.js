@@ -115,6 +115,27 @@ const addStudentsBatch = async (req, res, next) => {
   }
 };
 
+const createStudentAndEnroll = async (req, res, next) => {
+  try {
+    const { full_name, email, phone, password, enrollment_date } = req.body;
+    const result = await classesService.createStudentAndEnroll(
+      req.params.id,
+      { full_name, email, phone, password },
+      { enrollment_date },
+    );
+    emitNotification('class:student_added', {
+      class_id: req.params.id,
+      student_id: result.student.id,
+    });
+    return response.created(res, result, 'Đã tạo học sinh và ghi danh vào lớp');
+  } catch (error) {
+    if (error.statusCode) {
+      return response.error(res, error.message, error.statusCode);
+    }
+    next(error);
+  }
+};
+
 const removeStudentsBatch = async (req, res, next) => {
   try {
     const { student_ids } = req.body;
@@ -160,6 +181,6 @@ const endClass = async (req, res, next) => {
 
 module.exports = {
   getAll, getById, getOverview, create, update, remove,
-  getStudents, addStudent, addStudentsBatch, removeStudent, removeStudentsBatch,
+  getStudents, addStudent, addStudentsBatch, createStudentAndEnroll, removeStudent, removeStudentsBatch,
   endClass,
 };

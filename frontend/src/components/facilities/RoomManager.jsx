@@ -85,7 +85,7 @@ export default function RoomManager({ isOpen, onClose, facility, allFacilities =
               </thead>
               <tbody>
                 {rooms.map((room) => (
-                  <tr key={room.id} className="border-b border-gray-100 hover:bg-blue-50/30">
+                  <tr key={room.id} className="border-b border-gray-100 hover:bg-amber-50/30">
                     <td className="px-4 py-3 font-medium text-gray-700">{room.name}</td>
                     <td className="px-4 py-3 text-gray-600">{typeLabels[room.type] || room.type || '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{room.capacity ?? '—'}</td>

@@ -441,7 +441,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete, previ
       {currentQuestion && (
         <div ref={questionRef} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-semibold text-blue-600">
+            <span className="text-sm font-semibold text-amber-700">
               Câu {currentQ + 1} / {questions.length}
             </span>
             <div className="flex items-center gap-2 text-xs text-gray-400">
@@ -495,7 +495,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete, previ
               {isDirectAudioUrl(groupAudioUrl) ? (
                 <audio key={groupAudioUrl} controls className="w-full" preload="metadata" src={normalizeMediaUrl(groupAudioUrl, 'audio')} />
               ) : (
-                <a href={groupAudioUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline">
+                <a href={groupAudioUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-amber-700 underline">
                   Mở âm thanh
                 </a>
               )}
@@ -579,7 +579,7 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete, previ
                 href={normalizeMediaUrl(currentQuestion.file_url, 'file')}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex flex-col items-start gap-0.5 mt-3 text-sm text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-1.5 rounded-lg"
+                className="inline-flex flex-col items-start gap-0.5 mt-3 text-sm text-amber-700 hover:text-amber-900 bg-amber-50 px-3 py-1.5 rounded-lg"
               >
                 <span className="inline-flex items-center gap-1.5">
                   <FileText className="h-4 w-4" /> Xem tệp đính kèm
@@ -613,8 +613,8 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete, previ
                     onClick={() => updateAnswer(currentQuestion.id, 'selected_option_index', optIdx)}
                     className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
                       isSelected
-                        ? 'border-blue-500 bg-blue-50 shadow-md'
-                        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'
+                        ? 'border-blue-500 bg-amber-50 shadow-md'
+                        : 'border-gray-200 hover:border-amber-300 hover:bg-amber-50/50'
                     }`}
                   >
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors ${
@@ -622,13 +622,13 @@ export default function TakeAssignment({ assignmentId, onBack, onComplete, previ
                     }`}>
                       {String.fromCharCode(65 + optIdx)}
                     </div>
-                    <span className={`text-sm flex-1 ${isSelected ? 'text-blue-800 font-medium' : 'text-gray-700'}`}>
+                    <span className={`text-sm flex-1 ${isSelected ? 'text-amber-900 font-medium' : 'text-gray-700'}`}>
                       {hideChoiceText
                         ? '\u00a0'
                         : (opt.text || `Đáp án ${String.fromCharCode(65 + optIdx)}`)}
                     </span>
                     {isSelected && (
-                      <CheckCircle className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                      <CheckCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
                     )}
                   </button>
                 )

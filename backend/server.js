@@ -1,5 +1,8 @@
 require('dotenv').config();
 
+const { validateEnv } = require('./src/config/validateEnv');
+validateEnv();
+
 const http = require('http');
 const app = require('./src/app');
 const { initSocket } = require('./src/socket');
@@ -9,7 +12,8 @@ const PORT = process.env.PORT || 3001;
 const server = http.createServer(app);
 
 // Initialize Socket.IO
-initSocket(server);
+const io = initSocket(server);
+app.set('io', io);
 
 // Graceful shutdown
 const shutdown = async (signal) => {

@@ -18,22 +18,20 @@ export function AuthProvider({ children }) {
       return
     }
     try {
-      const { data } = await authService.getProfile()
-      const userData = data.data || data
-      setUser(userData)
-      localStorage.setItem('user', JSON.stringify(userData))
+      const res = await authService.getProfile()
+      const body = res?.data
+      const userData = body?.data ?? body
+      if (userData?.id) {
+        setUser(userData)
+        localStorage.setItem('user', JSON.stringify(userData))
+      }
     } catch (err) {
-      // If 401 and refresh also fails, the api interceptor handles it.
-      // Don't clear user here — the cached user is still valid until logout.
-      // Only clear if there's truly no valid session.
       const cachedUser = localStorage.getItem('user')
       if (!cachedUser) {
-        // No cached user at all — really logged out
         localStorage.removeItem('accessToken')
         localStorage.removeItem('refreshToken')
         setUser(null)
       }
-      // Otherwise keep cached user — token might have been refreshed by interceptor
     } finally {
       setLoading(false)
     }
@@ -44,13 +42,19 @@ export function AuthProvider({ children }) {
   }, [fetchProfile])
 
   const login = async (credentials) => {
-    const { data } = await authService.login(credentials)
-    const result = data.data || data
+    const res = await authService.login(credentials)
+    const result = res?.data?.data || res?.data
     localStorage.setItem('accessToken', result.accessToken)
     localStorage.setItem('refreshToken', result.refreshToken)
     const userData = result.user
     setUser(userData)
     localStorage.setItem('user', JSON.stringify(userData))
+    // Đồng bộ lại hồ sơ đầy đủ (avatar_url, bio, …)
+    try {
+      await fetchProfile()
+    } catch {
+      /* keep login user */
+    }
     return userData
   }
 

@@ -1,6 +1,13 @@
 const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 const { countInclusiveCalendarMonths } = require('../utils/tuitionMonths');
+const {
+  countScheduledSessions,
+  buildCalendarMonthPeriods,
+  sessionsCountByMonth,
+  invoiceOverlapsPeriod,
+  maxDateStr: schedMaxDateStr,
+} = require('../utils/scheduleSessions');
 
 const INVOICE_SELECT = `
   *,
@@ -27,6 +34,34 @@ const monthRange = (yearMonth) => {
   const fmt = (d) => d.toISOString().slice(0, 10);
   return { period_start: fmt(start), period_end: fmt(end) };
 };
+
+function aggregateStudentInvoices(invoices) {
+  return (invoices || []).reduce(
+    (acc, inv) => ({
+      total: acc.total + (Number(inv.total) || 0),
+      paid: acc.paid + (Number(inv.paid_amount) || 0),
+      balance: acc.balance + (Number(inv.balance) || 0),
+      invoice_count: acc.invoice_count + 1,
+    }),
+    { total: 0, paid: 0, balance: 0, invoice_count: 0 },
+  );
+}
+
+function studentFeeStatusFromAgg(agg) {
+  if (!agg.invoice_count) return 'no_invoice';
+  if (agg.balance <= 0) return 'paid';
+  if (agg.paid > 0) return 'partial';
+  return 'unpaid';
+}
+
+function countStudentsByFeeStatus(enrolledIds, invoicesByStudent) {
+  const counts = { paid: 0, partial: 0, unpaid: 0, no_invoice: 0 };
+  for (const studentId of enrolledIds) {
+    const agg = aggregateStudentInvoices(invoicesByStudent[studentId] || []);
+    counts[studentFeeStatusFromAgg(agg)] += 1;
+  }
+  return counts;
+}
 
 const getInvoices = async (queryParams) => {
   const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
@@ -242,7 +277,7 @@ const removeInvoice = async (id) => {
 const generateInvoicesForClass = async (classId, yearMonth, createdBy) => {
   const { data: cls, error: clsError } = await supabase
     .from('classes')
-    .select('id, name, fee_policy, fee_amount, billing_day, sessions_per_period')
+    .select('id, name, fee_policy, fee_amount, billing_day, sessions_per_period, start_date, end_date')
     .eq('id', classId)
     .single();
   if (clsError) throw clsError;
@@ -250,6 +285,7 @@ const generateInvoicesForClass = async (classId, yearMonth, createdBy) => {
   if (!cls.fee_policy) throw new Error('Class chưa cấu hình fee_policy');
 
   const { period_start, period_end } = monthRange(yearMonth);
+  const schedules = await fetchClassSchedules(classId);
 
   // Determine due date
   let dueDate = period_start;
@@ -261,7 +297,7 @@ const generateInvoicesForClass = async (classId, yearMonth, createdBy) => {
 
   const { data: enrollments, error: enrollError } = await supabase
     .from('class_students')
-    .select('student_id')
+    .select('student_id, enrollment_date')
     .eq('class_id', classId);
   if (enrollError) throw enrollError;
 
@@ -274,10 +310,26 @@ const generateInvoicesForClass = async (classId, yearMonth, createdBy) => {
     let description = `Học phí lớp ${cls.name} - ${yearMonth}`;
 
     if (cls.fee_policy === 'per_session') {
-      qty = Number(cls.sessions_per_period || 0);
+      const activeSchedules = schedules.filter((s) => s.is_active !== false);
+      if (activeSchedules.length > 0) {
+        const billFrom = maxDateStr(maxDateStr(enr.enrollment_date, cls.start_date), period_start);
+        qty = countScheduledSessions(cls, activeSchedules, billFrom, period_end);
+      } else {
+        qty = Number(cls.sessions_per_period || 0);
+      }
+      if (qty <= 0) {
+        skipped.push({ student_id: enr.student_id, reason: 'no_sessions_in_period' });
+        continue;
+      }
       description = `Học phí lớp ${cls.name} - ${qty} buổi (${yearMonth})`;
     } else if (cls.fee_policy === 'per_class') {
       description = `Học phí trọn gói lớp ${cls.name}`;
+    } else if (cls.fee_policy === 'monthly') {
+      const billStart = maxDateStr(enr.enrollment_date, cls.start_date);
+      if (billStart > period_end) {
+        skipped.push({ student_id: enr.student_id, reason: 'not_enrolled_yet' });
+        continue;
+      }
     }
 
     const subtotal = qty * unitPrice;
@@ -497,6 +549,93 @@ const getReceivablesReport = async (queryParams) => {
   };
 };
 
+/** Công nợ theo học sinh (tổng hợp từ các HĐ còn balance > 0). */
+const getStudentsReceivables = async (queryParams) => {
+  const classId = queryParams.class_id || null;
+  const search = (queryParams.search || '').trim().toLowerCase();
+  const overdueOnly =
+    queryParams.overdue_only === 'true' || queryParams.overdue_only === true;
+
+  let query = supabase
+    .from('tuition_invoices')
+    .select(`
+      id, invoice_no, student_id, class_id, balance, due_date, status,
+      student:profiles!tuition_invoices_student_id_fkey(id, full_name, email, phone),
+      class:classes!tuition_invoices_class_id_fkey(id, name)
+    `)
+    .neq('status', 'cancelled')
+    .gt('balance', 0);
+
+  if (classId) query = query.eq('class_id', classId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const byStudent = new Map();
+
+  for (const r of data || []) {
+    const sid = r.student_id;
+    if (!byStudent.has(sid)) {
+      byStudent.set(sid, {
+        student_id: sid,
+        student_name: r.student?.full_name || null,
+        email: r.student?.email || null,
+        phone: r.student?.phone || null,
+        open_invoices: 0,
+        total_outstanding: 0,
+        overdue_outstanding: 0,
+        oldest_due_date: null,
+        classes: new Set(),
+      });
+    }
+    const row = byStudent.get(sid);
+    const bal = Number(r.balance) || 0;
+    row.open_invoices += 1;
+    row.total_outstanding += bal;
+    const isOverdue = r.due_date && r.due_date < today;
+    if (isOverdue) row.overdue_outstanding += bal;
+    if (r.due_date && (!row.oldest_due_date || r.due_date < row.oldest_due_date)) {
+      row.oldest_due_date = r.due_date;
+    }
+    if (r.class?.name) row.classes.add(r.class.name);
+  }
+
+  let rows = Array.from(byStudent.values()).map((s) => ({
+    student_id: s.student_id,
+    student_name: s.student_name,
+    email: s.email,
+    phone: s.phone,
+    open_invoices: s.open_invoices,
+    total_outstanding: Math.round(s.total_outstanding * 100) / 100,
+    overdue_outstanding: Math.round(s.overdue_outstanding * 100) / 100,
+    oldest_due_date: s.oldest_due_date,
+    classes: Array.from(s.classes).join(', '),
+    has_overdue: s.overdue_outstanding > 0,
+  }));
+
+  if (search) {
+    rows = rows.filter(
+      (s) =>
+        (s.student_name || '').toLowerCase().includes(search) ||
+        (s.email || '').toLowerCase().includes(search) ||
+        (s.phone || '').includes(queryParams.search.trim())
+    );
+  }
+  if (overdueOnly) rows = rows.filter((s) => s.has_overdue);
+
+  rows.sort((a, b) => b.total_outstanding - a.total_outstanding);
+
+  const summary = {
+    student_count: rows.length,
+    open_invoices: rows.reduce((n, r) => n + r.open_invoices, 0),
+    total_outstanding: Math.round(rows.reduce((n, r) => n + r.total_outstanding, 0) * 100) / 100,
+    total_overdue: Math.round(rows.reduce((n, r) => n + r.overdue_outstanding, 0) * 100) / 100,
+  };
+
+  return { summary, rows };
+};
+
 const getRevenueReport = async (queryParams) => {
   const startDate = queryParams.start_date || null;
   const endDate = queryParams.end_date || null;
@@ -616,36 +755,41 @@ const getClassesSummary = async (queryParams) => {
   if (invErr) throw invErr;
 
   const today = new Date().toISOString().slice(0, 10);
+  const invByClassStudent = {};
   const byClass = {};
   for (const inv of (invoices || [])) {
+    const studentKey = `${inv.class_id}:${inv.student_id}`;
+    (invByClassStudent[studentKey] ||= []).push(inv);
+
     const slot = (byClass[inv.class_id] ||= {
       total_amount: 0,
       total_paid: 0,
       total_outstanding: 0,
       invoice_count: 0,
-      paid_students: new Set(),
-      unpaid_students: new Set(),
       overdue_count: 0,
     });
     slot.invoice_count += 1;
     slot.total_amount += Number(inv.total) || 0;
     slot.total_paid += Number(inv.paid_amount) || 0;
     slot.total_outstanding += Number(inv.balance) || 0;
-    if (Number(inv.balance) <= 0 || inv.status === 'paid') {
-      slot.paid_students.add(inv.student_id);
-    } else {
-      slot.unpaid_students.add(inv.student_id);
-      if (inv.due_date && inv.due_date < today) slot.overdue_count += 1;
+    if (Number(inv.balance) > 0 && inv.due_date && inv.due_date < today) {
+      slot.overdue_count += 1;
     }
   }
 
   return classes.map(c => {
     const slot = byClass[c.id] || {
       total_amount: 0, total_paid: 0, total_outstanding: 0,
-      invoice_count: 0, paid_students: new Set(), unpaid_students: new Set(),
-      overdue_count: 0,
+      invoice_count: 0, overdue_count: 0,
     };
-    const enrolled = enrollByClass[c.id] ? enrollByClass[c.id].size : 0;
+    const enrolledSet = enrollByClass[c.id] || new Set();
+    const enrolled = enrolledSet.size;
+    const invoicesByStudent = {};
+    for (const studentId of enrolledSet) {
+      invoicesByStudent[studentId] = invByClassStudent[`${c.id}:${studentId}`] || [];
+    }
+    const statusCounts = countStudentsByFeeStatus(enrolledSet, invoicesByStudent);
+
     return {
       id: c.id,
       name: c.name,
@@ -653,11 +797,14 @@ const getClassesSummary = async (queryParams) => {
       fee_policy: c.fee_policy,
       fee_amount: Number(c.fee_amount || 0),
       billing_day: c.billing_day,
+      sessions_per_period: c.sessions_per_period,
       teacher_name: c.teacher?.full_name || null,
       enrolled_count: enrolled,
       invoice_count: slot.invoice_count,
-      paid_count: slot.paid_students.size,
-      unpaid_count: slot.unpaid_students.size,
+      paid_count: statusCounts.paid,
+      partial_count: statusCounts.partial,
+      unpaid_count: statusCounts.unpaid,
+      no_invoice_count: statusCounts.no_invoice,
       overdue_count: slot.overdue_count,
       total_amount: slot.total_amount,
       total_paid: slot.total_paid,
@@ -749,10 +896,21 @@ function periodEndThroughToday(cls) {
   return e < t ? e : t;
 }
 
+async function fetchClassSchedules(classId) {
+  const { data, error } = await supabase
+    .from('schedules')
+    .select('id, day_of_week, start_time, end_time, start_date, end_date, is_active')
+    .eq('class_id', classId)
+    .eq('is_active', true);
+  if (error) throw error;
+  return data || [];
+}
+
 /**
  * Dự kiến học phí theo kỳ [nhập học → periodEndDate] (đồng bộ logic sinh HĐ).
+ * schedules: TKB lớp — dùng để đếm buổi thực tế khi fee_policy = per_session.
  */
-function projectedFeeForPeriod(cls, enrollmentDateStr, periodEndDateStr) {
+function projectedFeeForPeriod(cls, enrollmentDateStr, periodEndDateStr, schedules = null) {
   const fee = Number(cls.fee_amount || 0);
   if (!cls.fee_policy || fee <= 0) return { amount: 0, months: null, sessionsFactor: null };
 
@@ -760,9 +918,12 @@ function projectedFeeForPeriod(cls, enrollmentDateStr, periodEndDateStr) {
   const startBound = maxDateStr(enroll, cls.start_date);
   const endBound = String(periodEndDateStr).slice(0, 10);
 
+  if (startBound > endBound) {
+    return { amount: 0, months: null, sessionsFactor: null };
+  }
+
   if (cls.fee_policy === 'per_class') {
-    const ok = startBound <= endBound;
-    return { amount: ok ? fee : 0, months: null, sessionsFactor: null };
+    return { amount: fee, months: null, sessionsFactor: null };
   }
 
   const months = countInclusiveCalendarMonths(startBound, endBound);
@@ -773,12 +934,132 @@ function projectedFeeForPeriod(cls, enrollmentDateStr, periodEndDateStr) {
   }
 
   if (cls.fee_policy === 'per_session') {
-    const sessionsPerMonth = Number(cls.sessions_per_period || 0);
-    const sessionsFactor = m * sessionsPerMonth;
+    const activeSchedules = (schedules || []).filter((s) => s.is_active !== false);
+    let sessionsFactor;
+    if (activeSchedules.length > 0) {
+      sessionsFactor = countScheduledSessions(cls, activeSchedules, startBound, endBound);
+    } else {
+      const sessionsPerMonth = Number(cls.sessions_per_period || 0);
+      sessionsFactor = m * sessionsPerMonth;
+    }
     return { amount: sessionsFactor * fee, months: m, sessionsFactor };
   }
 
   return { amount: 0, months: null, sessionsFactor: null };
+}
+
+/** Dự kiến phí một học sinh cho một kỳ tháng (YYYY-MM). */
+function projectedFeeForBillingPeriod(cls, enrollmentDateStr, periodStart, periodEnd, schedules = null) {
+  const fee = Number(cls.fee_amount || 0);
+  if (!cls.fee_policy || fee <= 0) return 0;
+
+  const enroll = enrollmentDateStr ? String(enrollmentDateStr).slice(0, 10) : periodEnd;
+  const startBound = maxDateStr(enroll, cls.start_date);
+  if (startBound > periodEnd) return 0;
+
+  if (cls.fee_policy === 'per_class') {
+    return startBound <= periodEnd ? fee : 0;
+  }
+
+  if (cls.fee_policy === 'monthly') {
+    const billStart = schedMaxDateStr(startBound, periodStart);
+    if (billStart > periodEnd) return 0;
+    return fee;
+  }
+
+  if (cls.fee_policy === 'per_session') {
+    const billStart = schedMaxDateStr(startBound, periodStart);
+    if (billStart > periodEnd) return 0;
+    const activeSchedules = (schedules || []).filter((s) => s.is_active !== false);
+    const sessions = activeSchedules.length > 0
+      ? countScheduledSessions(cls, activeSchedules, billStart, periodEnd)
+      : Number(cls.sessions_per_period || 0);
+    return sessions * fee;
+  }
+
+  return 0;
+}
+
+function periodPaymentStatus(expected, invoiced, paid, balance) {
+  if (expected <= 0 && invoiced <= 0) return 'none';
+  if (balance <= 0 && paid > 0) return 'paid';
+  if (paid > 0 && balance > 0) return 'partial';
+  if (invoiced > 0 && paid <= 0) return 'unpaid';
+  if (expected > 0 && invoiced <= 0) return 'no_invoice';
+  return 'unpaid';
+}
+
+function buildClassBillingPeriods(cls, schedules, enrollments, invoices) {
+  const courseStart = cls.start_date ? String(cls.start_date).slice(0, 10) : null;
+  const courseEnd = cls.end_date ? String(cls.end_date).slice(0, 10) : todayDateStr();
+  if (!courseStart) return [];
+
+  const invList = (invoices || []).filter((i) => i.status !== 'cancelled');
+
+  if (cls.fee_policy === 'per_class') {
+    let expected = 0;
+    for (const row of enrollments || []) {
+      expected += projectedFeeForBillingPeriod(cls, row.enrollment_date, courseStart, courseEnd, schedules);
+    }
+    let invoiced = 0;
+    let paid = 0;
+    let balance = 0;
+    for (const inv of invList) {
+      invoiced += Number(inv.total) || 0;
+      paid += Number(inv.paid_amount) || 0;
+      balance += Number(inv.balance) || 0;
+    }
+    const sessionCount = countScheduledSessions(cls, schedules, courseStart, courseEnd);
+    return [{
+      year_month: null,
+      label: 'Trọn khóa',
+      period_start: courseStart,
+      period_end: courseEnd,
+      session_count: sessionCount,
+      expected_total: Math.round(expected * 100) / 100,
+      invoiced_total: Math.round(invoiced * 100) / 100,
+      paid_total: Math.round(paid * 100) / 100,
+      balance_total: Math.round(balance * 100) / 100,
+      status: periodPaymentStatus(expected, invoiced, paid, balance),
+    }];
+  }
+
+  const monthPeriods = buildCalendarMonthPeriods(courseStart, courseEnd);
+  const sessionsByMonth = sessionsCountByMonth(cls, schedules, courseStart, courseEnd);
+
+  return monthPeriods.map((p) => {
+    let expected = 0;
+    for (const row of enrollments || []) {
+      expected += projectedFeeForBillingPeriod(
+        cls, row.enrollment_date, p.period_start, p.period_end, schedules,
+      );
+    }
+
+    let invoiced = 0;
+    let paid = 0;
+    let balance = 0;
+    for (const inv of invList) {
+      if (!invoiceOverlapsPeriod(inv, p.period_start, p.period_end)) continue;
+      invoiced += Number(inv.total) || 0;
+      paid += Number(inv.paid_amount) || 0;
+      balance += Number(inv.balance) || 0;
+    }
+
+    const sessionCount = sessionsByMonth[p.year_month] || 0;
+
+    return {
+      year_month: p.year_month,
+      label: p.label,
+      period_start: p.period_start,
+      period_end: p.period_end,
+      session_count: sessionCount,
+      expected_total: Math.round(expected * 100) / 100,
+      invoiced_total: Math.round(invoiced * 100) / 100,
+      paid_total: Math.round(paid * 100) / 100,
+      balance_total: Math.round(balance * 100) / 100,
+      status: periodPaymentStatus(expected, invoiced, paid, balance),
+    };
+  });
 }
 
 /**
@@ -787,7 +1068,7 @@ function projectedFeeForPeriod(cls, enrollmentDateStr, periodEndDateStr) {
 const getClassFeeProjection = async (classId, currentUser) => {
   const { data: cls, error: cErr } = await supabase
     .from('classes')
-    .select('id, name, teacher_id, fee_policy, fee_amount, sessions_per_period, start_date, end_date')
+    .select('id, name, teacher_id, fee_policy, fee_amount, sessions_per_period, start_date, end_date, billing_day')
     .eq('id', classId)
     .single();
 
@@ -801,8 +1082,24 @@ const getClassFeeProjection = async (classId, currentUser) => {
     throw { statusCode: 403, message: 'Không có quyền xem thống kê học phí lớp này' };
   }
 
+  const schedules = await fetchClassSchedules(classId);
   const endCourse = periodEndThroughCourse(cls);
   const endToday = periodEndThroughToday(cls);
+  const courseStart = cls.start_date ? String(cls.start_date).slice(0, 10) : null;
+  const courseEnd = cls.end_date ? String(cls.end_date).slice(0, 10) : null;
+
+  const totalSessionsCourse = courseStart && endCourse
+    ? countScheduledSessions(cls, schedules, courseStart, endCourse)
+    : 0;
+  const totalSessionsToToday = courseStart && endToday
+    ? countScheduledSessions(cls, schedules, courseStart, endToday)
+    : 0;
+  const sessionsByMonth = courseStart && endCourse
+    ? sessionsCountByMonth(cls, schedules, courseStart, endCourse)
+    : {};
+  const uniqueDays = new Set(
+    (schedules || []).filter((s) => s.is_active !== false).map((s) => Number(s.day_of_week)),
+  );
 
   const { data: enrollRows, error: eErr } = await supabase
     .from('class_students')
@@ -820,8 +1117,8 @@ const getClassFeeProjection = async (classId, currentUser) => {
   const studentBreakdown = [];
 
   for (const row of enrollments) {
-    const full = projectedFeeForPeriod(cls, row.enrollment_date, endCourse);
-    const todt = projectedFeeForPeriod(cls, row.enrollment_date, endToday);
+    const full = projectedFeeForPeriod(cls, row.enrollment_date, endCourse, schedules);
+    const todt = projectedFeeForPeriod(cls, row.enrollment_date, endToday, schedules);
     expectedCourse += full.amount;
     expectedToToday += todt.amount;
 
@@ -831,6 +1128,8 @@ const getClassFeeProjection = async (classId, currentUser) => {
       enrollment_date: row.enrollment_date,
       months_full_course: full.months,
       months_to_today: todt.months,
+      sessions_full_course: full.sessionsFactor,
+      sessions_to_today: todt.sessionsFactor,
       expected_full_course: Math.round(full.amount * 100) / 100,
       expected_to_today: Math.round(todt.amount * 100) / 100,
     });
@@ -838,12 +1137,15 @@ const getClassFeeProjection = async (classId, currentUser) => {
 
   const { data: invoices, error: iErr } = await supabase
     .from('tuition_invoices')
-    .select('student_id, total, paid_amount, balance')
+    .select('student_id, total, paid_amount, balance, status, period_start, period_end, invoice_no')
     .eq('class_id', classId)
     .neq('status', 'cancelled');
   if (iErr) throw iErr;
 
+  const billingPeriods = buildClassBillingPeriods(cls, schedules, enrollments, invoices || []);
+
   const byStudentMoney = {};
+  const invoicesByStudent = {};
   let invoiceSumTotal = 0;
   let collectedSum = 0;
   let outstandingSum = 0;
@@ -852,6 +1154,7 @@ const getClassFeeProjection = async (classId, currentUser) => {
     collectedSum += Number(inv.paid_amount) || 0;
     outstandingSum += Number(inv.balance) || 0;
     const sid = inv.student_id;
+    (invoicesByStudent[sid] ||= []).push(inv);
     if (!byStudentMoney[sid]) {
       byStudentMoney[sid] = { invoiced: 0, paid: 0, balance: 0 };
     }
@@ -860,11 +1163,17 @@ const getClassFeeProjection = async (classId, currentUser) => {
     byStudentMoney[sid].balance += Number(inv.balance) || 0;
   }
 
+  const enrolledIds = enrollments.map((r) => r.student_id);
+  const collectionStats = countStudentsByFeeStatus(enrolledIds, invoicesByStudent);
+
   for (const row of studentBreakdown) {
     const m = byStudentMoney[row.student_id] || { invoiced: 0, paid: 0, balance: 0 };
+    const invs = invoicesByStudent[row.student_id] || [];
+    const agg = aggregateStudentInvoices(invs);
     row.invoiced_total = Math.round(m.invoiced * 100) / 100;
     row.paid_total = Math.round(m.paid * 100) / 100;
     row.balance_total = Math.round(m.balance * 100) / 100;
+    row.payment_status = studentFeeStatusFromAgg(agg);
     row.gap_expected_to_today_minus_paid = Math.round((row.expected_to_today - m.paid) * 100) / 100;
   }
 
@@ -880,23 +1189,80 @@ const getClassFeeProjection = async (classId, currentUser) => {
       return `Theo tháng: số tháng lịch từ max(ngày nhập học, ngày bắt đầu lớp) đến ngày chốt kỳ × đơn giá tháng. “Đến nay” = đến ${endToday}. “Cả khóa” = đến ${endCourse}.`;
     }
     if (p === 'per_session') {
-      return `Theo buổi: số tháng × ${cls.sessions_per_period || 0} buổi × đơn giá/buổi. “Đến nay” đến ${endToday}.`;
+      const src = schedules.length > 0 ? 'theo lịch TKB' : `theo cấu hình ${cls.sessions_per_period || 0} buổi/tháng`;
+      return `Theo buổi (${src}): tổng ${totalSessionsCourse} buổi cả khóa, ${totalSessionsToToday} buổi đến nay × đơn giá/buổi.`;
     }
     return '';
   })();
+
+  const setupSteps = [
+    {
+      step: 1,
+      key: 'dates',
+      label: 'Đặt thời gian lớp',
+      done: !!(cls.start_date && cls.end_date),
+      hint: cls.start_date && cls.end_date
+        ? `${String(cls.start_date).slice(0, 10)} → ${String(cls.end_date).slice(0, 10)}`
+        : 'Cần ngày bắt đầu và kết thúc',
+    },
+    {
+      step: 2,
+      key: 'schedule',
+      label: 'Tạo lịch học (TKB)',
+      done: schedules.length > 0,
+      hint: schedules.length > 0
+        ? `${schedules.length} ca · ${totalSessionsCourse} buổi cả khóa`
+        : 'Vào Lịch học để thêm ca học trong tuần',
+    },
+    {
+      step: 3,
+      key: 'fee',
+      label: 'Cấu hình học phí',
+      done: !!(cls.fee_policy && Number(cls.fee_amount) > 0),
+      hint: cls.fee_policy
+        ? `${cls.fee_policy === 'monthly' ? 'Theo tháng' : cls.fee_policy === 'per_session' ? 'Theo buổi' : 'Trọn gói'} · ${Number(cls.fee_amount || 0).toLocaleString('vi-VN')}đ`
+        : 'Chọn cách tính phí và đơn giá',
+    },
+    {
+      step: 4,
+      key: 'students',
+      label: 'Thêm học sinh',
+      done: enrollments.length > 0,
+      hint: enrollments.length > 0 ? `${enrollments.length} học sinh` : 'Thêm học sinh vào lớp',
+    },
+  ];
 
   return {
     class_id: cls.id,
     name: cls.name,
     fee_policy: cls.fee_policy,
     fee_amount: Number(cls.fee_amount || 0),
+    billing_day: cls.billing_day,
     sessions_per_period: cls.sessions_per_period,
     start_date: cls.start_date,
     end_date: cls.end_date,
     period_end_course: endCourse,
     period_end_to_today: endToday,
-    projection_end_date: cls.end_date ? String(cls.end_date).slice(0, 10) : today,
+    projection_end_date: cls.end_date ? String(cls.end_date).slice(0, 10) : todayDateStr(),
     projected_without_official_end: !cls.end_date,
+    setup_checklist: setupSteps,
+    setup_complete: setupSteps.every((s) => s.done),
+    simple_summary: {
+      total_sessions: totalSessionsCourse,
+      expected_course: Math.round(expectedCourse * 100) / 100,
+      collected: Math.round(collectedSum * 100) / 100,
+      outstanding: Math.round(outstandingSum * 100) / 100,
+      student_count: enrollments.length,
+    },
+    schedule_summary: {
+      schedule_count: schedules.length,
+      days_per_week: uniqueDays.size,
+      total_sessions_course: totalSessionsCourse,
+      total_sessions_to_today: totalSessionsToToday,
+      sessions_by_month: sessionsByMonth,
+      has_schedule: schedules.length > 0,
+    },
+    billing_periods: billingPeriods,
     enrolled_count: enrollments.length,
     expected_total: Math.round(expectedCourse * 100) / 100,
     expected_total_course: Math.round(expectedCourse * 100) / 100,
@@ -908,6 +1274,12 @@ const getClassFeeProjection = async (classId, currentUser) => {
     gap_course_minus_collected: Math.round(gapCourseVsCollected * 100) / 100,
     gap_to_today_minus_collected: Math.round(gapToTodayVsCollected * 100) / 100,
     policy_hint: policyHint,
+    collection_stats: {
+      paid_count: collectionStats.paid,
+      partial_count: collectionStats.partial,
+      unpaid_count: collectionStats.unpaid,
+      no_invoice_count: collectionStats.no_invoice,
+    },
     students: studentBreakdown,
   };
 };
@@ -923,6 +1295,7 @@ module.exports = {
   recordPayment,
   removePayment,
   getReceivablesReport,
+  getStudentsReceivables,
   getRevenueReport,
   getStudentLedger,
   getClassesSummary,

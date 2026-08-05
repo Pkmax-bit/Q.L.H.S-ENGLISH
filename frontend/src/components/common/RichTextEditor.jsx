@@ -17,7 +17,7 @@ function imageHandler() {
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Dán URL hình ảnh</label>
         <input id="img-url-input" type="text" placeholder="https://example.com/image.jpg"
-          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
       </div>
       <div class="relative">
         <div class="absolute inset-x-0 top-1/2 border-t border-gray-200"></div>
@@ -25,7 +25,7 @@ function imageHandler() {
       </div>
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Tải từ máy tính</label>
-        <label class="flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+        <label class="flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-amber-50 transition-colors">
           <span class="text-sm text-gray-600">📷 Chọn ảnh từ máy (tối đa 5MB)</span>
           <input id="img-file-input" type="file" accept="image/*" class="hidden" />
         </label>
@@ -92,12 +92,12 @@ function tableHandler() {
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Số hàng</label>
           <input id="tbl-rows" type="number" min="1" max="20" value="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500" />
         </div>
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">Số cột</label>
           <input id="tbl-cols" type="number" min="1" max="10" value="3"
-            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500" />
+            class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500" />
         </div>
       </div>
       <div class="flex gap-3 justify-end pt-2">
@@ -205,7 +205,7 @@ export default function RichTextEditor({
             type="button"
             onClick={() => setPreview(!preview)}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-              preview ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              preview ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
             {preview ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -215,9 +215,9 @@ export default function RichTextEditor({
       </div>
 
       {preview ? (
-        <div className="rounded-lg border border-blue-200 bg-white overflow-hidden">
-          <div className="px-4 py-2 bg-blue-50 border-b border-blue-200">
-            <p className="text-xs font-medium text-blue-700 flex items-center gap-1.5">
+        <div className="rounded-lg border border-amber-200 bg-white overflow-hidden">
+          <div className="px-4 py-2 bg-amber-50 border-b border-amber-200">
+            <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5">
               <Eye className="h-3.5 w-3.5" />
               Xem trước — Học sinh sẽ nhìn thấy nội dung như bên dưới
             </p>

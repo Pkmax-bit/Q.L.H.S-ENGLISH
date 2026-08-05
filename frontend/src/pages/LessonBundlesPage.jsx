@@ -77,7 +77,7 @@ export default function LessonBundlesPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Package className="h-6 w-6 text-blue-600" />
+            <Package className="h-6 w-6 text-amber-700" />
             Bộ bài học
           </h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -97,7 +97,7 @@ export default function LessonBundlesPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Tìm bộ bài học..."
-          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
         />
       </div>
 
@@ -203,13 +203,13 @@ function BundleRow({
         >
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </button>
-        <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
+        <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700 flex-shrink-0">
           <Package className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold text-gray-800">{bundle.name}</p>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-800">
               {bundle.item_count} bài
             </span>
             {bundle.subject_name && (
@@ -228,7 +228,7 @@ function BundleRow({
           </Button>
           <button
             onClick={onEdit}
-            className="p-2 rounded-lg hover:bg-blue-100 text-blue-500"
+            className="p-2 rounded-lg hover:bg-amber-100 text-amber-600"
             title="Sửa"
           >
             <Pencil className="h-4 w-4" />
@@ -469,7 +469,7 @@ function AddLessonsToBundleModal({ isOpen, onClose, bundle, onAdded }) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm bài học..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
           </div>
           <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
@@ -502,7 +502,7 @@ function AddLessonsToBundleModal({ isOpen, onClose, bundle, onAdded }) {
                     inBundle
                       ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
                       : isSelected
-                        ? 'border-blue-500 bg-blue-50/40'
+                        ? 'border-blue-500 bg-amber-50/40'
                         : 'border-gray-200 bg-white hover:border-gray-300'
                   }`}
                 >
@@ -518,7 +518,7 @@ function AddLessonsToBundleModal({ isOpen, onClose, bundle, onAdded }) {
                       <BookOpen className="h-4 w-4 text-blue-400" />
                       <p className="text-sm font-medium text-gray-800 truncate">{l.title}</p>
                       {l.is_template && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
                           Mẫu
                         </span>
                       )}

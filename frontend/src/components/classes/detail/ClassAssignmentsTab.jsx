@@ -13,7 +13,7 @@ import { formatDate } from '../../../utils/formatDate'
 import { unwrapApiPayload } from '../../../utils/assignmentHelpers'
 
 const TYPE_LABELS = {
-  multiple_choice: { label: 'Trắc nghiệm', color: 'bg-blue-100 text-blue-700' },
+  multiple_choice: { label: 'Trắc nghiệm', color: 'bg-amber-100 text-amber-800' },
   essay: { label: 'Tự luận', color: 'bg-amber-100 text-amber-700' },
   mixed: { label: 'Kết hợp', color: 'bg-purple-100 text-purple-700' },
   toeic_listening: { label: 'TOEIC Listening', color: 'bg-indigo-100 text-indigo-800' },
@@ -152,7 +152,7 @@ export default function ClassAssignmentsTab({ assignments: initialAssignments, c
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-gray-800 hover:text-blue-600 transition-colors truncate">
+                      <p className="text-sm font-medium text-gray-800 hover:text-amber-700 transition-colors truncate">
                         {assignment.title}
                       </p>
                       <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${typeInfo.color}`}>
@@ -208,7 +208,7 @@ export default function ClassAssignmentsTab({ assignments: initialAssignments, c
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleEdit(assignment) }}
-                        className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-500 transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-600 transition-colors"
                         title="Chỉnh sửa"
                       >
                         <Pencil className="h-4 w-4" />

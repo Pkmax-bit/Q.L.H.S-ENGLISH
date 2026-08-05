@@ -24,8 +24,15 @@ import SubmissionsPage from '../pages/SubmissionsPage'
 import GradeBookPage from '../pages/GradeBookPage'
 import QuestionBankPage from '../pages/QuestionBankPage'
 import ProfilePage from '../pages/ProfilePage'
+import ThemeSettingsPage from '../pages/ThemeSettingsPage'
+import SocialFeedPage from '../pages/SocialFeedPage'
+import SocialProfilePage from '../pages/SocialProfilePage'
+import MessengerHubPage from '../pages/MessengerHubPage'
 import SchoolAdminHubPage from '../pages/SchoolAdminHubPage'
 import LessonBundlesPage from '../pages/LessonBundlesPage'
+import ShopPage from '../pages/ShopPage'
+import ShopPlayPage from '../pages/ShopPlayPage'
+import HarvestContentPage from '../pages/HarvestContentPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import LandingPage from '../pages/LandingPage'
 
@@ -208,6 +215,30 @@ export default function AppRouter() {
             </RoleRoute>
           }
         />
+        <Route
+          path="shop"
+          element={
+            <RoleRoute roles={['student']}>
+              <ShopPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="shop/play/:slug"
+          element={
+            <RoleRoute roles={['student']}>
+              <ShopPlayPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="shop/harvest-content"
+          element={
+            <RoleRoute roles={['admin', 'teacher']}>
+              <HarvestContentPage />
+            </RoleRoute>
+          }
+        />
 
         {/* Admin + Teacher - Submissions & Grading */}
         <Route
@@ -227,8 +258,12 @@ export default function AppRouter() {
           }
         />
 
-        {/* Profile - all roles */}
+        {/* Profile & theme - all roles */}
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="settings/theme" element={<ThemeSettingsPage />} />
+        <Route path="social" element={<SocialFeedPage />} />
+        <Route path="social/u/:userId" element={<SocialProfilePage />} />
+        <Route path="messenger" element={<MessengerHubPage />} />
       </Route>
 
       <Route path="*" element={<NotFoundPage />} />

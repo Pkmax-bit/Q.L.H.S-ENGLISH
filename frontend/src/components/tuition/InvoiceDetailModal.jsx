@@ -230,7 +230,7 @@ export default function InvoiceDetailModal({ invoiceId, isOpen, onClose, onChang
           {Array.isArray(invoice.attachment_urls) && invoice.attachment_urls.length > 0 && (
             <div>
               <h3 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                <ImageIcon className="h-4 w-4 text-blue-500" />
+                <ImageIcon className="h-4 w-4 text-amber-600" />
                 Ảnh đính kèm ({invoice.attachment_urls.length})
               </h3>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -281,7 +281,7 @@ export default function InvoiceDetailModal({ invoiceId, isOpen, onClose, onChang
                           href={resolveUploadUrl(p.transfer_image_url)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 mt-1 text-xs text-blue-600 hover:underline"
+                          className="inline-flex items-center gap-1 mt-1 text-xs text-amber-700 hover:underline"
                         >
                           <ImageIcon className="h-3.5 w-3.5" />
                           Xem ảnh chuyển khoản
@@ -290,7 +290,7 @@ export default function InvoiceDetailModal({ invoiceId, isOpen, onClose, onChang
                     </div>
                     <div className="flex items-center gap-1">
                       <button
-                        className="p-1.5 rounded hover:bg-blue-100 text-blue-600"
+                        className="p-1.5 rounded hover:bg-amber-100 text-amber-700"
                         title="In phiếu thu"
                         onClick={() => handlePrintReceipt(p)}
                       >

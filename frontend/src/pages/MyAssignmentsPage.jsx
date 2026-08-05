@@ -134,7 +134,7 @@ export default function MyAssignmentsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Tìm bài tập..."
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
         />
       </div>
 
@@ -159,7 +159,7 @@ export default function MyAssignmentsPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-sm font-semibold text-gray-900">{a.title}</h3>
                     <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                      a.assignment_type === 'multiple_choice' ? 'bg-blue-100 text-blue-700' :
+                      a.assignment_type === 'multiple_choice' ? 'bg-amber-100 text-amber-800' :
                       a.assignment_type === 'essay' ? 'bg-amber-100 text-amber-700' :
                       a.assignment_type === 'toeic_listening' ? 'bg-indigo-100 text-indigo-800' :
                       a.assignment_type === 'toeic_lr' ? 'bg-teal-100 text-teal-900' :
@@ -222,7 +222,7 @@ export default function MyAssignmentsPage() {
                       <AlertTriangle className="h-3.5 w-3.5" /> Quá hạn
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg text-xs font-medium">
                       <ClipboardList className="h-3.5 w-3.5" /> Chưa làm
                     </div>
                   )}

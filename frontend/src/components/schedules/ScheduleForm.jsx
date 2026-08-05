@@ -278,7 +278,7 @@ export default function ScheduleForm({
             <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
               <button type="button" onClick={() => setMode('single')}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${
-                  mode === 'single' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                  mode === 'single' ? 'bg-white text-amber-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
                 <CalendarPlus className="h-4 w-4" /> Thêm đơn
               </button>
               <button type="button" onClick={() => setMode('bulk')}
@@ -315,14 +315,14 @@ export default function ScheduleForm({
                     <button key={day.value} type="button" onClick={() => toggleDay(day.value)}
                       className={`px-4 py-2.5 rounded-lg text-sm font-medium border-2 transition-all ${
                         selected ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
-                          : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:bg-blue-50'}`}>
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-amber-300 hover:bg-amber-50'}`}>
                       {day.short}
                     </button>
                   )
                 })}
               </div>
               {form.days_of_week.length > 0 && (
-                <p className="text-xs text-blue-600 mt-1">
+                <p className="text-xs text-amber-700 mt-1">
                   ✅ Đã chọn: {form.days_of_week.sort((a,b) => (a||7) - (b||7)).map(d => ALL_DAYS.find(a => a.value === d)?.short).join(', ')}
                 </p>
               )}
@@ -391,7 +391,7 @@ export default function ScheduleForm({
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="flex items-start gap-2">
-                <Building2 className="h-5 w-5 text-blue-500 mt-7 flex-shrink-0" />
+                <Building2 className="h-5 w-5 text-amber-600 mt-7 flex-shrink-0" />
                 <Select label="Cơ sở" name="facility_id" value={form.facility_id} onChange={handleChange}
                   options={buildingOptions} placeholder="Chọn cơ sở..." />
               </div>

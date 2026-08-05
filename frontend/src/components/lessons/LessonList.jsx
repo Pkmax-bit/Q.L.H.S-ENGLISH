@@ -62,7 +62,7 @@ export default function LessonList() {
             label={row.is_published ? 'Đã xuất bản' : 'Nháp'}
           />
           {row.is_template && (
-            <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">Mẫu</span>
+            <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full font-medium">Mẫu</span>
           )}
         </div>
       ),
@@ -148,8 +148,8 @@ export default function LessonList() {
             disabled={toggling}
             className={`p-1 rounded-lg transition-colors ${
               row.is_template
-                ? 'text-blue-600 hover:bg-blue-50'
-                : 'text-gray-400 hover:bg-gray-100 hover:text-blue-500'
+                ? 'text-amber-700 hover:bg-amber-50'
+                : 'text-gray-400 hover:bg-gray-100 hover:text-amber-600'
             }`}
             title={row.is_template ? 'Bỏ đánh dấu mẫu' : 'Đánh dấu làm mẫu'}
           >

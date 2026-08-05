@@ -2,10 +2,13 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
+const fs = require('fs');
 
 const corsOptions = require('./config/cors');
 const errorHandler = require('./middleware/errorHandler');
+const { supabase } = require('./config/database');
 
 // Import routes
 const authRoutes = require('./routes/auth.routes');
@@ -27,7 +30,12 @@ const uploadsRoutes = require('./routes/uploads.routes');
 const questionBankRoutes = require('./routes/questionBank.routes');
 const driveRoutes = require('./routes/drive.routes');
 const tuitionRoutes = require('./routes/tuition.routes');
+const attendanceRoutes = require('./routes/attendance.routes');
+const teacherPayrollRoutes = require('./routes/teacherPayroll.routes');
 const lessonBundlesRoutes = require('./routes/lessonBundles.routes');
+const messengerRoutes = require('./routes/messenger.routes');
+const socialRoutes = require('./routes/social.routes');
+const shopRoutes = require('./routes/shop.routes');
 
 const app = express();
 
@@ -41,26 +49,58 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Logging
+// Logging — combined in production, compact in development
 if (process.env.NODE_ENV !== 'test') {
-  app.use(morgan('dev'));
+  const format = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';
+  app.use(morgan(format));
 }
 
 // Static files (uploads)
 app.use('/uploads', express.static(path.join(__dirname, '..', process.env.UPLOAD_DIR || 'uploads')));
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Education Center API is running',
+// Health check (deep: DB ping)
+app.get('/api/health', async (req, res) => {
+  let database = 'ok';
+  let dbError = null;
+  try {
+    const { error } = await supabase.from('profiles').select('id').limit(1);
+    if (error) {
+      database = 'error';
+      dbError = error.message;
+    }
+  } catch (err) {
+    database = 'error';
+    dbError = err.message;
+  }
+
+  const healthy = database === 'ok';
+  res.status(healthy ? 200 : 503).json({
+    success: healthy,
+    message: healthy ? 'Education Center API is running' : 'API degraded — database unreachable',
     data: {
       version: '1.0.0',
       environment: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
+      database,
+      ...(dbError && process.env.NODE_ENV !== 'production' ? { dbError } : {}),
     },
   });
 });
+
+// Rate limit auth endpoints (brute-force protection)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many auth attempts. Please try again later.',
+    data: null,
+  },
+});
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/refresh', authLimiter);
 
 // API routes
 app.use('/api/auth', authRoutes);
@@ -82,18 +122,22 @@ app.use('/api/uploads', uploadsRoutes);
 app.use('/api/question-bank', questionBankRoutes);
 app.use('/api/drive-proxy', driveRoutes);
 app.use('/api/tuition', tuitionRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/teacher-payroll', teacherPayrollRoutes);
 app.use('/api/lesson-bundles', lessonBundlesRoutes);
+app.use('/api/messenger', messengerRoutes);
+app.use('/api/social', socialRoutes);
+app.use('/api/shop', shopRoutes);
 
 // Serve frontend static files in production
 const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');
-const fs = require('fs');
 if (fs.existsSync(frontendDist)) {
   console.log(`[SPA] Serving frontend from: ${frontendDist}`);
   app.use(express.static(frontendDist));
 
   // SPA fallback: any non-API route → index.html
   app.get('{*path}', (req, res, next) => {
-    if (req.url.startsWith('/api/')) {
+    if (req.url.startsWith('/api/') || req.url.startsWith('/uploads/') || req.url.startsWith('/socket.io')) {
       return next();
     }
     const indexPath = path.join(frontendDist, 'index.html');

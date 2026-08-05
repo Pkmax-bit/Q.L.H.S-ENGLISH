@@ -41,13 +41,13 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
     >
       <div
         className={clsx(
-          'bg-white rounded-xl shadow-2xl w-full transform transition-all',
+          'bg-white/95 backdrop-blur-sm rounded-2xl border border-amber-200/55 shadow-xl shadow-amber-100/30 w-full transform transition-all',
           sizeClasses[size]
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-amber-100">
+          <h2 className="text-lg font-semibold text-stone-900">{title}</h2>
           <button
             onClick={onClose}
             className="p-1 rounded-lg hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"

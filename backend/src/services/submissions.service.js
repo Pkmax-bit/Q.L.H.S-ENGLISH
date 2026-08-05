@@ -233,6 +233,16 @@ const submit = async (submissionId, answers, studentId) => {
     }
     updated = d2;
   }
+
+  if (updated?.status === 'graded') {
+    try {
+      const shopPoints = require('./shopPoints.service');
+      await shopPoints.awardFromSubmission(updated);
+    } catch (awardErr) {
+      console.error('[Submit] shop points award failed:', awardErr?.message || awardErr);
+    }
+  }
+
   return updated;
 };
 
@@ -493,6 +503,16 @@ const grade = async (submissionId, gradeData, gradedBy) => {
     .single();
 
   if (updateErr) throw updateErr;
+
+  if (updated?.status === 'graded') {
+    try {
+      const shopPoints = require('./shopPoints.service');
+      await shopPoints.awardFromSubmission(updated);
+    } catch (awardErr) {
+      console.error('[Grade] shop points award failed:', awardErr?.message || awardErr);
+    }
+  }
+
   return updated;
 };
 

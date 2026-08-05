@@ -66,11 +66,11 @@ export default function FinanceSummary() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-500 mb-1">Số dư</p>
-              <p className={`text-2xl font-bold ${balance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+              <p className={`text-2xl font-bold ${balance >= 0 ? 'text-amber-700' : 'text-red-600'}`}>
                 {formatCurrency(balance)}
               </p>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center">
               <Wallet className="h-6 w-6 text-white" />
             </div>
           </div>

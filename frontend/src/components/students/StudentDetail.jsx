@@ -18,7 +18,7 @@ export default function StudentDetail({ isOpen, onClose, student }) {
                 className="w-12 h-12 rounded-full object-cover"
               />
             ) : (
-              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-semibold text-lg">
+              <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-semibold text-lg">
                 {student.full_name?.charAt(0) || '?'}
               </div>
             )}

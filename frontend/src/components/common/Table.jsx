@@ -83,7 +83,7 @@ export default function Table({
         </div>
       )}
 
-      <div className="overflow-x-auto bg-white rounded-xl border border-gray-200 shadow-sm">
+      <div className="overflow-x-auto app-card">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">
@@ -129,7 +129,7 @@ export default function Table({
               paginatedData.map((item, idx) => (
                 <tr
                   key={item._id || item.id || idx}
-                  className="border-b border-gray-50 hover:bg-blue-50/30 transition-colors"
+                  className="border-b border-gray-50 hover:bg-amber-50/30 transition-colors"
                 >
                   {columns.map((col) => (
                     <td key={col.key} className="px-4 py-3 text-gray-700">
@@ -146,7 +146,7 @@ export default function Table({
                         {onView && (
                           <button
                             onClick={() => onView(item)}
-                            className="p-1.5 rounded-lg hover:bg-blue-100 text-blue-500 transition-colors"
+                            className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-600 transition-colors"
                             title="Xem chi tiết"
                           >
                             <Eye className="h-4 w-4" />

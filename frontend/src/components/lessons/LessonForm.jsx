@@ -152,7 +152,7 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess, default
           onClick={() => setActiveTab('edit')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${
             activeTab === 'edit'
-              ? 'bg-white text-blue-700 shadow-sm'
+              ? 'bg-white text-amber-800 shadow-sm'
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -164,7 +164,7 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess, default
           onClick={() => setActiveTab('preview')}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${
             activeTab === 'preview'
-              ? 'bg-white text-blue-700 shadow-sm'
+              ? 'bg-white text-amber-800 shadow-sm'
               : 'text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -245,7 +245,7 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess, default
                 />
               </div>
               <div className="flex items-start gap-2">
-                <FileText className="h-5 w-5 text-blue-500 mt-7 flex-shrink-0" />
+                <FileText className="h-5 w-5 text-amber-600 mt-7 flex-shrink-0" />
                 <Input
                   label="URL tệp đính kèm"
                   name="file_url"
@@ -265,7 +265,7 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess, default
               name="is_published"
               checked={form.is_published}
               onChange={handleChange}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 rounded border-gray-300 text-amber-700 focus:ring-amber-500"
             />
             <label htmlFor="is_published_edit" className="text-sm text-gray-700">
               Đã xuất bản (học sinh có thể nhìn thấy)
@@ -370,7 +370,7 @@ export default function LessonForm({ isOpen, onClose, lesson, onSuccess, default
                       </div>
                     )}
                     {form.file_url && (
-                      <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+                      <div className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
                         <FileText className="h-4 w-4" />
                         Tệp đính kèm
                         <ExternalLink className="h-3 w-3" />

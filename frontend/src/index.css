@@ -1,22 +1,75 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
+  --font-sans: 'Source Sans 3', 'Segoe UI', sans-serif;
+  --font-display: 'Fraunces', 'Georgia', serif;
+
+  /* Primary — Academic ink (teal-ink, không tím) */
+  --color-primary-50: #eef6f8;
+  --color-primary-100: #d5ebf1;
+  --color-primary-200: #aed7e3;
+  --color-primary-300: #7bb9cb;
+  --color-primary-400: #4a95ad;
+  --color-primary-500: #2f7a94;
+  --color-primary-600: #1a6b8a;
+  --color-primary-700: #15556e;
+  --color-primary-800: #144658;
+  --color-primary-900: #0c1f33;
+
+  /* Theme variables — overridden by ThemeProvider */
+  --color-sidebar: #0c1f33;
+  --color-sidebar-hover: #132f4c;
+  --color-sidebar-active: #1a4568;
+  --color-sidebar-text: #e8eef4;
+  --color-sidebar-text-active: #ffffff;
+  --sidebar-backdrop: blur(20px) saturate(160%);
+  --color-page-bg: #f3f5f7;
+  --color-topbar: #ffffff;
+  --header-backdrop: blur(14px);
+  --color-text-heading: #0c1f33;
+  --color-text-body: #334155;
+  --color-text-muted: #64748b;
+  --color-text-card: #1e293b;
+  --bg-image: none;
+  --bg-image-mode: none;
+  --bg-overlay: rgba(0, 0, 0, 0);
+  --scrollbar-thumb: #b8c4d0;
+  --scrollbar-hover: #8fa0b3;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
 }
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  @apply antialiased;
+  font-family: var(--font-sans);
+  background: var(--color-page-bg);
+  color: var(--color-text-body);
+  letter-spacing: 0.01em;
 }
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--color-text-heading);
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.text-gray-900 { color: var(--color-text-heading, #111827) !important; }
+.text-gray-700 { color: var(--color-text-body, #374151) !important; }
+.text-gray-500 { color: var(--color-text-muted, #6b7280) !important; }
+.text-gray-400 { color: var(--color-text-muted, #9ca3af) !important; }
+.text-stone-900 { color: var(--color-text-heading, #111827) !important; }
+.text-stone-800 { color: var(--color-text-body, #374151) !important; }
+.text-stone-700 { color: var(--color-text-body, #374151) !important; }
+.text-stone-600 { color: var(--color-text-muted, #4b5563) !important; }
+.text-stone-500 { color: var(--color-text-muted, #6b7280) !important; }
+.text-stone-400 { color: var(--color-text-muted, #9ca3af) !important; }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
@@ -24,25 +77,179 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded-full;
+  background: var(--scrollbar-thumb, #c1c9d6);
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400;
+  background: var(--scrollbar-hover, #a0aec0);
 }
 
-/* ——— Public landing page ——— */
+/* ——— Glass effects trong dashboard (theo QLCV) ——— */
+main .min-h-screen.bg-gray-50,
+main .min-h-screen.bg-gray-100,
+main .min-h-screen.bg-slate-50,
+main .min-h-screen.bg-slate-100,
+main .min-h-full.bg-gray-50,
+main .min-h-full.bg-gray-100,
+main .min-h-full.bg-slate-50,
+main .min-h-full.bg-slate-100 {
+  background-color: transparent !important;
+}
+
+main .min-h-screen.bg-gradient-to-br.from-gray-50,
+main .min-h-screen.bg-gradient-to-br.from-gray-100,
+main .min-h-screen.bg-gradient-to-br.from-slate-50,
+main .min-h-full.bg-gradient-to-br.from-gray-50 {
+  background-image: none !important;
+  background-color: transparent !important;
+}
+
+main .bg-white {
+  background-color: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(10px) saturate(160%);
+  -webkit-backdrop-filter: blur(10px) saturate(160%);
+}
+
+main input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="file"]):not([type="range"]):not([type="submit"]):not([type="button"]),
+main select,
+main textarea {
+  background-color: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(8px) saturate(150%);
+  -webkit-backdrop-filter: blur(8px) saturate(150%);
+}
+
+main input:focus,
+main select:focus,
+main textarea:focus {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+/* ——— App shell ——— */
+.app-shell {
+  @apply min-h-screen text-stone-800;
+  background: var(--color-page-bg);
+}
+
+.app-shell-mesh {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -15%, rgba(26, 107, 138, 0.07), transparent),
+    radial-gradient(ellipse 50% 35% at 100% 40%, rgba(12, 31, 51, 0.04), transparent),
+    radial-gradient(ellipse 45% 30% at 0% 85%, rgba(74, 149, 173, 0.06), transparent);
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+
+html.has-custom-bg .app-shell-mesh {
+  opacity: 0;
+}
+
+/* Surfaces — giấy sáng, viền ink nhẹ */
+.glass-card,
+.app-card {
+  @apply rounded-2xl;
+  background-color: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(12, 31, 51, 0.06);
+  box-shadow: 0 1px 2px rgba(12, 31, 51, 0.04), 0 8px 24px -12px rgba(12, 31, 51, 0.08);
+}
+
+.glass-panel {
+  @apply rounded-2xl overflow-hidden;
+  background-color: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border: 1px solid rgba(12, 31, 51, 0.06);
+}
+
+.app-card-hover {
+  @apply rounded-2xl transition-all duration-300 ease-out;
+  background-color: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(12, 31, 51, 0.06);
+  box-shadow: 0 1px 2px rgba(12, 31, 51, 0.04), 0 8px 24px -12px rgba(12, 31, 51, 0.08);
+}
+
+.app-card-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(26, 107, 138, 0.18);
+  box-shadow: 0 4px 12px rgba(12, 31, 51, 0.06), 0 16px 32px -16px rgba(26, 107, 138, 0.18);
+}
+
+.app-page-title {
+  @apply text-2xl font-semibold;
+  font-family: var(--font-display);
+  color: var(--color-text-heading);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-rise-in {
+  animation: riseIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-rise-in-delay-1 { animation-delay: 0.08s; }
+.animate-rise-in-delay-2 { animation-delay: 0.16s; }
+.animate-rise-in-delay-3 { animation-delay: 0.24s; }
+
+@keyframes softPulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.animate-soft-pulse { animation: softPulse 3.5s ease-in-out infinite; }
+
+.input {
+  width: 100%;
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  border: 1px solid #c5d0da;
+  border-radius: 0.625rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background: white;
+}
+.input:focus {
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 3px rgba(26, 107, 138, 0.15);
+}
+
+.app-page-subtitle {
+  @apply text-sm mt-1;
+  color: var(--color-text-muted);
+}
+
+/* ——— Public landing page — Academic ink ——— */
 .landing-page {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
+}
+
+.landing-page h1,
+.landing-page h2,
+.landing-page h3 {
+  font-family: var(--font-display);
 }
 
 .landing-bg-mesh {
   background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(251, 191, 36, 0.35), transparent),
-    radial-gradient(ellipse 60% 40% at 100% 50%, rgba(254, 240, 138, 0.4), transparent),
-    radial-gradient(ellipse 50% 30% at 0% 80%, rgba(255, 237, 213, 0.5), transparent);
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(26, 107, 138, 0.12), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 50%, rgba(12, 31, 51, 0.06), transparent),
+    radial-gradient(ellipse 50% 30% at 0% 80%, rgba(74, 149, 173, 0.1), transparent);
 }
 
 .landing-orb {
@@ -50,7 +257,7 @@ body {
   border-radius: 50%;
   filter: blur(90px);
   pointer-events: none;
-  opacity: 0.55;
+  opacity: 0.4;
 }
 
 .landing-orb--1 {
@@ -58,7 +265,7 @@ body {
   height: 420px;
   top: -10%;
   right: -5%;
-  background: rgba(251, 191, 36, 0.45);
+  background: rgba(26, 107, 138, 0.35);
   animation: landing-float 14s ease-in-out infinite;
 }
 
@@ -67,7 +274,7 @@ body {
   height: 320px;
   bottom: 10%;
   left: -8%;
-  background: rgba(254, 215, 170, 0.5);
+  background: rgba(12, 31, 51, 0.22);
   animation: landing-float 18s ease-in-out infinite reverse;
 }
 
@@ -76,33 +283,32 @@ body {
   height: 240px;
   top: 45%;
   left: 40%;
-  background: rgba(253, 224, 71, 0.25);
+  background: rgba(74, 149, 173, 0.2);
   animation: landing-float 12s ease-in-out infinite 2s;
 }
 
 .landing-nav {
-  background: rgba(255, 253, 245, 0.88);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(251, 191, 36, 0.2);
+  background: rgba(243, 245, 247, 0.82);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(12, 31, 51, 0.06);
 }
 
 .landing-nav--scrolled {
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(251, 191, 36, 0.28);
-  box-shadow: 0 2px 16px rgba(180, 130, 50, 0.08);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(12, 31, 51, 0.08);
+  box-shadow: 0 2px 20px rgba(12, 31, 51, 0.06);
 }
 
 .landing-glass {
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid rgba(251, 191, 36, 0.25);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(12, 31, 51, 0.08);
   backdrop-filter: blur(12px);
 }
 
-/* Trượt vào / ra từ trái / phải khi scroll */
 .landing-slide {
-  --landing-slide-in: 2.65s;
-  --landing-slide-out: 6s;
+  --landing-slide-in: 2.2s;
+  --landing-slide-out: 5s;
   opacity: 0;
   transition:
     opacity var(--landing-slide-out) cubic-bezier(0.22, 1, 0.36, 1),
@@ -111,11 +317,11 @@ body {
 }
 
 .landing-slide--from-right {
-  transform: translateX(56px);
+  transform: translateX(48px);
 }
 
 .landing-slide--from-left {
-  transform: translateX(-56px);
+  transform: translateX(-48px);
 }
 
 .landing-slide--visible {
@@ -125,39 +331,40 @@ body {
 }
 
 .landing-banner-photo {
-  filter: brightness(1.1) contrast(1.08) saturate(1.06);
+  filter: brightness(1.02) contrast(1.05) saturate(0.88);
 }
 
 .landing-library-hero img {
-  filter: brightness(1.05) contrast(1.06) saturate(1.08);
+  filter: brightness(1.0) contrast(1.04) saturate(0.9);
 }
 
 .landing-image-card {
   background: #ffffff;
+  border-color: rgba(12, 31, 51, 0.08) !important;
+  box-shadow: 0 12px 40px -20px rgba(12, 31, 51, 0.25) !important;
 }
 
-/* Banner — fade in khi load */
 .landing-fade-banner {
   opacity: 0;
-  animation: landing-banner-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: landing-banner-in 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .landing-fade-banner--2 {
-  animation-delay: 0.12s;
+  animation-delay: 0.1s;
 }
 
 .landing-fade-banner--3 {
-  animation-delay: 0.24s;
+  animation-delay: 0.2s;
 }
 
 .landing-fade-banner--4 {
-  animation-delay: 0.36s;
+  animation-delay: 0.32s;
 }
 
 @keyframes landing-banner-in {
   from {
     opacity: 0;
-    transform: translateY(24px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -167,10 +374,10 @@ body {
 
 .landing-reveal {
   opacity: 0;
-  transform: translateY(28px);
+  transform: translateY(24px);
   transition:
-    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .landing-reveal--visible {
@@ -178,25 +385,8 @@ body {
   transform: translateY(0);
 }
 
-.landing-shimmer {
-  animation: landing-shimmer 3s ease-in-out infinite;
-}
-
-.landing-gradient-text {
-  background-size: 200% auto;
-  animation: landing-gradient-shift 4s linear infinite;
-}
-
-.landing-line-pulse {
-  animation: landing-line-pulse 2.5s ease-in-out infinite;
-}
-
-.landing-cta-glow {
-  box-shadow: 0 0 60px rgba(245, 158, 11, 0.35);
-}
-
 .landing-cta-pattern {
-  background-image: radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.15) 1px, transparent 0);
+  background-image: radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.12) 1px, transparent 0);
   background-size: 24px 24px;
 }
 
@@ -206,23 +396,8 @@ body {
 
 @keyframes landing-float {
   0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(20px, -30px) scale(1.05); }
-  66% { transform: translate(-15px, 20px) scale(0.95); }
-}
-
-@keyframes landing-shimmer {
-  0%, 100% { box-shadow: 0 0 0 rgba(245, 158, 11, 0); }
-  50% { box-shadow: 0 0 20px rgba(245, 158, 11, 0.3); }
-}
-
-@keyframes landing-gradient-shift {
-  0% { background-position: 0% center; }
-  100% { background-position: 200% center; }
-}
-
-@keyframes landing-line-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+  33% { transform: translate(18px, -24px) scale(1.04); }
+  66% { transform: translate(-12px, 16px) scale(0.96); }
 }
 
 @keyframes landing-fade-in {
@@ -232,20 +407,24 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .landing-orb,
-  .landing-shimmer,
-  .landing-gradient-text,
-  .landing-line-pulse,
   .landing-reveal,
-  .landing-fade-banner {
+  .landing-fade-banner,
+  .animate-rise-in,
+  .animate-soft-pulse,
+  .app-card-hover {
     animation: none !important;
     transition: none !important;
   }
   .landing-reveal,
-  .landing-slide {
+  .landing-slide,
+  .animate-rise-in {
     opacity: 1;
     transform: none;
   }
   .landing-fade-banner {
     opacity: 1;
+  }
+  .app-card-hover:hover {
+    transform: none;
   }
 }

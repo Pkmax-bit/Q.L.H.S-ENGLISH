@@ -112,7 +112,7 @@ export default function RecordPaymentForm({ isOpen, invoice, onClose, onSuccess 
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-sm">
+        <div className="bg-amber-50 border border-blue-100 rounded-lg p-3 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-600">HĐ:</span>
             <span className="font-mono">{invoice?.invoice_no}</span>
@@ -125,7 +125,7 @@ export default function RecordPaymentForm({ isOpen, invoice, onClose, onSuccess 
             <span className="text-gray-600">Lớp:</span>
             <span>{invoice?.class_name}</span>
           </div>
-          <div className="flex justify-between mt-1 pt-1 border-t border-blue-200">
+          <div className="flex justify-between mt-1 pt-1 border-t border-amber-200">
             <span className="text-gray-600">Còn lại:</span>
             <span className="font-bold text-rose-600">{formatCurrency(invoice?.balance)}</span>
           </div>
@@ -186,7 +186,7 @@ export default function RecordPaymentForm({ isOpen, invoice, onClose, onSuccess 
                 </button>
               </div>
             ) : (
-              <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 text-sm text-gray-600">
+              <label className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-amber-50 text-sm text-gray-600">
                 {uploading ? (
                   <span>Đang tải...</span>
                 ) : (

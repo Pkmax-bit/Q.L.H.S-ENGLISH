@@ -1,6 +1,17 @@
 node_modules/
 dist/
 .env
+.env.local
+.env.*.local
 uploads/
 *.log
 .DS_Store
+.cursor-screenshots/
+.cursor/*.png
+
+# Migration working artifacts (never commit)
+backend/src/migrations/_sync_*.sql
+backend/src/migrations/_exec_*.sql
+backend/src/migrations/_payload_*.json
+backend/src/migrations/_all_migrations.sql
+backend/src/migrations/ALL_*.sql

@@ -19,7 +19,7 @@ import { shouldUseTakeToeicListeningShell } from '../../utils/toeicListening'
 
 const typeBadgeMap = {
   essay: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Tự luận' },
-  multiple_choice: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Trắc nghiệm' },
+  multiple_choice: { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Trắc nghiệm' },
   mixed: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Hỗn hợp' },
   toeic_listening: { bg: 'bg-indigo-100', text: 'text-indigo-800', label: 'TOEIC Listening' },
   toeic_lr: { bg: 'bg-teal-100', text: 'text-teal-900', label: 'TOEIC Nghe & Đọc' },

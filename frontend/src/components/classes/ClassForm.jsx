@@ -88,10 +88,16 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
   }
 
   const validate = () => {
-    return validateForm({
+    const errs = validateForm({
       name: [() => required(form.name, 'Tên lớp')],
+      start_date: [() => required(form.start_date, 'Ngày bắt đầu')],
+      end_date: [() => required(form.end_date, 'Ngày kết thúc')],
       max_students: [() => positiveNumber(form.max_students, 'Sĩ số tối đa')],
     })
+    if (!errs.end_date && form.start_date && form.end_date && form.end_date < form.start_date) {
+      errs.end_date = 'Ngày kết thúc không được trước ngày bắt đầu'
+    }
+    return errs
   }
 
   const handleSubmit = async (e) => {
@@ -107,6 +113,8 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
         max_students: form.max_students ? Number(form.max_students) : undefined,
         teacher_id: form.teacher_id || undefined,
         subject_id: form.subject_id || undefined,
+        start_date: form.start_date,
+        end_date: form.end_date || null,
       }
       if (isEdit) {
         await classesService.update(classData.id, payload)
@@ -145,6 +153,11 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        {!isEdit && (
+          <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 text-xs text-blue-900 leading-relaxed">
+            <strong>3 bước sau khi tạo lớp:</strong> (1) Thêm lịch học ở menu Lịch học → (2) Tab Học phí → cấu hình giá → (3) Thêm học sinh và sinh hóa đơn.
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Tên lớp"
@@ -197,6 +210,8 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             type="date"
             value={form.start_date}
             onChange={handleChange}
+            error={errors.start_date}
+            required
           />
           <Input
             label="Ngày kết thúc"
@@ -204,6 +219,10 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             type="date"
             value={form.end_date}
             onChange={handleChange}
+            error={errors.end_date}
+            required
+            helperText="Bắt buộc — dùng để tính số buổi và lịch đóng học phí"
+            min={form.start_date || undefined}
           />
         </div>
         <Input
@@ -220,7 +239,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
       {isEdit && classData?.id && (
         <div className="mt-6 pt-6 border-t border-gray-200">
           <div className="flex items-center gap-2 mb-2">
-            <Users className="h-5 w-5 text-blue-600" />
+            <Users className="h-5 w-5 text-amber-700" />
             <h3 className="text-base font-semibold text-gray-900">Học sinh trong lớp</h3>
           </div>
           <p className="text-xs text-gray-500 mb-3">

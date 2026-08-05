@@ -15,6 +15,7 @@ const tuitionService = {
 
   // Reports
   getReceivables: (params) => api.get('/tuition/reports/receivables', { params }),
+  getStudentsReceivables: (params) => api.get('/tuition/reports/students-receivables', { params }),
   exportReceivables: (params) =>
     api.get('/tuition/reports/receivables/export', { params, responseType: 'blob' }),
   getRevenue: (params) => api.get('/tuition/reports/revenue', { params }),

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useContext } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Info, Users, BookOpen, ClipboardList, BarChart3, Flag } from 'lucide-react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, Info, Users, BookOpen, ClipboardList, BarChart3, Flag, ClipboardCheck, DollarSign } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Button from '../components/common/Button'
 import ClassOverviewTab from '../components/classes/detail/ClassOverviewTab'
@@ -8,6 +8,9 @@ import ClassStudentsTab from '../components/classes/detail/ClassStudentsTab'
 import ClassLessonsTab from '../components/classes/detail/ClassLessonsTab'
 import ClassAssignmentsTab from '../components/classes/detail/ClassAssignmentsTab'
 import ClassGradesTab from '../components/classes/detail/ClassGradesTab'
+import ClassAttendanceTab from '../components/attendance/ClassAttendanceTab'
+import ClassTuitionPanel from '../components/classes/detail/ClassTuitionPanel'
+import ClassTeacherPayCard from '../components/classes/detail/ClassTeacherPayCard'
 import { useFetch } from '../hooks/useFetch'
 import { useAuth } from '../hooks/useAuth'
 import { ToastContext } from '../context/ToastContext'
@@ -16,27 +19,44 @@ import classesService from '../services/classes.service'
 const ALL_TABS = [
   { key: 'overview', label: 'Tổng quan', icon: Info },
   { key: 'students', label: 'Học sinh', icon: Users },
+  { key: 'tuition', label: 'Học phí', icon: DollarSign, staffOnly: true },
   { key: 'lessons', label: 'Bài học', icon: BookOpen },
   { key: 'assignments', label: 'Bài tập', icon: ClipboardList },
   { key: 'grades', label: 'Điểm số', icon: BarChart3 },
+  { key: 'attendance', label: 'Điểm danh', icon: ClipboardCheck },
 ]
 
 export default function ClassDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState('overview')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabFromUrl = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState(tabFromUrl || 'overview')
   const [endingClass, setEndingClass] = useState(false)
   const { user } = useAuth()
   const { success, error: showError } = useContext(ToastContext)
   const isStudent = user?.role === 'student'
 
   const tabs = useMemo(
-    () =>
-      isStudent
-        ? ALL_TABS.filter((t) => ['overview', 'lessons', 'assignments'].includes(t.key))
-        : ALL_TABS,
+    () => {
+      let list = isStudent
+        ? ALL_TABS.filter((t) => ['overview', 'lessons', 'assignments', 'attendance'].includes(t.key))
+        : ALL_TABS.filter((t) => !t.staffOnly || !isStudent)
+      return list
+    },
     [isStudent]
   )
+
+  useEffect(() => {
+    if (tabFromUrl && tabs.some((t) => t.key === tabFromUrl)) {
+      setActiveTab(tabFromUrl)
+    }
+  }, [tabFromUrl, tabs])
+
+  const selectTab = (key) => {
+    setActiveTab(key)
+    setSearchParams(key === 'overview' ? {} : { tab: key }, { replace: true })
+  }
 
   useEffect(() => {
     if (isStudent && ['students', 'grades'].includes(activeTab)) {
@@ -101,7 +121,7 @@ export default function ClassDetailPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{classInfo.name}</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              {classInfo.subject_name && <span className="text-blue-600">{classInfo.subject_name}</span>}
+              {classInfo.subject_name && <span className="text-amber-700">{classInfo.subject_name}</span>}
               {classInfo.subject_name && classInfo.teacher_name && ' • '}
               {classInfo.teacher_name && <span>GV: {classInfo.teacher_name}</span>}
             </p>
@@ -127,7 +147,7 @@ export default function ClassDetailPage() {
                 : classInfo.status === 'upcoming'
                   ? 'bg-indigo-100 text-indigo-700'
                   : classInfo.status === 'completed'
-                    ? 'bg-blue-100 text-blue-700'
+                    ? 'bg-amber-100 text-amber-800'
                     : 'bg-gray-100 text-gray-600'
             }`}
           >
@@ -184,10 +204,10 @@ export default function ClassDetailPage() {
             return (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => selectTab(tab.key)}
                 className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                   isActive
-                    ? 'border-blue-600 text-blue-600'
+                    ? 'border-blue-600 text-amber-700'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
@@ -195,7 +215,7 @@ export default function ClassDetailPage() {
                 {tab.label}
                 {count !== null && (
                   <span className={`px-1.5 py-0.5 rounded-full text-xs ${
-                    isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                    isActive ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'
                   }`}>
                     {count}
                   </span>
@@ -218,6 +238,18 @@ export default function ClassDetailPage() {
             onReload={reload}
           />
         )}
+        {activeTab === 'tuition' && !isStudent && (
+          <div className="space-y-6">
+            <ClassTuitionPanel
+              classInfo={classInfo}
+              studentCount={stats.student_count}
+              onUpdated={reload}
+            />
+            {user?.role === 'admin' && (
+              <ClassTeacherPayCard classInfo={classInfo} onUpdated={reload} />
+            )}
+          </div>
+        )}
         {activeTab === 'lessons' && (
           <ClassLessonsTab lessons={lessons} classId={id} onReload={reload} />
         )}
@@ -230,6 +262,9 @@ export default function ClassDetailPage() {
             gradeMatrix={gradeMatrix}
             stats={stats}
           />
+        )}
+        {activeTab === 'attendance' && (
+          <ClassAttendanceTab classId={id} readOnly={isStudent} />
         )}
       </div>
     </div>

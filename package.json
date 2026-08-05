@@ -15,7 +15,9 @@
     "install:frontend": "cd frontend && npm install --include=dev",
     "migrate": "cd backend && node src/migrations/run.js",
     "seed": "cd backend && node src/migrations/seed.js",
-    "setup": "npm run install:all && npm run migrate && npm run seed"
+    "setup": "npm run install:all && npm run migrate && npm run seed",
+    "test": "cd backend && npm test",
+    "ci:check": "cd backend && npm run check && npm test && cd ../frontend && npm run build"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
