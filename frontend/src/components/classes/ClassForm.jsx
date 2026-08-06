@@ -141,12 +141,13 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
       onClose={onClose}
       title={isEdit ? 'Chỉnh sửa lớp học' : 'Thêm lớp học mới'}
       size={isEdit ? '3xl' : 'lg'}
+      dataTour="class-form"
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>
             Hủy
           </Button>
-          <Button onClick={handleSubmit} loading={loading}>
+          <Button data-tour="class-form-save" onClick={handleSubmit} loading={loading}>
             {isEdit ? 'Cập nhật' : 'Thêm mới'}
           </Button>
         </>
@@ -167,6 +168,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             error={errors.name}
             placeholder="Lớp Toán A1"
             required
+            dataTour="class-field-name"
           />
           <Select
             label="Môn học"
@@ -175,6 +177,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             onChange={handleChange}
             options={subjectOptions}
             placeholder="Chọn môn học"
+            dataTour="class-field-subject"
           />
           <Select
             label="Giáo viên"
@@ -183,6 +186,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             onChange={handleChange}
             options={teacherOptions}
             placeholder="Chọn giáo viên"
+            dataTour="class-field-teacher"
           />
           <Input
             label="Sĩ số tối đa"
@@ -192,12 +196,14 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             onChange={handleChange}
             error={errors.max_students}
             placeholder="30"
+            dataTour="class-field-max"
           />
           <Select
             label="Trạng thái"
             name="status"
             value={form.status}
             onChange={handleChange}
+            dataTour="class-field-status"
             options={[
               { value: 'active', label: 'Hoạt động' },
               { value: 'inactive', label: 'Ngừng hoạt động' },
@@ -212,6 +218,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             onChange={handleChange}
             error={errors.start_date}
             required
+            dataTour="class-field-start"
           />
           <Input
             label="Ngày kết thúc"
@@ -223,6 +230,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             required
             helperText="Bắt buộc — dùng để tính số buổi và lịch đóng học phí"
             min={form.start_date || undefined}
+            dataTour="class-field-end"
           />
         </div>
         <Input
@@ -233,6 +241,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
           onChange={handleChange}
           placeholder="Mô tả lớp học..."
           rows={3}
+          dataTour="class-field-desc"
         />
       </form>
 

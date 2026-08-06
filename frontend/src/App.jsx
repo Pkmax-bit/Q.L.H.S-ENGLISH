@@ -4,6 +4,7 @@ import { ThemeProvider } from './context/ThemeProvider'
 import { ToastProvider } from './context/ToastContext'
 import { SocketProvider } from './context/SocketContext'
 import { MessengerProvider } from './context/MessengerContext'
+import { TourProvider } from './context/TourContext'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import AppRouter from './routes/AppRouter'
 
@@ -16,7 +17,9 @@ export default function App() {
             <ThemeProvider>
               <SocketProvider>
                 <MessengerProvider>
-                  <AppRouter />
+                  <TourProvider>
+                    <AppRouter />
+                  </TourProvider>
                 </MessengerProvider>
               </SocketProvider>
             </ThemeProvider>

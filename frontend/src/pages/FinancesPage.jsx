@@ -1,3 +1,4 @@
+import PageTourButton from '../components/tour/PageTourButton'
 import { useState, useContext, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import FinanceList from '../components/finances/FinanceList'
@@ -47,7 +48,7 @@ export default function FinancesPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Quản lý Tài chính</h1>
+        <div className="flex items-center gap-3 flex-wrap"><h1 className="text-2xl font-bold text-gray-900">Quản lý Tài chính</h1><PageTourButton /></div>
         <p className="text-sm text-gray-500 mt-1">
           Thu học phí · Hóa đơn · Công nợ · Sổ quỹ
         </p>

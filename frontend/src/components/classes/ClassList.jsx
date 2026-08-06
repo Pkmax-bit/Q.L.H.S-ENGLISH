@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, Download } from 'lucide-react'
 import Table from '../common/Table'
 import Button from '../common/Button'
+import PageTourButton from '../tour/PageTourButton'
 import StatusBadge from '../common/StatusBadge'
 import ConfirmDialog from '../common/ConfirmDialog'
 import ClassForm from './ClassForm'
@@ -85,7 +86,10 @@ export default function ClassList() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Lớp học</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900">Lớp học</h1>
+            <PageTourButton />
+          </div>
           <p className="text-sm text-gray-500 mt-1">{roleDescriptions[user?.role] || 'Quản lý lớp học'}</p>
         </div>
         <div className="flex gap-2">
@@ -93,7 +97,7 @@ export default function ClassList() {
             <Button variant="outline" icon={Download} onClick={handleExport}>Xuất Excel</Button>
           )}
           {isAdmin && (
-            <Button icon={Plus} onClick={() => { setSelected(null); setShowForm(true) }}>Thêm lớp học</Button>
+            <Button icon={Plus} data-tour="classes-add" onClick={() => { setSelected(null); setShowForm(true) }}>Thêm lớp học</Button>
           )}
         </div>
       </div>

@@ -4,6 +4,7 @@ import Button from '../common/Button'
 import LoadingSpinner from '../common/LoadingSpinner'
 import Modal from '../common/Modal'
 import EmptyState from '../common/EmptyState'
+import PageTourButton from '../tour/PageTourButton'
 import { useFetch } from '../../hooks/useFetch'
 import { useAuth } from '../../hooks/useAuth'
 import { ToastContext } from '../../context/ToastContext'
@@ -93,7 +94,10 @@ export default function EnrollmentRequestList() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Yêu cầu thêm học sinh</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900">Yêu cầu thêm học sinh</h1>
+            <PageTourButton />
+          </div>
           <p className="text-sm text-gray-500 mt-1">
             {isAdmin ? 'Duyệt yêu cầu từ giáo viên' : 'Theo dõi yêu cầu bạn đã gửi'}
           </p>
@@ -101,7 +105,7 @@ export default function EnrollmentRequestList() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-2 mb-4 p-1 bg-gray-100 rounded-lg w-fit">
+      <div className="flex gap-2 mb-4 p-1 bg-gray-100 rounded-lg w-fit flex-wrap" data-tour="enroll-req-filters">
         {[
           { key: 'pending', label: 'Chờ duyệt' },
           { key: 'approved', label: 'Đã duyệt' },
@@ -109,7 +113,9 @@ export default function EnrollmentRequestList() {
           { key: '', label: 'Tất cả' },
         ].map(({ key, label }) => (
           <button
-            key={key}
+            key={key || 'all'}
+            type="button"
+            data-tour={key === 'pending' ? 'enroll-req-filter-pending' : undefined}
             onClick={() => setStatusFilter(key)}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
               statusFilter === key
@@ -147,6 +153,7 @@ export default function EnrollmentRequestList() {
               <div
                 key={req.id}
                 className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 hover:shadow-md transition-shadow"
+                data-tour="enroll-req-card"
               >
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div className="flex-1 space-y-1.5">
@@ -200,6 +207,7 @@ export default function EnrollmentRequestList() {
                             size="sm"
                             variant="success"
                             icon={CheckCircle}
+                            data-tour="enroll-req-approve"
                             onClick={() => handleQuickApprove(req)}
                           >
                             Duyệt
@@ -208,6 +216,7 @@ export default function EnrollmentRequestList() {
                             size="sm"
                             variant="danger"
                             icon={XCircle}
+                            data-tour="enroll-req-reject"
                             onClick={() => openReview(req, 'reject')}
                           >
                             Từ chối
@@ -220,6 +229,7 @@ export default function EnrollmentRequestList() {
                           size="sm"
                           variant="outline"
                           icon={XCircle}
+                          data-tour="enroll-req-cancel"
                           onClick={() => handleCancelRequest(req)}
                         >
                           Hủy yêu cầu
@@ -241,6 +251,7 @@ export default function EnrollmentRequestList() {
           onClose={() => setShowReviewModal(false)}
           title={reviewAction === 'approve' ? 'Duyệt yêu cầu' : 'Từ chối yêu cầu'}
           size="md"
+          dataTour="enroll-req-review-modal"
           footer={
             <>
               <Button variant="outline" onClick={() => setShowReviewModal(false)} disabled={processing}>
@@ -251,6 +262,7 @@ export default function EnrollmentRequestList() {
                 onClick={handleReview}
                 loading={processing}
                 icon={reviewAction === 'approve' ? CheckCircle : XCircle}
+                data-tour="enroll-req-review-confirm"
               >
                 {reviewAction === 'approve' ? 'Xác nhận duyệt' : 'Xác nhận từ chối'}
               </Button>
@@ -259,7 +271,7 @@ export default function EnrollmentRequestList() {
         >
           {selectedRequest && (
             <div className="space-y-4">
-              <div className="bg-gray-50 rounded-lg p-3 space-y-1">
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1" data-tour="enroll-req-review-info">
                 <p className="text-sm">
                   <span className="text-gray-500">Học sinh:</span>{' '}
                   <span className="font-semibold text-gray-900">{selectedRequest.student_name}</span>
@@ -280,7 +292,7 @@ export default function EnrollmentRequestList() {
                 )}
               </div>
 
-              <div>
+              <div data-tour="enroll-req-review-note">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Ghi chú phản hồi (tùy chọn)
                 </label>

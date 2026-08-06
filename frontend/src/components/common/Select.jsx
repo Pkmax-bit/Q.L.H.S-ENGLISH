@@ -2,9 +2,11 @@ import { forwardRef } from 'react'
 import clsx from 'clsx'
 
 const Select = forwardRef(function Select(
-  { label, error, options = [], placeholder, className = '', required = false, ...props },
+  { label, error, options = [], placeholder, className = '', required = false, dataTour, ...props },
   ref
 ) {
+  const tourAttr = dataTour ? { 'data-tour': dataTour } : {}
+
   return (
     <div className="w-full">
       {label && (
@@ -20,6 +22,7 @@ const Select = forwardRef(function Select(
           error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-gray-300',
           className
         )}
+        {...tourAttr}
         {...props}
       >
         {placeholder && (

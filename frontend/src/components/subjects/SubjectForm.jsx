@@ -71,22 +71,51 @@ export default function SubjectForm({ isOpen, onClose, subject, onSuccess }) {
       onClose={onClose}
       title={isEdit ? 'Chỉnh sửa môn học' : 'Thêm môn học mới'}
       size="md"
+      dataTour="subject-form"
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>Hủy</Button>
-          <Button onClick={handleSubmit} loading={loading}>{isEdit ? 'Cập nhật' : 'Thêm mới'}</Button>
+          <Button data-tour="subject-form-save" onClick={handleSubmit} loading={loading}>
+            {isEdit ? 'Cập nhật' : 'Thêm mới'}
+          </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
-        <Input label="Tên môn học" name="name" value={form.name} onChange={handleChange} error={errors.name} placeholder="Toán học" required />
-        <Input label="Mã môn" name="code" value={form.code} onChange={handleChange} placeholder="MATH01" />
-        <Input label="Mô tả" name="description" type="textarea" value={form.description} onChange={handleChange} placeholder="Mô tả môn học..." rows={3} />
+        <Input
+          label="Tên môn học"
+          name="name"
+          value={form.name}
+          onChange={handleChange}
+          error={errors.name}
+          placeholder="Toán học"
+          required
+          dataTour="subject-field-name"
+        />
+        <Input
+          label="Mã môn"
+          name="code"
+          value={form.code}
+          onChange={handleChange}
+          placeholder="MATH01"
+          dataTour="subject-field-code"
+        />
+        <Input
+          label="Mô tả"
+          name="description"
+          type="textarea"
+          value={form.description}
+          onChange={handleChange}
+          placeholder="Mô tả môn học..."
+          rows={3}
+          dataTour="subject-field-desc"
+        />
         <Select
           label="Trạng thái"
           name="status"
           value={form.status}
           onChange={handleChange}
+          dataTour="subject-field-status"
           options={[
             { value: 'active', label: 'Hoạt động' },
             { value: 'inactive', label: 'Ngừng' },

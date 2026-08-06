@@ -2,9 +2,11 @@ import { forwardRef } from 'react'
 import clsx from 'clsx'
 
 const Input = forwardRef(function Input(
-  { label, error, helperText, className = '', type = 'text', required = false, ...props },
+  { label, error, helperText, className = '', type = 'text', required = false, dataTour, ...props },
   ref
 ) {
+  const tourAttr = dataTour ? { 'data-tour': dataTour } : {}
+
   return (
     <div className="w-full">
       {label && (
@@ -21,6 +23,7 @@ const Input = forwardRef(function Input(
             error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-slate-200',
             className
           )}
+          {...tourAttr}
           {...props}
         />
       ) : (
@@ -32,6 +35,7 @@ const Input = forwardRef(function Input(
             error ? 'border-red-300 focus:ring-red-500 focus:border-red-500' : 'border-slate-200',
             className
           )}
+          {...tourAttr}
           {...props}
         />
       )}

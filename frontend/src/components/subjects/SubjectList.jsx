@@ -2,6 +2,7 @@ import { useState, useContext, useCallback } from 'react'
 import { Plus } from 'lucide-react'
 import Table from '../common/Table'
 import Button from '../common/Button'
+import PageTourButton from '../tour/PageTourButton'
 import StatusBadge from '../common/StatusBadge'
 import ConfirmDialog from '../common/ConfirmDialog'
 import SubjectForm from './SubjectForm'
@@ -54,10 +55,13 @@ export default function SubjectList() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Môn học</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900">Môn học</h1>
+            <PageTourButton />
+          </div>
           <p className="text-sm text-gray-500 mt-1">Quản lý danh sách môn học</p>
         </div>
-        <Button icon={Plus} onClick={() => { setSelected(null); setShowForm(true) }}>Thêm môn học</Button>
+        <Button icon={Plus} data-tour="subjects-add" onClick={() => { setSelected(null); setShowForm(true) }}>Thêm môn học</Button>
       </div>
 
       <Table

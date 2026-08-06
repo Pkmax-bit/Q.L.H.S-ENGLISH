@@ -160,6 +160,7 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
       <NavLink
         key={item.path}
         to={item.path}
+        data-tour={`nav-${item.path.replace(/^\//, '').replace(/\//g, '-')}`}
         onClick={() => setMobileOpen(false)}
         className={clsx(
           'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',

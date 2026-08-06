@@ -4,7 +4,7 @@ import UserAvatar from './UserAvatar'
 import Input from './Input'
 import socialService from '../../services/social.service'
 
-export default function AvatarPicker({ value, name, fullName, onChange, disabled = false }) {
+export default function AvatarPicker({ value, name, fullName, onChange, disabled = false, dataTour }) {
   const inputRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
@@ -30,7 +30,7 @@ export default function AvatarPicker({ value, name, fullName, onChange, disabled
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-tour={dataTour || undefined}>
       <span className="block text-sm font-medium text-gray-700">Ảnh đại diện</span>
       <div className="flex items-center gap-4">
         <div className="relative">
@@ -42,6 +42,7 @@ export default function AvatarPicker({ value, name, fullName, onChange, disabled
               disabled={uploading}
               className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-amber-600 text-white shadow-md hover:bg-amber-700 disabled:opacity-60"
               title="Chọn ảnh"
+              data-tour={dataTour ? `${dataTour}-upload` : undefined}
             >
               {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
             </button>

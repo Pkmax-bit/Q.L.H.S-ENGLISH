@@ -12,7 +12,6 @@ export default function MainLayout() {
 
   return (
     <div className="relative min-h-screen bg-[var(--color-page-bg)]">
-      {/* Hình nền / gradient */}
       <div
         className="fixed inset-0 pointer-events-none z-0"
         style={{
@@ -22,12 +21,10 @@ export default function MainLayout() {
           backgroundAttachment: 'fixed',
         }}
       />
-      {/* Lớp phủ mờ */}
       <div
         className="fixed inset-0 pointer-events-none z-0"
         style={{ backgroundColor: 'var(--bg-overlay, rgba(0,0,0,0))' }}
       />
-      {/* Mesh fallback khi không có hình nền */}
       <div className="app-shell-mesh" aria-hidden />
 
       <div className="relative z-10 flex min-h-screen">

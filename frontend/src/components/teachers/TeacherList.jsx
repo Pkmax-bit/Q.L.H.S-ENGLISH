@@ -12,6 +12,7 @@ import { ToastContext } from '../../context/ToastContext'
 import teachersService from '../../services/teachers.service'
 import { formatDate } from '../../utils/formatDate'
 import UserAvatar from '../common/UserAvatar'
+import PageTourButton from '../tour/PageTourButton'
 
 export default function TeacherList() {
   const [showForm, setShowForm] = useState(false)
@@ -92,14 +93,17 @@ export default function TeacherList() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Giáo viên</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900">Giáo viên</h1>
+            <PageTourButton />
+          </div>
           <p className="text-sm text-gray-500 mt-1">Quản lý danh sách giáo viên</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" icon={Download} onClick={handleExport}>
             Xuất Excel
           </Button>
-          <Button icon={Plus} onClick={() => { setSelected(null); setShowForm(true) }}>
+          <Button icon={Plus} data-tour="teachers-add" onClick={() => { setSelected(null); setShowForm(true) }}>
             Thêm giáo viên
           </Button>
         </div>
