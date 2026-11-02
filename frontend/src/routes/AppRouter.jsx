@@ -35,12 +35,18 @@ import ShopPlayPage from '../pages/ShopPlayPage'
 import HarvestContentPage from '../pages/HarvestContentPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import LandingPage from '../pages/LandingPage'
+import BookingBoardPage from '../pages/BookingBoardPage'
+import BookingBoardsPage from '../pages/BookingBoardsPage'
+import BookingBoardDetailPage from '../pages/BookingBoardDetailPage'
 
 export default function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
+
+      {/* Trang đăng ký lịch học công khai — chỉ cần số điện thoại, không qua ProtectedRoute */}
+      <Route path="/dk/:slug" element={<BookingBoardPage />} />
 
       <Route
         element={
@@ -173,6 +179,22 @@ export default function AppRouter() {
         />
 
         {/* Admin + Teacher - Enrollment requests */}
+        <Route
+          path="booking-boards"
+          element={
+            <RoleRoute roles={['admin', 'teacher']}>
+              <BookingBoardsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="booking-boards/:id"
+          element={
+            <RoleRoute roles={['admin', 'teacher']}>
+              <BookingBoardDetailPage />
+            </RoleRoute>
+          }
+        />
         <Route
           path="enrollment-requests"
           element={

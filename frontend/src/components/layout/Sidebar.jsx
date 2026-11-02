@@ -5,7 +5,7 @@ import {
   FileText, ClipboardList, CalendarDays, Building2, Wallet,
   ChevronLeft, ChevronRight, ChevronDown, X, BookCopy, UserCheck, Backpack,
   PenLine, TableProperties, BarChart3, ListChecks, Library, LayoutGrid, Package,
-  Palette, MessageCircle, Globe2, ShoppingBag, Gamepad2,
+  Palette, MessageCircle, Globe2, ShoppingBag, Gamepad2, CalendarCheck,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../hooks/useAuth'
@@ -68,6 +68,7 @@ const menuSections = [
     label: 'Vận hành',
     items: [
       { path: '/schedules', icon: CalendarDays, label: 'Thời khóa biểu', roles: ['admin', 'teacher', 'student'] },
+      { path: '/booking-boards', icon: CalendarCheck, label: 'Bảng đăng ký lịch', roles: ['admin', 'teacher'] },
       { path: '/facilities', icon: Building2, label: 'Cơ sở & Phòng học', roles: ['admin'] },
       { path: '/finances', icon: Wallet, label: 'Tài chính', roles: ['admin'] },
     ],
