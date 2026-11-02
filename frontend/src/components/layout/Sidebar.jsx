@@ -5,7 +5,7 @@ import {
   FileText, ClipboardList, CalendarDays, Building2, Wallet,
   ChevronLeft, ChevronRight, ChevronDown, X, BookCopy, UserCheck, Backpack,
   PenLine, TableProperties, BarChart3, ListChecks, Library, LayoutGrid, Package,
-  Palette, MessageCircle, Globe2, ShoppingBag, Gamepad2, CalendarCheck,
+  Palette, MessageCircle, Globe2, ShoppingBag, Gamepad2, BookOpenCheck, CalendarCheck,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../hooks/useAuth'
@@ -17,6 +17,7 @@ const menuSections = [
     label: 'Tổng quan',
     items: [
       { path: '/dashboard', icon: LayoutDashboard, label: 'Tổng quan', roles: ['admin', 'teacher', 'student'] },
+      { path: '/guide', icon: BookOpenCheck, label: 'Hướng dẫn thao tác', roles: ['admin', 'teacher', 'student'] },
       { path: '/admin-hub', icon: LayoutGrid, label: 'Trung tâm quản trị', roles: ['admin'] },
     ],
   },
@@ -69,6 +70,7 @@ const menuSections = [
     items: [
       { path: '/schedules', icon: CalendarDays, label: 'Thời khóa biểu', roles: ['admin', 'teacher', 'student'] },
       { path: '/booking-boards', icon: CalendarCheck, label: 'Bảng đăng ký lịch', roles: ['admin', 'teacher'] },
+      { path: '/booking-registrants', icon: Wallet, label: 'Học viên đăng ký', roles: ['admin'] },
       { path: '/facilities', icon: Building2, label: 'Cơ sở & Phòng học', roles: ['admin'] },
       { path: '/finances', icon: Wallet, label: 'Tài chính', roles: ['admin'] },
     ],
@@ -157,11 +159,13 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
       ? location.pathname === '/dashboard'
       : location.pathname.startsWith(item.path)
 
+    const tourId = `nav-${item.path.replace(/^\//, '').replace(/\//g, '-')}`
+
     return (
       <NavLink
         key={item.path}
         to={item.path}
-        data-tour={`nav-${item.path.replace(/^\//, '').replace(/\//g, '-')}`}
+        data-tour={tourId}
         onClick={() => setMobileOpen(false)}
         className={clsx(
           'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all',

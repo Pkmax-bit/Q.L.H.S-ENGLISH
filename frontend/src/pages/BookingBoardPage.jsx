@@ -3,14 +3,16 @@ import { useParams } from 'react-router-dom'
 import { CalendarDays, LayoutGrid, List, Lock, LogOut, RefreshCw, TriangleAlert } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Button from '../components/common/Button'
+import Select from '../components/common/Select'
 import PhoneGate from '../components/booking/PhoneGate'
 import WeekPicker from '../components/booking/WeekPicker'
 import WeekSlotGrid from '../components/booking/WeekSlotGrid'
 import HourGrid from '../components/booking/HourGrid'
 import SelectionBar from '../components/booking/SelectionBar'
+import RequestDialog from '../components/booking/RequestDialog'
 import MyBookingsBar from '../components/booking/MyBookingsBar'
 import bookingService, { bookingSession } from '../services/booking.service'
-import { DAY_SHORT, formatDate, formatDateTime } from '../lib/bookingUtils'
+import { DAY_SHORT, STEP_OPTIONS, formatDate, formatDateTime } from '../lib/bookingUtils'
 
 const REFRESH_MS = 25000
 
@@ -32,8 +34,12 @@ export default function BookingBoardPage() {
   const [flash, setFlash] = useState(null) // { type, text }
   // 'hours' = thời khóa biểu 7h-23h, 'days' = danh sách theo ngày (dễ đọc trên điện thoại)
   const [view, setView] = useState('hours')
+  const [step, setStep] = useState(15)
   const [selectedIds, setSelectedIds] = useState([])
+  const [myRequests, setMyRequests] = useState([])
+  const [selectedCells, setSelectedCells] = useState([])
   const [booking, setBooking] = useState(false)
+  const [requestDialog, setRequestDialog] = useState(false)
 
   const flashTimer = useRef(null)
   const showFlash = useCallback((type, text) => {
@@ -57,6 +63,7 @@ export default function BookingBoardPage() {
         setSlots(data.slots || [])
         setMyEntries(data.my_entries || [])
         setMyAllEntries(data.my_all_entries || [])
+        setMyRequests(data.my_requests || [])
         setNotFound('')
       } catch (err) {
         if (err.response?.status === 404) {
@@ -88,10 +95,17 @@ export default function BookingBoardPage() {
 
   useEffect(() => () => clearTimeout(flashTimer.current), [])
 
+  const handleStepChange = (e) => {
+    // Khóa ô trống gắn với mốc phút, đổi bước thì ô cũ trỏ vào khung giờ khác
+    setSelectedCells([])
+    setStep(Number(e.target.value))
+  }
+
   const handleSelectWeek = (nextWeek) => {
     if (nextWeek === week) return
     // Ca đã chọn thuộc tuần cũ — giữ lại thì bấm xác nhận sẽ đặt nhầm tuần
     setSelectedIds([])
+    setSelectedCells([])
     setWeek(nextWeek)
     load({ silent: true, weekOverride: nextWeek })
   }
@@ -156,8 +170,40 @@ export default function BookingBoardPage() {
     return undefined
   }
 
-  const handleToggleSelect = ({ key }) => {
-    setSelectedIds((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
+  // Lưới trả về hai loại: ca có sẵn (key = uuid) và ô trống (key = "cell|dow|hour").
+  // Giữ riêng hai danh sách vì hai thứ gọi API khác nhau: một bên giữ chỗ, một
+  // bên gửi nguyện vọng.
+  const handleToggleSelect = (item) => {
+    if (item.type === 'cell') {
+      setSelectedCells((prev) =>
+        prev.some((c) => c.key === item.key)
+          ? prev.filter((c) => c.key !== item.key)
+          : [
+              ...prev,
+              {
+                key: item.key,
+                day_of_week: item.day_of_week,
+                date: item.date,
+                start_time: item.start_time,
+                end_time: item.end_time,
+              },
+            ]
+      )
+      return
+    }
+    setSelectedIds((prev) =>
+      prev.includes(item.key) ? prev.filter((k) => k !== item.key) : [...prev, item.key]
+    )
+  }
+
+  const handleCancelRequest = async (req) => {
+    try {
+      await bookingService.cancelMyRequest(req.id)
+      showFlash('success', 'Đã rút nguyện vọng')
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không rút được')
+    }
+    await load({ silent: true })
   }
 
   /**
@@ -193,11 +239,45 @@ export default function BookingBoardPage() {
     await load({ silent: true })
 
     if (failed.length === 0) {
-      showFlash('success', `Đã giữ ${ok.length} ca`)
+      showFlash('success', ok.length > 0 ? `Đã giữ ${ok.length} ca` : 'Xong')
     } else if (ok.length === 0) {
       showFlash('error', failed.join(' · '))
     } else {
       showFlash('error', `Giữ được ${ok.length} ca. Không được: ${failed.join(' · ')}`)
+    }
+  }
+
+  /**
+   * Bấm nút xác nhận: ca có sẵn thì giữ chỗ luôn, còn ô trống thì MỞ HỘP CHỌN
+   * LỊCH để hỏi giờ + số buổi trước khi gửi.
+   */
+  const handleConfirm = async () => {
+    if (selectedIds.length > 0) await handleConfirmBooking()
+    if (selectedCells.length > 0) setRequestDialog(true)
+  }
+
+  const submitRequests = async ({ session_count: sessionCount, note, start_time: st, end_time: en }) => {
+    setBooking(true)
+    try {
+      const res = await bookingService.createRequests(
+        slug,
+        selectedCells.map((c) => ({
+          session_date: c.date,
+          // Chọn đúng một khung thì dùng giờ người dùng vừa sửa trong hộp thoại
+          start_time: st && selectedCells.length === 1 ? st : c.start_time,
+          end_time: en && selectedCells.length === 1 ? en : c.end_time,
+          session_count: sessionCount,
+          note,
+        }))
+      )
+      showFlash('success', res.data?.message || 'Đã gửi nguyện vọng')
+      setSelectedCells([])
+      setRequestDialog(false)
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không gửi được nguyện vọng')
+    } finally {
+      setBooking(false)
+      await load({ silent: true })
     }
   }
 
@@ -316,9 +396,17 @@ export default function BookingBoardPage() {
             {multiWeek && board?.selected_week
               ? `Đang xem tuần ${formatDate(board.selected_week)} – ${formatDate(board.selected_week_end)}`
               : `Số chỗ cập nhật mỗi ${REFRESH_MS / 1000} giây`}
-            {view === 'hours' && ' · bấm chọn các khung giờ rồi bấm Đặt lịch'}
+            {view === 'hours' && ' · bấm ô có lớp để giữ chỗ, ô trống để xin mở lớp giờ đó'}
           </p>
           <div className="flex items-center gap-1">
+            {view === 'hours' && (
+              <Select
+                value={String(step)}
+                onChange={handleStepChange}
+                options={STEP_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
+                className="w-28 py-1.5 text-xs"
+              />
+            )}
             {/* Lưới 17 giờ x 7 ngày phải cuộn ngang trên điện thoại; dạng danh sách
                 theo ngày dễ đọc hơn nhiều nên để người dùng tự chọn */}
             <Button
@@ -357,25 +445,51 @@ export default function BookingBoardPage() {
               slots={slots}
               weekStart={week}
               busySlotId={busySlotId}
-              selected={selectedIds}
+              stepMinutes={step}
+              selected={[...selectedIds, ...selectedCells.map((c) => c.key)]}
+              myRequests={myRequests}
               onToggleSelect={handleToggleSelect}
               onSlotClick={handleSlotClick}
+              onRequestClick={handleCancelRequest}
+            />
+            <RequestDialog
+              isOpen={requestDialog}
+              cells={selectedCells}
+              saving={booking}
+              onClose={() => setRequestDialog(false)}
+              onSubmit={submitRequests}
             />
             <SelectionBar
-              count={selectedIds.length}
-              items={selectedIds
-                .map((id) => slots.find((x) => x.id === id))
-                .filter(Boolean)
-                .map((x) => `${DAY_SHORT[x.day_of_week]} ${x.start_time}`)}
-              actionLabel={`Đặt lịch ${selectedIds.length} ca`}
+              count={selectedIds.length + selectedCells.length}
+              items={[
+                ...selectedIds
+                  .map((id) => slots.find((x) => x.id === id))
+                  .filter(Boolean)
+                  .map((x) => `${DAY_SHORT[x.day_of_week]} ${x.start_time}`),
+                ...selectedCells.map(
+                  (c) => `${DAY_SHORT[c.day_of_week]} ${c.start_time}–${c.end_time} (xin mở)`
+                ),
+              ]}
+              actionLabel={
+                selectedCells.length === 0
+                  ? `Đặt lịch ${selectedIds.length} ca`
+                  : selectedIds.length === 0
+                    ? `Chọn số buổi cho ${selectedCells.length} giờ`
+                    : `Đặt ${selectedIds.length} ca + chọn số buổi`
+              }
               loading={booking}
-              onConfirm={handleConfirmBooking}
-              onClear={() => setSelectedIds([])}
+              onConfirm={handleConfirm}
+              onClear={() => {
+                setSelectedIds([])
+                setSelectedCells([])
+              }}
               hint={
-                board?.max_slots_per_person > 0 &&
-                myEntries.length + selectedIds.length > board.max_slots_per_person
-                  ? `Bảng giới hạn ${board.max_slots_per_person} ca/tuần, bạn đã giữ ${myEntries.length} — phần vượt sẽ bị từ chối.`
-                  : null
+                selectedCells.length > 0
+                  ? 'Giờ chưa có lớp chỉ là nguyện vọng — trung tâm xem rồi mới mở lớp, chưa giữ chỗ cho bạn.'
+                  : board?.max_slots_per_person > 0 &&
+                      myEntries.length + selectedIds.length > board.max_slots_per_person
+                    ? `Bảng giới hạn ${board.max_slots_per_person} ca/tuần, bạn đã giữ ${myEntries.length} — phần vượt sẽ bị từ chối.`
+                    : null
               }
             />
           </>

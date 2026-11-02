@@ -54,6 +54,25 @@ const registerSlot = handle(async (req, res) => {
   return response.success(res, result, message);
 });
 
+const createRequests = handle(async (req, res) => {
+  const result = await bookingService.createRequests(
+    req.params.slug,
+    req.registrant.id,
+    (req.body || {}).cells
+  );
+  const message = result.created === 0
+    ? 'Những khung giờ này bạn đã gửi nguyện vọng rồi'
+    : result.skipped > 0
+      ? `Đã gửi nguyện vọng ${result.created} khung giờ (${result.skipped} khung đã gửi trước đó)`
+      : `Đã gửi nguyện vọng ${result.created} khung giờ — trung tâm sẽ xem và mở lớp`;
+  return response.created(res, result, message);
+});
+
+const cancelMyRequest = handle(async (req, res) => {
+  const result = await bookingService.cancelRequest(req.params.requestId, req.registrant.id);
+  return response.success(res, result, 'Đã rút nguyện vọng');
+});
+
 const cancelMyEntry = handle(async (req, res) => {
   const result = await bookingService.cancelEntry(req.params.entryId, req.registrant.id);
   return response.success(res, result, 'Đã hủy chỗ');
@@ -123,6 +142,30 @@ const exportRegistrations = handle(async (req, res) => {
   return res.status(200).send(content);
 });
 
+const listRequests = handle(async (req, res) => {
+  const result = await bookingService.listRequests(req.params.id, req.query);
+  return response.success(res, result, 'Lấy danh sách nguyện vọng thành công');
+});
+
+const reviewRequests = handle(async (req, res) => {
+  const { ids, status, review_note } = req.body || {};
+  const result = await bookingService.reviewRequests(ids, status, req.user, review_note);
+  return response.success(
+    res,
+    result,
+    status === 'approved' ? `Đã duyệt ${result.updated} nguyện vọng` : `Đã từ chối ${result.updated} nguyện vọng`
+  );
+});
+
+const createSlotFromRequests = handle(async (req, res) => {
+  const result = await bookingService.createSlotFromRequests(req.params.id, req.body || {}, req.user);
+  return response.created(
+    res,
+    result,
+    `Đã mở ca và duyệt ${result.approved_requests} nguyện vọng cho khung giờ này`
+  );
+});
+
 const adminAddEntry = handle(async (req, res) => {
   const result = await bookingService.adminAddEntry(req.params.slotId, req.body || {});
   return response.created(res, result, 'Đã đăng ký hộ');
@@ -139,6 +182,8 @@ module.exports = {
   getMe,
   registerSlot,
   cancelMyEntry,
+  createRequests,
+  cancelMyRequest,
   listBoards,
   getBoardDetail,
   createBoard,
@@ -151,6 +196,9 @@ module.exports = {
   deleteSlot,
   listRegistrations,
   exportRegistrations,
+  listRequests,
+  reviewRequests,
+  createSlotFromRequests,
   adminAddEntry,
   adminCancelEntry,
 };

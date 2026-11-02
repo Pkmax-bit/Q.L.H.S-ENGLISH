@@ -1,28 +1,33 @@
-import { Check, Plus, Users } from 'lucide-react'
+import { Check, Hand, Plus, Users } from 'lucide-react'
 import clsx from 'clsx'
 import {
-  DAY_SHORT, WEEK_ORDER, colorClasses, formatShortDate, isPastDate, toMinutes,
+  DAY_SHORT, MAX_MINUTE_OF_DAY, WEEK_ORDER, colorClasses, formatMoney, formatShortDate,
+  isPastDate, minutesToHHMM, toMinutes,
 } from '../../lib/bookingUtils'
 
 const FIRST_HOUR = 7
 const LAST_HOUR = 23
 const HOURS = Array.from({ length: LAST_HOUR - FIRST_HOUR + 1 }, (_, i) => FIRST_HOUR + i)
 
-const hourOf = (hhmm) => Math.floor(toMinutes(hhmm) / 60)
 const pad2 = (n) => String(n).padStart(2, '0')
 
-const cellKey = (dow, hour) => `${dow}|${hour}`
+/** Khóa ô trống: gồm cả phút để chọn được giờ lẻ (09:15 khác 09:00) */
+const cellKey = (dow, minute) => `cell|${dow}|${minute}`
 
 /**
  * Thời khóa biểu dạng lưới: hàng = giờ 7h–23h, cột = T2…CN.
  *
- * Cách dùng: bấm để CHỌN (tích xanh), chọn xong bao nhiêu ô tùy ý rồi mới bấm
- * nút xác nhận ở thanh hành động. Không gọi API ngay lúc bấm — lỡ tay một cái
- * là mất chỗ hoặc tạo nhầm ca, mà lại phải bấm hủy từng cái.
+ * `stepMinutes` chia nhỏ từng hàng giờ: **mặc định 15 = bốn ô con mỗi giờ**,
+ * còn 60 = một ô, 30 = hai ô, 5 = mười hai ô. Vẫn giữ 17 hàng giờ làm khung thay
+ * vì sinh thẳng 204 hàng — cột giờ còn đọc được.
  *
- * - mode="public": chọn các ca muốn giữ. Riêng ca MÌNH ĐÃ GIỮ thì bấm là hủy
- *   luôn, không gom lô — không ai đi "hủy hàng loạt" cả.
- * - mode="admin": chọn các ô TRỐNG để tạo ca; bấm ca có sẵn thì mở form sửa.
+ * Cách dùng: bấm để CHỌN (tích xanh), chọn xong bao nhiêu ô tùy ý rồi mới bấm
+ * nút xác nhận. Không gọi API ngay lúc bấm — lỡ tay một cái là mất chỗ hoặc tạo
+ * nhầm ca, mà lại phải đi hủy từng cái.
+ *
+ * - mode="public": ca có sẵn → chọn để giữ chỗ (ca mình đã giữ thì bấm là hủy
+ *   luôn, không ai hủy hàng loạt). Ô trống → chọn để xin mở lớp giờ đó.
+ * - mode="admin": ô trống → chọn để tạo ca; bấm ca có sẵn thì mở form sửa.
  *
  * 17 hàng × 7 cột không vừa màn hình điện thoại nên lưới cuộn ngang và cột giờ
  * được ghim — nếu không, cuộn sang T6 là mất trục giờ, không biết đang xem giờ nào.
@@ -32,27 +37,39 @@ export default function HourGrid({
   board,
   slots = [],
   weekStart,
+  stepMinutes = 15,
   busySlotId,
   selected = [],
+  myRequests = [],
   onToggleSelect,
   onSlotClick,
+  onRequestClick,
 }) {
   const accepting = board?.is_accepting
   const isAdmin = mode === 'admin'
   const selectedSet = new Set(selected)
+  const step = [60, 30, 15, 5].includes(Number(stepMinutes)) ? Number(stepMinutes) : 15
+  const subPerHour = 60 / step
+  // Chiều cao ô theo từng bước. Trước đây dùng ngưỡng step>=30 nên ô 15 phút bị
+  // tụt xuống cùng chiều cao với ô 5 phút — bé tới mức khó bấm trúng.
+  const cellH = { 60: 'h-9', 30: 'h-8', 15: 'h-7', 5: 'h-4' }[step]
+  // Chỉ đủ chỗ in giờ khi ô cao từ 15 phút trở lên
+  const showLabel = step >= 15
+
+  // Nguyện vọng đã gửi, tra theo (ngày|giờ bắt đầu)
+  const requestAt = new Map(myRequests.map((r) => [`${r.date}|${r.start_time}`, r]))
 
   // Ca nằm ngoài 7h–23h vẫn phải hiện ở đâu đó, không được im lặng biến mất
-  const outside = slots.filter(
-    (s) => hourOf(s.start_time) < FIRST_HOUR || hourOf(s.start_time) > LAST_HOUR
-  )
+  const outside = slots.filter((s) => {
+    const h = Math.floor(toMinutes(s.start_time) / 60)
+    return h < FIRST_HOUR || h > LAST_HOUR
+  })
 
-  const byCell = new Map()
+  const byDay = new Map(WEEK_ORDER.map((d) => [d, []]))
   for (const slot of slots) {
-    const h = hourOf(slot.start_time)
+    const h = Math.floor(toMinutes(slot.start_time) / 60)
     if (h < FIRST_HOUR || h > LAST_HOUR) continue
-    const key = cellKey(slot.day_of_week, h)
-    if (!byCell.has(key)) byCell.set(key, [])
-    byCell.get(key).push(slot)
+    if (byDay.has(slot.day_of_week)) byDay.get(slot.day_of_week).push(slot)
   }
 
   // Ngày thật của từng cột: lấy từ chính các ca nếu có, nếu không thì tính từ weekStart
@@ -66,13 +83,12 @@ export default function HourGrid({
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
   }
 
-  const SlotChip = ({ slot }) => {
+  const SlotChip = ({ slot, compact }) => {
     const mine = slot.my_entry
     const tone = colorClasses(slot.color)
     const past = isPastDate(slot.date)
     const isSelected = selectedSet.has(slot.id)
 
-    // Ca không thể chọn để giữ chỗ: bảng đóng, ngày đã qua, hoặc đầy mà không có hàng chờ
     const bookable = accepting && !past && (!slot.is_full || slot.allow_waitlist)
     const disabled = isAdmin ? false : !mine && !bookable
 
@@ -86,22 +102,21 @@ export default function HourGrid({
         type="button"
         disabled={disabled || busySlotId === slot.id}
         onClick={handleClick}
-        title={
+        title={`${slot.start_time}–${slot.end_time}${slot.label ? ' · ' + slot.label : ''} — ${
           isAdmin
-            ? 'Sửa ca này'
+            ? 'bấm để sửa'
             : mine
-              ? 'Bấm để hủy chỗ'
+              ? 'bấm để hủy chỗ'
               : !bookable
-                ? 'Ca đã đủ chỗ'
+                ? 'đã đủ chỗ'
                 : isSelected
-                  ? 'Bỏ chọn ca này'
-                  : 'Chọn ca này'
-        }
+                  ? 'bỏ chọn'
+                  : 'chọn để giữ chỗ'
+        }`}
         className={clsx(
-          'relative w-full rounded-md border-l-4 border-y border-r px-1.5 py-1 text-left transition-all',
-          mine
-            ? 'border-emerald-300 border-l-emerald-500 bg-emerald-50'
-            : clsx(tone.border, tone.bg),
+          'relative w-full rounded-md border-l-4 border-y border-r px-1.5 text-left transition-all',
+          compact ? 'py-0.5' : 'py-1',
+          mine ? 'border-emerald-300 border-l-emerald-500 bg-emerald-50' : clsx(tone.border, tone.bg),
           isSelected && 'ring-2 ring-primary-500 ring-offset-1',
           !disabled && 'hover:shadow-sm active:scale-[0.98]',
           disabled && 'cursor-not-allowed opacity-55',
@@ -116,8 +131,13 @@ export default function HourGrid({
         <span className="block truncate text-[11px] font-semibold leading-tight text-stone-800">
           {slot.start_time}–{slot.end_time}
         </span>
-        {slot.label && (
+        {!compact && slot.label && (
           <span className="block truncate text-[11px] leading-tight text-slate-600">{slot.label}</span>
+        )}
+        {!compact && slot.price_amount !== null && slot.price_amount !== undefined && (
+          <span className="block truncate text-[10px] font-medium leading-tight text-emerald-700">
+            {formatMoney(slot.price_amount)}
+          </span>
         )}
         <span
           className={clsx(
@@ -133,30 +153,97 @@ export default function HourGrid({
     )
   }
 
-  const EmptyCell = ({ dow, hour, date }) => {
-    const key = cellKey(dow, hour)
+  /** Một ô con: ca bắt đầu ở đây, hoặc ô trống chọn được, hoặc phần bị ca khác phủ */
+  const SubCell = ({ dow, minute, date, daySlots }) => {
+    const subEnd = Math.min(minute + step, MAX_MINUTE_OF_DAY + 1)
+    const hhmm = minutesToHHMM(minute)
+
+    const starting = daySlots.filter((s) => {
+      const st = toMinutes(s.start_time)
+      return st >= minute && st < subEnd
+    })
+    if (starting.length > 0) {
+      return (
+        <div className="space-y-1">
+          {starting.map((s) => (
+            <SlotChip key={s.id} slot={s} compact={step < 30} />
+          ))}
+        </div>
+      )
+    }
+
+    // Ca khác đè lên khoảng này (vd ca 18:00–19:30 phủ ô 18:30) -> không chọn được
+    const covered = daySlots.some(
+      (s) => toMinutes(s.start_time) < subEnd && toMinutes(s.end_time) > minute
+    )
+    if (covered) return <div className="h-full min-h-[14px] rounded bg-slate-100/70" aria-hidden="true" />
+
+    const past = date ? isPastDate(date) : false
+    const myReq = requestAt.get(`${date}|${hhmm}`)
+    const canAct = isAdmin || (accepting && !past)
+
+    if (myReq) {
+      return (
+        <button
+          type="button"
+          onClick={() => onRequestClick?.(myReq)}
+          title={`Bạn đã xin học ${DAY_SHORT[dow]} ${myReq.start_time}–${myReq.end_time}${myReq.session_count > 1 ? ` · ${myReq.session_count} buổi` : ''} — bấm để rút`}
+          className={clsx(
+            'flex w-full items-center justify-center gap-1 rounded-md border border-dashed border-amber-400 bg-amber-50 font-semibold text-amber-700 hover:bg-amber-100',
+            cellH,
+            showLabel ? 'text-[10px]' : 'text-[9px]'
+          )}
+        >
+          <Hand className={showLabel ? 'h-3 w-3' : 'h-2.5 w-2.5'} />
+          {step >= 30 ? 'đã xin' : step === 15 ? myReq.start_time : ''}
+        </button>
+      )
+    }
+
+    if (!canAct) return <div className="min-h-[14px]" aria-hidden="true" />
+
+    const key = cellKey(dow, minute)
     const isSelected = selectedSet.has(key)
 
     return (
       <button
         type="button"
-        onClick={() => onToggleSelect?.({ type: 'cell', key, day_of_week: dow, hour, date })}
-        title={
-          isSelected
-            ? `Bỏ chọn ${DAY_SHORT[dow]} ${pad2(hour)}:00`
-            : `Chọn ${DAY_SHORT[dow]} ${pad2(hour)}:00 để tạo ca`
+        onClick={() =>
+          onToggleSelect?.({
+            type: 'cell',
+            key,
+            day_of_week: dow,
+            date,
+            minute,
+            start_time: hhmm,
+            end_time: minutesToHHMM(subEnd),
+            duration: step,
+          })
         }
+        title={`${DAY_SHORT[dow]} ${hhmm}–${minutesToHHMM(subEnd)} — ${
+          isSelected ? 'bỏ chọn' : isAdmin ? 'chọn để tạo ca' : 'chọn để xin mở lớp giờ này'
+        }`}
         className={clsx(
-          'group flex h-9 w-full items-center justify-center rounded-md border border-dashed transition-colors',
+          'group flex w-full items-center justify-center gap-1 rounded-md border border-dashed text-[10px] font-medium transition-colors',
+          cellH,
           isSelected
             ? 'border-primary-500 bg-primary-100 text-primary-700'
             : 'border-transparent text-slate-300 hover:border-primary-300 hover:bg-primary-50/60 hover:text-primary-600'
         )}
       >
         {isSelected ? (
-          <Check className="h-3.5 w-3.5" strokeWidth={3} />
+          <Check className={showLabel ? 'h-3.5 w-3.5' : 'h-2.5 w-2.5'} strokeWidth={3} />
         ) : (
-          <Plus className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
+          <Plus
+            className={clsx(
+              'opacity-0 transition-opacity group-hover:opacity-100',
+              showLabel ? 'h-3.5 w-3.5' : 'h-2.5 w-2.5'
+            )}
+          />
+        )}
+        {/* In mốc phút để biết đang bấm ô nào; bước 60 thì đã có nhãn ở cột giờ */}
+        {showLabel && step < 60 && !isSelected && (
+          <span className="opacity-0 transition-opacity group-hover:opacity-100">{hhmm}</span>
         )}
       </button>
     )
@@ -196,7 +283,7 @@ export default function HourGrid({
             </div>
 
             {WEEK_ORDER.map((dow) => {
-              const cellSlots = byCell.get(cellKey(dow, hour)) || []
+              const daySlots = byDay.get(dow) || []
               const date = dateOf(dow)
               const past = date ? isPastDate(date) : false
 
@@ -208,14 +295,15 @@ export default function HourGrid({
                     past && 'bg-slate-50/60'
                   )}
                 >
-                  {cellSlots.map((slot) => (
-                    <SlotChip key={slot.id} slot={slot} />
+                  {Array.from({ length: subPerHour }, (_, i) => (
+                    <SubCell
+                      key={i}
+                      dow={dow}
+                      minute={hour * 60 + i * step}
+                      date={date}
+                      daySlots={daySlots}
+                    />
                   ))}
-
-                  {/* Ô trống: chỉ admin chọn được, để tạo ca đúng thứ + giờ này */}
-                  {isAdmin && cellSlots.length === 0 && (
-                    <EmptyCell dow={dow} hour={hour} date={date} />
-                  )}
                 </div>
               )
             })}

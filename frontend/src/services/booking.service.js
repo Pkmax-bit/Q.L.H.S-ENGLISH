@@ -49,6 +49,8 @@ const bookingService = {
   registerSlot: (slotId, sessionDate) =>
     publicApi.post(`/booking/public/slots/${slotId}/register`, { session_date: sessionDate }),
   cancelMyEntry: (entryId) => publicApi.delete(`/booking/public/entries/${entryId}`),
+  createRequests: (slug, cells) => publicApi.post(`/booking/public/boards/${slug}/requests`, { cells }),
+  cancelMyRequest: (requestId) => publicApi.delete(`/booking/public/requests/${requestId}`),
 
   // ---- quản trị (admin / giáo viên) ----
   listBoards: (params) => api.get('/booking/boards', { params }),
@@ -66,8 +68,28 @@ const bookingService = {
   listRegistrations: (boardId, params) => api.get(`/booking/boards/${boardId}/registrations`, { params }),
   exportRegistrations: (boardId, params) =>
     api.get(`/booking/boards/${boardId}/registrations.csv`, { params, responseType: 'blob' }),
+  listRequests: (boardId, params) => api.get(`/booking/boards/${boardId}/requests`, { params }),
+  reviewRequests: (data) => api.post('/booking/requests/review', data),
+  createSlotFromRequests: (boardId, data) => api.post(`/booking/boards/${boardId}/requests/open-slot`, data),
   adminAddEntry: (slotId, data) => api.post(`/booking/slots/${slotId}/entries`, data),
   adminCancelEntry: (entryId) => api.delete(`/booking/entries/${entryId}`),
+
+  // ---- xếp lịch (chỉ admin) ----
+  listRegistrants: (params) => api.get('/booking/registrants', { params }),
+  listPriceTiers: (registrantId) => api.get(`/booking/registrants/${registrantId}/price-tiers`),
+  createPriceTier: (registrantId, data) => api.post(`/booking/registrants/${registrantId}/price-tiers`, data),
+  updatePriceTier: (tierId, data) => api.put(`/booking/price-tiers/${tierId}`, data),
+  deletePriceTier: (tierId) => api.delete(`/booking/price-tiers/${tierId}`),
+
+  listPool: (boardId) => api.get(`/booking/boards/${boardId}/pool`),
+  addToPool: (boardId, data) => api.post(`/booking/boards/${boardId}/pool`, data),
+  removeFromPool: (itemId) => api.delete(`/booking/pool/${itemId}`),
+
+  assignToSlot: (slotId, data) => api.post(`/booking/slots/${slotId}/assign`, data),
+  updateEntryPrice: (entryId, priceTierId) =>
+    api.put(`/booking/entries/${entryId}/price`, { price_tier_id: priceTierId }),
+  detachToPool: (entryId) => api.post(`/booking/entries/${entryId}/detach`),
+  moveEntry: (entryId, data) => api.post(`/booking/entries/${entryId}/move`, data),
 }
 
 export default bookingService

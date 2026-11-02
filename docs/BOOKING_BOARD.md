@@ -18,7 +18,7 @@ Chạy migration (chỉ cần một lần, cần `DATABASE_URL` hoặc `SUPABASE
 trong `backend/.env`):
 
 ```bash
-cd backend && npm run migrate:038 && npm run migrate:039 && npm run migrate:040
+cd backend && for v in 038 039 040 041 042 043 044; do npm run migrate:$v; done
 ```
 
 Kiểm tra đã áp chưa:
@@ -102,7 +102,7 @@ hạn 30 ngày, payload `{ rid, phone, kind: 'booking' }`).
 
 | Dạng | Component | Dùng khi |
 |---|---|---|
-| **Theo giờ** (mặc định) | `HourGrid.jsx` | Thời khóa biểu: hàng = giờ **7h–23h** (17 hàng cố định), cột = T2…CN. Bấm ô có ca để giữ chỗ / hủy chỗ. |
+| **Theo giờ** (mặc định) | `HourGrid.jsx` | Thời khóa biểu: hàng = giờ **7h–23h** (17 hàng cố định), cột = T2…CN. Mỗi hàng giờ chia nhỏ theo **bước giờ** chọn được: 1 giờ / 30 / 15 / 5 phút. |
 | **Theo ngày** | `WeekSlotGrid.jsx` | Danh sách theo ngày, gom theo buổi Sáng/Trưa/Chiều/Tối. Dễ đọc trên điện thoại. |
 
 ### Chọn nhiều ô rồi mới xác nhận
@@ -115,6 +115,10 @@ lại phải đi hủy từng cái.
 |---|---|---|---|
 | `public` | Chưa giữ → **chọn**. Đã giữ → **hủy ngay** (không ai hủy hàng loạt) | trơ | `Đặt lịch N ca` |
 | `admin` | Mở form sửa ca | **chọn** | `Tạo lịch N ca` → form điền thiết lập chung |
+
+Ô trống ở `mode="public"` không giữ chỗ được (giờ đó chưa có ca nào) nên bấm vào
+là **gửi nguyện vọng** — xem mục 4c. Chọn lẫn lộn ca có sẵn và ô trống cũng được:
+nút xác nhận đổi thành "Đặt N ca + xin M giờ", backend xử lý hai nhánh riêng.
 
 - **Đặt lần lượt, không song song**: sĩ số do hàm SQL khóa hàng kiểm tra, bắn
   song song thì thứ tự thành công khó đoán và thông báo lỗi khó hiểu.
@@ -142,6 +146,80 @@ Những chỗ đã xử lý sẵn:
 - **Giờ 23h** không thể kết thúc lúc 24:00 nên `end_time` bị kẹp về `23:59`.
 - Ca bắt đầu lúc 18:30 nằm ở hàng 18:00 (lấy theo giờ, bỏ phút).
 
+### Bước giờ linh hoạt
+
+Ô chọn `Bước giờ` ở cả hai phía chia nhỏ từng hàng giờ thành ô con:
+
+| Bước | Ô con mỗi giờ | Tổng ô trống | Chiều cao ô |
+|---|---|---|---|
+| 1 giờ | 1 | ~102 | `h-9` |
+| 30 phút | 2 | ~200 | `h-8` |
+| **15 phút (mặc định)** | **4** | ~376 | `h-7` |
+| 5 phút | 12 | ~1126 | `h-4` |
+
+Chiều cao ô tra theo bảng `cellH` chứ không dùng ngưỡng `step >= 30` như bản
+đầu — ngưỡng đó làm ô 15 phút tụt xuống cùng chiều cao với ô 5 phút, bé tới mức
+khó bấm trúng dù chỉ có 4 ô. Từ bước 15 phút trở lên, ô còn in mốc giờ khi rê
+chuột để biết đang bấm khung nào.
+
+- **Vẫn giữ 17 hàng giờ làm khung** thay vì sinh thẳng 204 hàng ở bước 5 phút —
+  cột giờ bên trái còn đọc được, và khi để 1 giờ thì y hệt như trước.
+- Khóa ô trống gắn với **mốc phút** (`cell|<thứ>|<phút từ nửa đêm>`), nên **đổi
+  bước giờ là xóa lựa chọn đang có** ở cả hai trang — giữ lại thì ô cũ trỏ vào
+  khung giờ khác.
+- Ô con bị ca khác **đè lên** (vd ca 18:00–19:30 phủ ô 18:30) hiện xám và không
+  chọn được, tránh tạo hai ca chồng giờ.
+- Bước 5 phút sinh hơn 1100 nút và ô chỉ cao 16px — chỉ dùng khi thật sự cần
+  mốc 5 phút, bình thường cứ để 15 phút.
+
+**Gõ tay giờ bất kỳ**: form thêm/sửa ca dùng `<input type="time">` nên nhập được
+mọi mốc phút (09:07–09:53 cũng được), không bị bước giờ của lưới giới hạn.
+
+Backend nhận ba dạng khung giờ ở `slotRange()` (`booking.service.js`), ưu tiên từ
+cụ thể đến khái quát:
+
+```
+{ start_time, end_time }  -> dùng nguyên
+{ start_time, duration }  -> tính end theo số phút
+{ hour }                  -> ô 1 tiếng kiểu cũ, giữ để không vỡ client cũ
+```
+
+23:xx luôn bị kẹp về `23:59` vì không thể kết thúc sang 24:00.
+
+## 4c. Nguyện vọng giờ học (`booking_requests`)
+
+Học viên bấm ô **trống** trên lưới giờ để báo "em muốn học giờ này". **Không giữ
+chỗ, không ảnh hưởng sĩ số.** Admin xem giờ nào đông rồi mở ca thật.
+
+**Vì sao tách bảng riêng, không thêm một `status` mới vào `booking_entries`**:
+`booking_entries.slot_id` là `NOT NULL` và sĩ số được `book_booking_slot()` khóa
+hàng để đếm. Nguyện vọng thì không có ca, không có sĩ số. Nhét chung bảng sẽ
+phải nới `slot_id` thành nullable và **mọi câu đếm sĩ số đều phải thêm điều kiện
+loại trừ** — quên một chỗ là sĩ số sai.
+
+Luồng:
+
+1. Học viên chọn ô trống → bấm xác nhận → **mở hộp chọn lịch** (`RequestDialog`)
+   hỏi **giờ** và **số buổi** muốn học, rồi mới gửi
+   `POST /public/boards/:slug/requests` với
+   `{ cells: [{ session_date, start_time, end_time, session_count, note }] }`
+2. Ô đó hiện "đã xin · N buổi" (viền vàng); bấm lại để rút → `DELETE /public/requests/:id`
+3. Admin vào tab **Nguyện vọng giờ học**, thấy danh sách **xếp theo số người muốn giảm dần**
+4. Bấm **Mở ca** → `POST /boards/:id/requests/open-slot` tạo ca đúng thứ + giờ, đồng thời duyệt các nguyện vọng cùng khung giờ và gán `created_slot_id`
+
+Chi tiết đã xử lý:
+
+- Bấm lại ô đã gửi thì **bỏ qua im lặng**, không báo lỗi trùng — người dùng chỉ
+  muốn nói "giờ này em muốn học", không quan tâm chuyện trùng.
+- Chặn xin giờ **ngày đã qua** và ngày ngoài phạm vi bảng, nếu không thống kê nhu
+  cầu bị nhiễu.
+- Mở ca xong, người đã xin **vẫn phải tự vào giữ chỗ** — hệ thống không giữ hộ,
+  vì sĩ số có thể ít hơn số người muốn. Giữ hộ sẽ phá nguyên tắc sĩ số do RPC quản.
+- Mở ca chỉ duyệt nguyện vọng **đúng ngày đó**; nguyện vọng cùng giờ ở tuần khác
+  giữ nguyên để admin tự quyết (ca áp dụng mọi tuần nhưng nhu cầu từng tuần khác nhau).
+- `uniq_booking_request_open` là partial unique index chỉ áp cho status
+  `pending`/`approved` — bản đã hủy/từ chối không chặn gửi lại.
+
 ## 4b. Màu theo người tạo ca
 
 `booking_slots.created_by` (migration 040) quyết định màu của thẻ ca. Màu **không
@@ -162,6 +240,98 @@ lưu trong CSDL** — suy ra từ UUID người tạo ở `backend/src/utils/boo
   Tên người tạo + chú giải màu chỉ có ở API quản trị.
 - Thẻ ca mình đã giữ chỗ thì **ưu tiên màu xanh xác nhận** đè lên màu người tạo:
   "đây là chỗ tôi giữ" quan trọng hơn "ca này của ai tạo".
+
+### Hộp chọn lịch: giờ + số buổi (migration 044)
+
+Bấm nút xác nhận **không gửi thẳng** mà mở `RequestDialog`:
+
+- **Giờ**: khi chọn đúng MỘT khung thì sửa tự do được (gõ 19:15–20:45 cũng được,
+  không bị giới hạn theo bước giờ của lưới). Chọn nhiều khung thì giữ nguyên giờ
+  từng ô — cho sửa giờ từng ô sẽ thành form dài lê thê.
+- **Số buổi**: nút nhanh 1 / 4 / 8 / 12 / 16 / 24 + ô "Số khác". Lưu ở
+  `booking_requests.session_count` (1–200).
+
+**Vì sao không sinh sẵn N dòng cho N buổi**: bảng chỉ phủ tối đa 6 tuần, mà học
+viên xin 8–12 buổi là bình thường. Sinh dòng sẽ hoặc tràn ra ngoài phạm vi bảng,
+hoặc phải cắt bớt rồi báo sai số liệu. Giữ một dòng kèm số buổi là trung thực với
+điều người ta nói, và màn admin cộng lại thành `total_sessions` để biết mở lớp
+bao nhiêu buổi là đủ.
+
+## 4d. Màn xếp lịch của admin (`SchedulingBoard`)
+
+Tab **Xếp lịch** ở trang chi tiết bảng, **chỉ `admin`** — nhánh API này sửa được
+cả lịch lẫn **tiền** của người khác, giáo viên thường không nên có quyền đó.
+
+| Thao tác | Cách làm |
+|---|---|
+| Xếp người vào ca | Kéo thẻ từ **Giờ chờ sắp** thả vào thẻ ca |
+| Chuyển sang ca khác | Kéo thẻ người từ ca này sang ca khác |
+| Đổi mức giá | **Chuột phải** vào người → Đổi mức giá |
+| Gỡ khỏi ca | **Chuột phải** → Gỡ về giờ chờ sắp |
+| Hủy hẳn | **Chuột phải** → Hủy hẳn chỗ này |
+| Quản lý mức giá | **Chuột phải** vào thẻ ở giờ chờ sắp → Sửa mức giá |
+
+### Bảng dữ liệu (migration 042)
+
+- `booking_price_tiers` — nhiều mức giá cho **một** người đăng ký (vd "Ca thường
+  200k", "Ca cuối tuần 300k", "Kèm riêng 450k"). Unique theo
+  `(registrant_id, lower(btrim(name)))` nên "Ca thường" và " ca THUONG " là trùng.
+  Partial unique `WHERE is_default` bảo đảm mỗi người đúng một mức mặc định.
+- `booking_entries.price_tier_id` + `price_amount` + `assigned_by`
+- `booking_pool_items` — khu "giờ chờ sắp"
+
+### Bốn quyết định quan trọng
+
+**1. KHÔNG nối vào `tuition_invoices` / `teacher_pay_entries`.** Hai bảng đó là
+tiền đang vận hành thật (hóa đơn đã phát, đã thu). Sinh dòng tự động từ màn xếp
+lịch sẽ làm số liệu học phí lệch mà rất khó truy nguyên. Ở đây chỉ **ghi** giá
+kèm mỗi lượt xếp.
+
+**2. `price_amount` là BẢN SAO, không phải tham chiếu sống.** Sửa mức giá về sau
+không làm đổi tiền của các buổi đã xếp — nếu không, đối chiếu sổ sách tháng
+trước sẽ ra con số khác lúc chốt. Xóa mức giá cũng chỉ đưa `price_tier_id` về
+`NULL`, tiền giữ nguyên.
+
+**3. Admin xếp tay vẫn đi qua `book_booking_slot()`.** `assignToSlot` gọi lại
+đúng hàm giữ chỗ của nhánh công khai, nên **admin cũng không vượt được sĩ số** và
+hàng chờ vẫn hoạt động. Nếu chèn thẳng vào `booking_entries` thì mọi bảo đảm về
+sĩ số mất sạch ở nhánh quản trị.
+
+**4. Chuyển ca: xếp chỗ mới TRƯỚC, hủy chỗ cũ SAU.** Hủy trước mà ca mới đã đầy
+thì người đó mất cả hai chỗ.
+
+Gỡ khỏi ca dùng RPC `cancel_booking_entry` chứ không xóa bản ghi, để người đầu
+hàng chờ của ca đó được đẩy lên. Thời lượng đưa vào khu chờ lấy đúng độ dài ca
+(ca 18:00–19:30 → 90 phút).
+
+## 4e. Học phí tự điền & trang Học viên đăng ký
+
+Trang **Học viên đăng ký** (`/booking-registrants`, chỉ `admin`) liệt kê mọi
+người đăng ký qua trang công khai kèm: số buổi đã xếp, tổng học phí, mức giá mặc
+định, và **số buổi chưa có giá** — con số này là thứ cần soi để không sót thu.
+
+### Thứ tự lấy giá khi xếp một người vào ca
+
+Xem `resolvePrice()` ở `bookingScheduling.service.js`, ưu tiên từ riêng đến chung:
+
+| # | Nguồn | `price_source` |
+|---|---|---|
+| 1 | Mức giá admin chọn tay lúc xếp | `tier` |
+| 2 | Mức giá **mặc định** của chính học viên (`is_default`) | `default_tier` |
+| 3 | **Học phí của ca** (`booking_slots.price_amount`, migration 043) | `slot` |
+| 4 | Không có giá | `none` |
+
+Đây là phần "setup tự động": đặt mức mặc định cho học viên **hoặc** đặt học phí
+cho ca là từ đó về sau tiền tự điền, không phải gõ lại mỗi lần xếp.
+
+- **Để trống khác 0 đồng**: `price_amount = NULL` nghĩa là *chưa đặt* và sẽ rơi
+  xuống nấc tiếp theo; `0` nghĩa là *miễn phí* và dừng ở đó.
+- **Giá của ca là một con số, không trỏ tới `booking_price_tiers`**: price_tiers
+  gắn với một người cụ thể (`registrant_id NOT NULL`), còn giá ca áp cho mọi
+  người học ca đó. Trỏ sang đó sẽ phải nới `registrant_id` thành nullable và mọi
+  truy vấn "mức giá của người này" đều phải thêm điều kiện lọc.
+- Đổi giá ca hay mức giá về sau **không** đổi tiền buổi đã xếp (vẫn là bản sao).
+  Buổi đã xếp sai giá phải sửa từng cái ở tab **Xếp lịch** → chuột phải → Đổi mức giá.
 
 ## 5. Những chỗ dễ sai
 
@@ -215,6 +385,12 @@ siết:
 backend/src/migrations/038_booking_board.sql
 backend/src/migrations/039_booking_board_multi_week.sql
 backend/src/migrations/040_booking_slot_owner.sql
+backend/src/migrations/041_booking_requests.sql
+backend/src/migrations/042_booking_scheduling.sql
+backend/src/migrations/043_booking_slot_price.sql
+backend/src/migrations/044_booking_request_sessions.sql
+backend/src/services/bookingScheduling.service.js
+backend/src/controllers/bookingScheduling.controller.js
 backend/src/utils/bookingColors.js
 backend/src/utils/phone.js
 backend/src/middleware/bookingAuth.js
@@ -231,9 +407,16 @@ frontend/src/components/booking/MyBookingsBar.jsx
 frontend/src/components/booking/WeekSlotGrid.jsx
 frontend/src/components/booking/HourGrid.jsx
 frontend/src/components/booking/SelectionBar.jsx
+frontend/src/components/booking/RequestDemandPanel.jsx
+frontend/src/components/booking/RequestDialog.jsx
+frontend/src/components/booking/SchedulingBoard.jsx
+frontend/src/components/booking/ContextMenu.jsx
+frontend/src/components/booking/PriceTierModal.jsx
+frontend/src/hooks/useContextMenu.js
 frontend/src/components/booking/BookingBoardForm.jsx
 frontend/src/components/booking/BookingSlotForm.jsx
 frontend/src/pages/BookingBoardPage.jsx          (công khai, /dk/:slug)
 frontend/src/pages/BookingBoardsPage.jsx         (/booking-boards)
 frontend/src/pages/BookingBoardDetailPage.jsx    (/booking-boards/:id)
+frontend/src/pages/BookingRegistrantsPage.jsx    (/booking-registrants)
 ```

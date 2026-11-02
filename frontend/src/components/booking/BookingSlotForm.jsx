@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import Modal from '../common/Modal'
 import Button from '../common/Button'
 import Input from '../common/Input'
-import { DAY_SHORT, WEEK_ORDER } from '../../lib/bookingUtils'
+import { DAY_SHORT, WEEK_ORDER, formatMoney } from '../../lib/bookingUtils'
 
 const emptyForm = () => ({
   days_of_week: [],
@@ -14,6 +14,7 @@ const emptyForm = () => ({
   room_name: '',
   note: '',
   capacity: 10,
+  price_amount: '',
   allow_waitlist: false,
   is_active: true,
 })
@@ -43,6 +44,7 @@ export default function BookingSlotForm({ isOpen, onClose, onSubmit, slot = null
         room_name: slot.room_name || '',
         note: slot.note || '',
         capacity: slot.capacity ?? 10,
+        price_amount: slot.price_amount ?? '',
         allow_waitlist: Boolean(slot.allow_waitlist),
         is_active: slot.is_active !== false,
       })
@@ -97,6 +99,8 @@ export default function BookingSlotForm({ isOpen, onClose, onSubmit, slot = null
       room_name: form.room_name.trim() || null,
       note: form.note.trim() || null,
       capacity,
+      // Để trống = chưa đặt giá (khác hẳn 0 đồng)
+      price_amount: String(form.price_amount).trim() === '' ? null : Number(form.price_amount),
       allow_waitlist: form.allow_waitlist,
       is_active: form.is_active,
     }
@@ -105,9 +109,8 @@ export default function BookingSlotForm({ isOpen, onClose, onSubmit, slot = null
       // Mỗi ô một giờ riêng nên gửi danh sách tường minh, không dùng days_of_week
       return onSubmit({ ...base, slots: cells.map((c) => ({
         day_of_week: c.day_of_week,
-        start_time: `${String(c.hour).padStart(2, '0')}:00`,
-        // 23h không thể kết thúc lúc 24:00
-        end_time: c.hour >= 23 ? '23:59' : `${String(c.hour + 1).padStart(2, '0')}:00`,
+        start_time: c.start_time,
+        end_time: c.end_time,
       })) })
     }
 
@@ -144,15 +147,15 @@ export default function BookingSlotForm({ isOpen, onClose, onSubmit, slot = null
             <div className="mt-1.5 flex flex-wrap gap-1">
               {cells.map((c) => (
                 <span
-                  key={`${c.day_of_week}-${c.hour}`}
+                  key={c.key}
                   className="rounded bg-white px-1.5 py-0.5 text-xs font-medium text-primary-800"
                 >
-                  {DAY_SHORT[c.day_of_week]} {String(c.hour).padStart(2, '0')}:00
+                  {DAY_SHORT[c.day_of_week]} {c.start_time}–{c.end_time}
                 </span>
               ))}
             </div>
             <p className="mt-1.5 text-xs text-primary-700">
-              Mỗi ca dài 1 tiếng. Các thiết lập bên dưới áp dụng cho cả {cells.length} ca.
+              Giờ lấy đúng theo ô đã chọn. Các thiết lập bên dưới áp dụng cho cả {cells.length} ca.
             </p>
           </div>
         )}
@@ -205,6 +208,19 @@ export default function BookingSlotForm({ isOpen, onClose, onSubmit, slot = null
             required
           />
         </div>
+
+        <Input
+          label="Học phí của ca này (VNĐ)"
+          inputMode="numeric"
+          placeholder="để trống = chưa đặt"
+          value={form.price_amount}
+          onChange={(e) => setForm((f) => ({ ...f, price_amount: e.target.value.replace(/\D/g, '') }))}
+          helperText={
+            String(form.price_amount).trim() === ''
+              ? 'Học viên không có mức giá riêng thì buổi xếp vào ca này sẽ chưa có giá'
+              : `${formatMoney(form.price_amount)} — tự điền khi xếp học viên chưa có mức giá riêng`
+          }
+        />
 
         <Input
           label="Tên ca (tùy chọn)"

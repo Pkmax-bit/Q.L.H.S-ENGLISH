@@ -7,6 +7,7 @@ import {
 import clsx from 'clsx'
 import Button from '../components/common/Button'
 import Input from '../components/common/Input'
+import Select from '../components/common/Select'
 import Modal from '../components/common/Modal'
 import Table from '../components/common/Table'
 import LoadingSpinner from '../components/common/LoadingSpinner'
@@ -15,10 +16,13 @@ import BookingSlotForm from '../components/booking/BookingSlotForm'
 import WeekPicker from '../components/booking/WeekPicker'
 import HourGrid from '../components/booking/HourGrid'
 import SelectionBar from '../components/booking/SelectionBar'
+import RequestDemandPanel from '../components/booking/RequestDemandPanel'
+import SchedulingBoard from '../components/booking/SchedulingBoard'
 import { useFetch } from '../hooks/useFetch'
+import { useAuth } from '../hooks/useAuth'
 import { ToastContext } from '../context/ToastContext'
 import bookingService from '../services/booking.service'
-import { DAY_SHORT, WEEK_ORDER, colorClasses, formatDate, formatDateTime, formatShortDate } from '../lib/bookingUtils'
+import { DAY_SHORT, STEP_OPTIONS, WEEK_ORDER, colorClasses, formatDate, formatDateTime, formatMoney, formatShortDate } from '../lib/bookingUtils'
 
 const STATUS_BADGE = {
   confirmed: 'bg-emerald-100 text-emerald-700',
@@ -30,6 +34,7 @@ const STATUS_LABEL = { confirmed: 'Đã giữ chỗ', waitlist: 'Hàng chờ', c
 export default function BookingBoardDetailPage() {
   const { id } = useParams()
   const { success, error: showError } = useContext(ToastContext)
+  const { user } = useAuth()
 
   const [week, setWeek] = useState(null) // null = backend tự chọn tuần phù hợp
   const [tab, setTab] = useState('slots')
@@ -43,16 +48,32 @@ export default function BookingBoardDetailPage() {
   const fetchRegs = useCallback(() => bookingService.listRegistrations(id, {}), [id])
   const { data: regsData, loading: regsLoading, execute: reloadRegs } = useFetch(fetchRegs, [id])
 
+  // Nguyện vọng giờ học — phủ mọi tuần, gom sẵn theo khung giờ ở backend
+  const fetchReqs = useCallback(() => bookingService.listRequests(id, {}), [id])
+  const { data: reqsData, loading: reqsLoading, execute: reloadReqs } = useFetch(fetchReqs, [id])
+
+  // Giờ chờ sắp — chỉ admin đọc được, giáo viên gọi sẽ nhận 403
+  const isAdmin = user?.role === 'admin'
+  const fetchPool = useCallback(
+    () => (isAdmin ? bookingService.listPool(id) : Promise.resolve({ data: { data: [] } })),
+    [id, isAdmin]
+  )
+  const { data: poolData, loading: poolLoading, execute: reloadPool } = useFetch(fetchPool, [id, isAdmin])
+
   const board = data?.board
   const weeks = useMemo(() => data?.weeks || [], [data])
   const creators = useMemo(() => data?.creators || [], [data])
   const slots = useMemo(() => data?.slots || [], [data])
   const registrationRows = useMemo(() => regsData?.data || [], [regsData])
+  const demand = useMemo(() => reqsData?.demand || [], [reqsData])
+  const pool = useMemo(() => (Array.isArray(poolData) ? poolData : []), [poolData])
+  const [requestBusy, setRequestBusy] = useState(false)
 
   const [slotFormOpen, setSlotFormOpen] = useState(false)
   const [editingSlot, setEditingSlot] = useState(null)
   const [slotPrefill, setSlotPrefill] = useState(null)
   const [selectedCells, setSelectedCells] = useState([])
+  const [step, setStep] = useState(15)
   const [savingSlot, setSavingSlot] = useState(false)
   const [deleteSlotTarget, setDeleteSlotTarget] = useState(null)
   const [deletingSlot, setDeletingSlot] = useState(false)
@@ -72,11 +93,11 @@ export default function BookingBoardDetailPage() {
     setSlotFormOpen(true)
   }
 
-  const toggleCell = ({ key, day_of_week, hour, date }) => {
+  const toggleCell = ({ key, day_of_week, date, start_time, end_time }) => {
     setSelectedCells((prev) =>
       prev.some((c) => c.key === key)
         ? prev.filter((c) => c.key !== key)
-        : [...prev, { key, day_of_week, hour, date }]
+        : [...prev, { key, day_of_week, date, start_time, end_time }]
     )
   }
 
@@ -90,6 +111,34 @@ export default function BookingBoardDetailPage() {
   const reloadAll = () => {
     reload()
     reloadRegs()
+    reloadReqs()
+    if (isAdmin) reloadPool()
+  }
+
+  const handleOpenSlotFromRequests = async (payload) => {
+    setRequestBusy(true)
+    try {
+      const res = await bookingService.createSlotFromRequests(id, payload)
+      success(res.data?.message || 'Đã mở ca')
+      reloadAll()
+    } catch (err) {
+      showError(err.response?.data?.message || 'Không mở được ca')
+    } finally {
+      setRequestBusy(false)
+    }
+  }
+
+  const handleRejectRequests = async (bucket) => {
+    setRequestBusy(true)
+    try {
+      const res = await bookingService.reviewRequests({ ids: bucket.request_ids, status: 'rejected' })
+      success(res.data?.message || 'Đã từ chối')
+      reloadReqs()
+    } catch (err) {
+      showError(err.response?.data?.message || 'Không từ chối được')
+    } finally {
+      setRequestBusy(false)
+    }
   }
 
   const copyLink = async () => {
@@ -322,6 +371,8 @@ export default function BookingBoardDetailPage() {
         {[
           { key: 'slots', label: `Ca học${multiWeek ? ' (tuần đang xem)' : ''} (${slots.length})` },
           { key: 'registrations', label: `Danh sách đăng ký${multiWeek ? ' (mọi tuần)' : ''} (${registrationRows.length})` },
+          { key: 'requests', label: `Nguyện vọng giờ học (${demand.length})` },
+          ...(isAdmin ? [{ key: 'schedule', label: `Xếp lịch (${pool.length} chờ sắp)` }] : []),
         ].map((t) => (
           <button
             key={t.key}
@@ -367,14 +418,30 @@ export default function BookingBoardDetailPage() {
           </div>
 
           <div>
-            <p className="mb-2 text-xs text-slate-400">
-              Bấm chọn các ô trống (chọn được nhiều ô) rồi bấm <b>Tạo lịch</b> · bấm ca có sẵn để sửa
-            </p>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-slate-400">
+                Bấm chọn các ô trống (chọn được nhiều ô) rồi bấm <b>Tạo lịch</b> · bấm ca có sẵn để sửa
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">Bước giờ</span>
+                <Select
+                  value={String(step)}
+                  onChange={(e) => {
+                    // Khóa ô gắn với mốc phút, đổi bước thì lựa chọn cũ trỏ sai khung giờ
+                    setSelectedCells([])
+                    setStep(Number(e.target.value))
+                  }}
+                  options={STEP_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
+                  className="w-28 py-1 text-xs"
+                />
+              </div>
+            </div>
             <HourGrid
               mode="admin"
               board={board}
               slots={slots}
               weekStart={board.selected_week}
+              stepMinutes={step}
               selected={selectedCells.map((c) => c.key)}
               onToggleSelect={toggleCell}
               onSlotClick={(slot) => {
@@ -385,7 +452,7 @@ export default function BookingBoardDetailPage() {
             />
             <SelectionBar
               count={selectedCells.length}
-              items={selectedCells.map((c) => `${DAY_SHORT[c.day_of_week]} ${String(c.hour).padStart(2, '0')}:00`)}
+              items={selectedCells.map((c) => `${DAY_SHORT[c.day_of_week]} ${c.start_time}–${c.end_time}`)}
               actionLabel={`Tạo lịch ${selectedCells.length} ca`}
               onConfirm={openCreateFromCells}
               onClear={() => setSelectedCells([])}
@@ -460,6 +527,13 @@ export default function BookingBoardDetailPage() {
                           {slot.waitlist_count} chờ
                         </span>
                       )}
+                      {slot.price_amount !== null && slot.price_amount !== undefined ? (
+                        <span className="rounded-md bg-emerald-50 px-2 py-1 font-medium text-emerald-700">
+                          {formatMoney(slot.price_amount)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">chưa đặt học phí</span>
+                      )}
                       {slot.allow_waitlist && <span className="text-slate-400">có hàng chờ</span>}
                       {!slot.is_active && (
                         <span className="flex items-center gap-1 text-slate-400">
@@ -515,6 +589,22 @@ export default function BookingBoardDetailPage() {
             </div>
           )}
         </div>
+      ) : tab === 'schedule' ? (
+        <SchedulingBoard
+          board={board}
+          slots={slots}
+          pool={pool}
+          loading={poolLoading}
+          onChanged={reloadAll}
+        />
+      ) : tab === 'requests' ? (
+        <RequestDemandPanel
+          demand={demand}
+          loading={reqsLoading}
+          busy={requestBusy}
+          onOpenSlot={handleOpenSlotFromRequests}
+          onReject={handleRejectRequests}
+        />
       ) : (
         <Table
           columns={columns}

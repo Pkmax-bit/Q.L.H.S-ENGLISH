@@ -168,6 +168,19 @@ const parseSlotPayload = (data, { partial = false } = {}) => {
   if (has('allow_waitlist')) out.allow_waitlist = Boolean(data.allow_waitlist);
   if (has('is_active')) out.is_active = Boolean(data.is_active);
   if (has('order_index')) out.order_index = Number(data.order_index) || 0;
+  if (has('price_amount')) {
+    // Học phí của ca: để trống = chưa đặt, khác hẳn với 0 đồng (miễn phí)
+    const raw = data.price_amount;
+    if (raw === null || raw === '' || raw === undefined) {
+      out.price_amount = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0 || n > 1e12) {
+        throw { statusCode: 400, message: 'Học phí của ca không hợp lệ' };
+      }
+      out.price_amount = Math.round(n);
+    }
+  }
 
   return out;
 };
@@ -300,7 +313,7 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
 
   const { data: slots, error: slotErr } = await supabase
     .from('booking_slots')
-    .select('id, day_of_week, start_time, end_time, label, teacher_name, room_name, capacity, allow_waitlist, note, order_index, created_by')
+    .select('id, day_of_week, start_time, end_time, label, teacher_name, room_name, capacity, allow_waitlist, note, order_index, created_by, price_amount')
     .eq('board_id', board.id)
     .eq('is_active', true)
     .order('day_of_week', { ascending: true })
@@ -313,7 +326,7 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
   if (slots?.length) {
     const { data, error } = await supabase
       .from('booking_entries')
-      .select(`id, slot_id, registrant_id, session_date, status, created_at, ${REGISTRANT_EMBED}`)
+      .select(`id, slot_id, registrant_id, session_date, status, created_at, price_tier_id, price_amount, ${REGISTRANT_EMBED}, tier:booking_price_tiers!booking_entries_price_tier_id_fkey(id, name, amount)`)
       .in('slot_id', slots.map((s) => s.id))
       .gte('session_date', selected.week_start)
       .lte('session_date', selected.week_end)
@@ -359,6 +372,29 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
     }
   }
 
+  // Nguyện vọng của chính mình trong bảng này, để lưới đánh dấu ô đã gửi
+  const myRequests = [];
+  if (registrantId) {
+    const { data: reqs, error: reqErr } = await supabase
+      .from('booking_requests')
+      .select('id, session_date, start_time, end_time, status, session_count')
+      .eq('board_id', board.id)
+      .eq('registrant_id', registrantId)
+      .in('status', ['pending', 'approved'])
+      .order('session_date', { ascending: true });
+    if (reqErr) throw reqErr;
+    for (const r of reqs || []) {
+      myRequests.push({
+        id: r.id,
+        date: r.session_date,
+        start_time: String(r.start_time).slice(0, 5),
+        end_time: String(r.end_time).slice(0, 5),
+        status: r.status,
+        session_count: r.session_count,
+      });
+    }
+  }
+
   const byKey = groupEntriesBySlotDate(entries);
   const colorOf = assignColors((slots || []).map((s) => s.created_by));
   const mine = [];
@@ -380,6 +416,7 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
       teacher_name: slot.teacher_name,
       room_name: slot.room_name,
       note: slot.note,
+      price_amount: slot.price_amount,
       // Chỉ trả KHÓA màu, không trả danh tính người tạo ra nhánh công khai
       color: colorOf.get(slot.created_by) || DEFAULT_COLOR,
       capacity: slot.capacity,
@@ -415,6 +452,7 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
     my_count: mine.length,
     my_all_entries: myAllEntries,
     my_all_count: myAllEntries.length,
+    my_requests: myRequests,
   };
 };
 
@@ -428,6 +466,62 @@ const RPC_ERRORS = {
   date_out_of_range: { statusCode: 400, message: 'Ngày này nằm ngoài phạm vi bảng đăng ký' },
   entry_not_found: { statusCode: 404, message: 'Không tìm thấy đăng ký này' },
   not_owner: { statusCode: 403, message: 'Bạn chỉ có thể hủy chỗ của mình' },
+};
+
+const MIN_OF_DAY = 24 * 60 - 1; // 23:59
+
+const toMinutes = (hhmm) => {
+  const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  if (h > 23 || mi > 59) return null;
+  return h * 60 + mi;
+};
+
+const fromMinutes = (total) => {
+  const t = Math.max(0, Math.min(MIN_OF_DAY, Math.round(total)));
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}:00`;
+};
+
+/**
+ * Khung giờ của một ô nguyện vọng.
+ *
+ * Nhận ba dạng, ưu tiên từ cụ thể đến khái quát:
+ *   { start_time, end_time }  -> dùng nguyên (cho phép gõ tay 09:15–09:50)
+ *   { start_time, duration }  -> tính end theo thời lượng phút
+ *   { hour }                  -> ô 1 tiếng kiểu cũ, giữ để không vỡ client cũ
+ *
+ * 23:xx không thể kết thúc sang 24:00 nên luôn kẹp về 23:59.
+ */
+const slotRange = (cell = {}) => {
+  let start = toMinutes(cell.start_time);
+  if (start === null && cell.hour !== undefined && cell.hour !== null) {
+    const h = Number(cell.hour);
+    if (!Number.isInteger(h) || h < 0 || h > 23) {
+      throw { statusCode: 400, message: 'Giờ không hợp lệ' };
+    }
+    start = h * 60;
+  }
+  if (start === null) {
+    throw { statusCode: 400, message: 'Thiếu giờ bắt đầu (định dạng HH:MM)' };
+  }
+
+  let end = toMinutes(cell.end_time);
+  if (end === null) {
+    const dur = Number(cell.duration ?? cell.step ?? 60);
+    if (!Number.isInteger(dur) || dur < 5 || dur > 12 * 60) {
+      throw { statusCode: 400, message: 'Thời lượng phải từ 5 phút đến 12 tiếng' };
+    }
+    end = start + dur;
+  }
+
+  end = Math.min(end, MIN_OF_DAY);
+  if (end <= start) {
+    throw { statusCode: 400, message: 'Giờ kết thúc phải sau giờ bắt đầu' };
+  }
+
+  return { start_time: fromMinutes(start), end_time: fromMinutes(end) };
 };
 
 const assertSessionDate = (value) => {
@@ -478,6 +572,105 @@ const cancelEntry = async (entryId, registrantId) => {
     throw RPC_ERRORS[data?.code] || { statusCode: 400, message: 'Không hủy được, thử lại' };
   }
   return { entry_id: entryId, promoted_entry_id: data.promoted_entry_id || null };
+};
+
+/**
+ * Gửi nguyện vọng giờ học cho các ô TRỐNG đã chọn.
+ *
+ * KHÔNG giữ chỗ, không đụng tới sĩ số. Chỉ là lời nhắn "em muốn học giờ này" để
+ * trung tâm thấy giờ nào đông rồi mở ca thật.
+ */
+const createRequests = async (slug, registrantId, cells = []) => {
+  const board = await fetchBoardBySlug(slug);
+  if (!isAccepting(board)) {
+    throw { statusCode: 403, message: 'Bảng đăng ký đã đóng, không nhận thêm' };
+  }
+  if (!Array.isArray(cells) || cells.length === 0) {
+    throw { statusCode: 400, message: 'Chưa chọn khung giờ nào' };
+  }
+  if (cells.length > 50) {
+    throw { statusCode: 400, message: 'Mỗi lần chỉ gửi tối đa 50 khung giờ' };
+  }
+
+  const weeks = weeksOf(board);
+  const lastDay = weeks[weeks.length - 1].week_end;
+  const today = todayIso();
+
+  const rows = [];
+  for (const cell of cells) {
+    const date = assertSessionDate(cell.session_date ?? cell.date);
+    const { start_time, end_time } = slotRange(cell);
+
+    if (date < board.week_start || date > lastDay) {
+      throw { statusCode: 400, message: `Ngày ${date} nằm ngoài phạm vi bảng đăng ký` };
+    }
+    // Xin một giờ đã trôi qua là vô nghĩa, và sẽ làm nhiễu thống kê nhu cầu
+    if (date < today) {
+      throw { statusCode: 400, message: `Ngày ${date} đã qua, không gửi nguyện vọng được` };
+    }
+
+    const sessions = Number(cell.session_count ?? 1);
+    if (!Number.isInteger(sessions) || sessions < 1 || sessions > 200) {
+      throw { statusCode: 400, message: 'Số buổi phải từ 1 đến 200' };
+    }
+
+    rows.push({
+      board_id: board.id,
+      registrant_id: registrantId,
+      session_date: date,
+      start_time,
+      end_time,
+      session_count: sessions,
+      note: cell.note ? String(cell.note).trim().slice(0, 500) : null,
+    });
+  }
+
+  // Bấm lại ô đã gửi thì bỏ qua, không báo lỗi — người dùng không quan tâm
+  // chuyện trùng, họ chỉ muốn "giờ này em muốn học"
+  const { data: existing, error: exErr } = await supabase
+    .from('booking_requests')
+    .select('session_date, start_time')
+    .eq('board_id', board.id)
+    .eq('registrant_id', registrantId)
+    .in('status', ['pending', 'approved']);
+  if (exErr) throw exErr;
+
+  const taken = new Set((existing || []).map((r) => `${r.session_date}|${String(r.start_time).slice(0, 5)}`));
+  const fresh = rows.filter((r) => !taken.has(`${r.session_date}|${r.start_time.slice(0, 5)}`));
+
+  if (fresh.length === 0) {
+    return { created: 0, skipped: rows.length };
+  }
+
+  const { data: created, error } = await supabase
+    .from('booking_requests')
+    .insert(fresh)
+    .select('id, session_date, start_time, end_time, status');
+  if (error) throw error;
+
+  return { created: created?.length || 0, skipped: rows.length - fresh.length, data: created };
+};
+
+/** Người đăng ký tự rút nguyện vọng của mình. */
+const cancelRequest = async (requestId, registrantId) => {
+  const { data: row, error } = await supabase
+    .from('booking_requests')
+    .select('id, registrant_id, status')
+    .eq('id', requestId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) throw { statusCode: 404, message: 'Không tìm thấy nguyện vọng này' };
+  if (row.registrant_id !== registrantId) {
+    throw { statusCode: 403, message: 'Bạn chỉ có thể rút nguyện vọng của mình' };
+  }
+  if (row.status === 'cancelled') return { id: requestId };
+
+  const { error: upErr } = await supabase
+    .from('booking_requests')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', requestId);
+  if (upErr) throw upErr;
+  return { id: requestId };
 };
 
 const getMyRegistrant = async (registrantId) => {
@@ -644,6 +837,10 @@ const getBoardDetail = async (id, requestedWeek = null) => {
           registrant_id: r.registrant_id,
           full_name: r.registrant?.full_name || null,
           phone: r.registrant?.phone || null,
+          price_tier_id: r.price_tier_id,
+          price_name: r.tier?.name || null,
+          // Hiện số đã CHỐT lúc xếp, không phải số hiện tại của mức giá
+          price_amount: r.price_amount,
         })),
       };
     }),
@@ -815,7 +1012,7 @@ const cloneBoard = async (id, data, currentUser) => {
 
   const { data: slots, error: slotErr } = await supabase
     .from('booking_slots')
-    .select('day_of_week, start_time, end_time, label, teacher_name, room_name, capacity, allow_waitlist, note, is_active, order_index, created_by')
+    .select('day_of_week, start_time, end_time, label, teacher_name, room_name, capacity, allow_waitlist, note, is_active, order_index, created_by, price_amount')
     .eq('board_id', source.id);
   if (slotErr) throw slotErr;
 
@@ -1046,6 +1243,163 @@ const exportRegistrationsCsv = async (boardId, queryParams = {}) => {
   };
 };
 
+/**
+ * Danh sách nguyện vọng cho admin, kèm bảng tổng hợp nhu cầu theo từng khung giờ.
+ * Admin cần thấy ngay "T2 09:00 có 7 người muốn" để quyết mở ca nào trước.
+ */
+const listRequests = async (boardId, queryParams = {}) => {
+  const { data: board, error: bErr } = await supabase
+    .from('booking_boards')
+    .select('id, title, week_start, week_count')
+    .eq('id', boardId)
+    .maybeSingle();
+  if (bErr) throw bErr;
+  if (!board) throw { statusCode: 404, message: 'Không tìm thấy bảng đăng ký' };
+
+  let query = supabase
+    .from('booking_requests')
+    .select('id, session_date, start_time, end_time, status, note, session_count, created_at, review_note, created_slot_id, registrant:booking_registrants!booking_requests_registrant_id_fkey(id, full_name, phone)')
+    .eq('board_id', boardId);
+
+  if (queryParams.status) query = query.eq('status', queryParams.status);
+  else query = query.in('status', ['pending', 'approved']);
+
+  const { data, error } = await query
+    .order('session_date', { ascending: true })
+    .order('start_time', { ascending: true });
+  if (error) throw error;
+
+  const rows = (data || []).map((r) => ({
+    id: r.id,
+    date: r.session_date,
+    day_of_week: new Date(`${r.session_date}T00:00:00Z`).getUTCDay(),
+    start_time: String(r.start_time).slice(0, 5),
+    end_time: String(r.end_time).slice(0, 5),
+    status: r.status,
+    note: r.note,
+    session_count: r.session_count,
+    review_note: r.review_note,
+    created_slot_id: r.created_slot_id,
+    created_at: r.created_at,
+    registrant_id: r.registrant?.id || null,
+    full_name: r.registrant?.full_name || null,
+    phone: r.registrant?.phone || null,
+  }));
+
+  // Gộp theo (ngày, giờ) để admin thấy giờ nào đông nhất
+  const bucket = new Map();
+  for (const r of rows) {
+    if (r.status !== 'pending') continue;
+    const key = `${r.date}|${r.start_time}`;
+    if (!bucket.has(key)) {
+      bucket.set(key, {
+        key,
+        date: r.date,
+        day_of_week: r.day_of_week,
+        day_label: DAY_LABELS[r.day_of_week],
+        start_time: r.start_time,
+        end_time: r.end_time,
+        count: 0,
+        total_sessions: 0,
+        people: [],
+        request_ids: [],
+      });
+    }
+    const b = bucket.get(key);
+    b.count += 1;
+    b.total_sessions += r.session_count || 1;
+    b.people.push({ full_name: r.full_name, phone: r.phone, session_count: r.session_count || 1 });
+    b.request_ids.push(r.id);
+  }
+
+  const demand = [...bucket.values()].sort(
+    (a, b) => b.count - a.count || (a.date < b.date ? -1 : 1) || (a.start_time < b.start_time ? -1 : 1)
+  );
+
+  return { board: { ...board, weeks: weeksOf(board) }, data: rows, demand };
+};
+
+/** Duyệt hoặc từ chối một lô nguyện vọng. */
+const reviewRequests = async (ids, status, currentUser, reviewNote = null) => {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw { statusCode: 400, message: 'Chưa chọn nguyện vọng nào' };
+  }
+  if (!['approved', 'rejected'].includes(status)) {
+    throw { statusCode: 400, message: 'Trạng thái duyệt không hợp lệ' };
+  }
+
+  const { data, error } = await supabase
+    .from('booking_requests')
+    .update({
+      status,
+      reviewed_by: currentUser?.id || null,
+      reviewed_at: new Date().toISOString(),
+      review_note: reviewNote ? String(reviewNote).trim().slice(0, 500) : null,
+      updated_at: new Date().toISOString(),
+    })
+    .in('id', ids)
+    .eq('status', 'pending')
+    .select('id');
+  if (error) throw error;
+
+  return { updated: data?.length || 0, requested: ids.length };
+};
+
+/**
+ * Mở ca thật từ một nhóm nguyện vọng cùng khung giờ, rồi đánh dấu đã duyệt.
+ * Đây là thao tác chính của admin: thấy "T2 09:00 có 7 người muốn" -> mở ca luôn.
+ */
+const createSlotFromRequests = async (boardId, data, currentUser) => {
+  await assertBoardExists(boardId);
+  const date = assertSessionDate(data.session_date ?? data.date);
+  // Giữ ĐÚNG khung giờ của nguyện vọng, kể cả giờ lẻ như 09:15–09:50
+  const { start_time, end_time } = slotRange({
+    start_time: data.start_time,
+    end_time: data.end_time,
+    duration: data.duration,
+  });
+
+  // 0=CN..6=T7, trùng đúng quy ước booking_slots.day_of_week
+  const dayOfWeek = new Date(`${date}T00:00:00Z`).getUTCDay();
+
+  const slot = await createSlot(
+    boardId,
+    {
+      day_of_week: dayOfWeek,
+      start_time: start_time.slice(0, 5),
+      end_time: end_time.slice(0, 5),
+      capacity: data.capacity ?? 10,
+      label: data.label ?? null,
+      teacher_name: data.teacher_name ?? null,
+      room_name: data.room_name ?? null,
+      allow_waitlist: data.allow_waitlist ?? false,
+      is_active: true,
+    },
+    currentUser
+  );
+
+  // Chỉ duyệt nguyện vọng ĐÚNG ngày + giờ đó; nguyện vọng cùng giờ nhưng tuần
+  // khác vẫn để nguyên vì ca vừa mở áp dụng cho mọi tuần nhưng nhu cầu từng
+  // tuần có thể khác nhau — để admin tự quyết.
+  const { data: approved, error } = await supabase
+    .from('booking_requests')
+    .update({
+      status: 'approved',
+      reviewed_by: currentUser?.id || null,
+      reviewed_at: new Date().toISOString(),
+      created_slot_id: slot.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('board_id', boardId)
+    .eq('session_date', date)
+    .eq('start_time', start_time)
+    .eq('status', 'pending')
+    .select('id');
+  if (error) throw error;
+
+  return { slot, approved_requests: approved?.length || 0 };
+};
+
 /** Admin đăng ký hộ (người học gọi điện tới trung tâm). */
 const adminAddEntry = async (slotId, data) => {
   const date = assertSessionDate(data.session_date);
@@ -1096,6 +1450,8 @@ module.exports = {
   getPublicBoard,
   registerSlot,
   cancelEntry,
+  createRequests,
+  cancelRequest,
   getMyRegistrant,
   // quản trị
   listBoards,
@@ -1110,6 +1466,9 @@ module.exports = {
   deleteSlot,
   listRegistrations,
   exportRegistrationsCsv,
+  listRequests,
+  reviewRequests,
+  createSlotFromRequests,
   adminAddEntry,
   adminCancelEntry,
   // dùng lại ở nơi khác

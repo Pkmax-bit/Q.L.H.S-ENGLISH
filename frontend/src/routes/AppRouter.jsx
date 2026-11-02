@@ -35,9 +35,11 @@ import ShopPlayPage from '../pages/ShopPlayPage'
 import HarvestContentPage from '../pages/HarvestContentPage'
 import NotFoundPage from '../pages/NotFoundPage'
 import LandingPage from '../pages/LandingPage'
+import UserGuidePage from '../pages/UserGuidePage'
 import BookingBoardPage from '../pages/BookingBoardPage'
 import BookingBoardsPage from '../pages/BookingBoardsPage'
 import BookingBoardDetailPage from '../pages/BookingBoardDetailPage'
+import BookingRegistrantsPage from '../pages/BookingRegistrantsPage'
 
 export default function AppRouter() {
   return (
@@ -57,6 +59,7 @@ export default function AppRouter() {
       >
         {/* Dashboard - all roles */}
         <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="guide" element={<UserGuidePage />} />
 
         {/* Admin hub - one page to rule them all */}
         <Route
@@ -184,6 +187,14 @@ export default function AppRouter() {
           element={
             <RoleRoute roles={['admin', 'teacher']}>
               <BookingBoardsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="booking-registrants"
+          element={
+            <RoleRoute roles={['admin']}>
+              <BookingRegistrantsPage />
             </RoleRoute>
           }
         />

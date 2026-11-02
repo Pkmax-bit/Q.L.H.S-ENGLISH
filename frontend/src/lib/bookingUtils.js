@@ -87,6 +87,30 @@ export const SLOT_COLORS = {
 
 export const colorClasses = (key) => SLOT_COLORS[key] || SLOT_COLORS.slate
 
+// ---- Bước chia lưới giờ ----
+// 60 phút = mỗi ô một tiếng (mặc định). Nhỏ hơn thì mỗi hàng giờ được chia tiếp
+// thành nhiều ô con, chọn được giờ lẻ như 09:15.
+export const STEP_OPTIONS = [
+  { value: 60, label: '1 giờ' },
+  { value: 30, label: '30 phút' },
+  { value: 15, label: '15 phút' },
+  { value: 5, label: '5 phút' },
+]
+
+export const MAX_MINUTE_OF_DAY = 24 * 60 - 1 // 23:59
+
+export const minutesToHHMM = (total) => {
+  const t = Math.max(0, Math.min(MAX_MINUTE_OF_DAY, Math.round(total)))
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
+}
+
+/** 200000 -> "200.000 ₫" */
+export const formatMoney = (value) => {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '—'
+  return `${n.toLocaleString('vi-VN')} ₫`
+}
+
 /** Nhãn ca gọn để hiện ở danh sách "chỗ của tôi" */
 export const slotTitle = (slot) =>
   slot?.label || `${slot?.start_time || ''}–${slot?.end_time || ''}`.trim() || 'Ca học'
