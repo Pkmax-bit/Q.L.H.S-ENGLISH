@@ -18,8 +18,11 @@
     "seed:test-classes": "node src/scripts/seed-test-classes.js",
     "seed:demo": "node src/scripts/seed-demo-data.js",
     "seed:schedules": "node src/scripts/seed-schedules-demo.js",
-    "test": "node --test test/**/*.test.js",
-    "check": "node --check server.js && node --check src/app.js"
+    "test": "node --test",
+    "check": "node --check server.js && node --check src/app.js",
+    "migrate:038": "node src/migrations/apply-one.js 038_booking_board.sql",
+    "migrate:039": "node src/migrations/apply-one.js 039_booking_board_multi_week.sql",
+    "migrate:040": "node src/migrations/apply-one.js 040_booking_slot_owner.sql"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
