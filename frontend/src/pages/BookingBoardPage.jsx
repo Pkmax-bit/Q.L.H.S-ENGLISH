@@ -1091,6 +1091,59 @@ export default function BookingBoardPage() {
             </p>
           )}
           <div className="flex w-full items-center gap-1 overflow-x-auto">
+            {/* LOẠI lịch và CÁCH hiển thị là hai câu hỏi khác nhau, nhưng cùng
+                là "đang xem cái gì" — để cạnh nhau ở đầu thanh. Trước đây hai
+                nút này nằm cách nhau năm nút không liên quan nên không ai tìm ra. */}
+            <span className="flex shrink-0 items-center gap-0.5 rounded-xl border border-slate-200 bg-white p-0.5">
+              {[
+                { k: 'lesson', nhan: 'Lịch học', icon: CalendarDays, chu: 'Lịch đã chốt' },
+                { k: 'free', nhan: 'Giờ rảnh', icon: CalendarClock, chu: 'Giờ CÓ THỂ học, để trung tâm xếp lịch' },
+              ].map((o) => (
+                <button
+                  key={o.k}
+                  type="button"
+                  title={o.chu}
+                  onClick={() => {
+                    setBoardMode(o.k)
+                    setSelectedCells([])
+                    setSelectedIds([])
+                  }}
+                  className={clsx(
+                    'flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors sm:py-1',
+                    boardMode === o.k
+                      ? 'bg-primary-600 text-white'
+                      : 'text-slate-600 hover:bg-primary-50 hover:text-primary-700'
+                  )}
+                >
+                  <o.icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline">{o.nhan}</span>
+                </button>
+              ))}
+            </span>
+
+            <span className="flex shrink-0 items-center gap-0.5 rounded-xl border border-slate-200 bg-white p-0.5">
+              {[
+                { k: 'hours', nhan: 'Lưới', icon: LayoutGrid, chu: 'Xem dạng lưới giờ' },
+                { k: 'list', nhan: 'Danh sách', icon: List, chu: 'Xem dạng danh sách' },
+              ].map((o) => (
+                <button
+                  key={o.k}
+                  type="button"
+                  title={o.chu}
+                  onClick={() => setView(o.k)}
+                  className={clsx(
+                    'flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors sm:py-1',
+                    view === o.k
+                      ? 'bg-slate-700 text-white'
+                      : 'text-slate-600 hover:bg-slate-100'
+                  )}
+                >
+                  <o.icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden sm:inline">{o.nhan}</span>
+                </button>
+              ))}
+            </span>
+
             <Button
               variant="ghost"
               size="xs"
@@ -1099,26 +1152,6 @@ export default function BookingBoardPage() {
               title="Hướng dẫn đăng ký"
             >
               <span className="hidden sm:inline">Hướng dẫn</span>
-            </Button>
-            {/* Hai thứ KHÁC HẲN nhau nên để hai chế độ, không trộn chung lưới:
-                buổi học là lịch đã chốt, giờ rảnh chỉ là "em có thể học lúc
-                này". Vẽ chung thì không ai phân biệt được cái nào đã chắc. */}
-            <Button
-              variant={boardMode === 'free' ? 'primary' : 'ghost'}
-              size="xs"
-              icon={CalendarClock}
-              onClick={() => {
-                setBoardMode((m) => (m === 'free' ? 'lesson' : 'free'))
-                setSelectedCells([])
-                setSelectedIds([])
-              }}
-              title={
-                boardMode === 'free'
-                  ? 'Quay về lịch học đã xếp'
-                  : 'Khoanh những giờ có thể học để trung tâm xếp lịch'
-              }
-            >
-              <span className="hidden sm:inline">Giờ rảnh</span>
             </Button>
             {boardMode === 'free' && isManager && (
               <Button
@@ -1199,18 +1232,6 @@ export default function BookingBoardPage() {
                 className="w-24 py-1 text-xs"
               />
             )}
-            {/* MỘT nút đổi qua lại, không phải hai nút cạnh nhau: hai nút chiếm
-                chỗ gấp đôi mà lúc nào cũng có một cái vô dụng — nó đang là dạng
-                đang xem. Nhãn là NƠI SẼ TỚI, nên bấm xong nhãn đổi theo. */}
-            <Button
-              variant="ghost"
-              size="xs"
-              icon={view === 'hours' ? List : LayoutGrid}
-              onClick={() => setView((v) => (v === 'hours' ? 'list' : 'hours'))}
-              title={view === 'hours' ? 'Xem dạng danh sách' : 'Xem dạng lưới giờ'}
-            >
-              <span className="hidden sm:inline">{view === 'hours' ? 'Danh sách' : 'Lưới giờ'}</span>
-            </Button>
             <Button
               variant="ghost"
               size="xs"
