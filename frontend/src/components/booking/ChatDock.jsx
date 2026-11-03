@@ -14,6 +14,37 @@ const POLL_MS = 60000
 // thành trái tim đen kiểu ký tự chữ
 const EMOJIS = ['👍', '❤️', '😄', '😮', '😢', '🙏']
 
+/**
+ * Cắt nội dung thành các đoạn thường và đoạn @nhắc tên.
+ *
+ * Dò theo DANH SÁCH TÊN THẬT chứ không bắt từ @ tới khoảng trắng: tên người
+ * Việt có dấu cách ("@Mai Huỳnh Anh Thi"), bắt tới khoảng trắng thì chỉ tô
+ * được chữ "Mai".
+ */
+function highlightMentions(text, names) {
+  if (!text) return []
+  const found = [...(names || [])]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length) // tên dài khớp trước, tránh cắt nửa chừng
+  const parts = []
+  let i = 0
+  while (i < text.length) {
+    if (text[i] === '@') {
+      const hit = found.find((n) => text.startsWith(`@${n}`, i))
+      if (hit) {
+        parts.push({ mention: true, text: `@${hit}` })
+        i += hit.length + 1
+        continue
+      }
+    }
+    const last = parts[parts.length - 1]
+    if (last && !last.mention) last.text += text[i]
+    else parts.push({ mention: false, text: text[i] })
+    i += 1
+  }
+  return parts
+}
+
 function timeOf(iso) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
@@ -34,7 +65,7 @@ function timeOf(iso) {
  * Vẫn giữ một vòng hỏi lại 60 giây làm lưới an toàn: websocket rớt hoặc bị
  * proxy chặn thì chat chậm một phút, còn hơn là im hẳn mà người dùng không biết.
  */
-export default function ChatDock({ isManager = false, api, socket }) {
+export default function ChatDock({ isManager = false, api, socket, unread = 0, mentionNames = [] }) {
   const narrow = useIsNarrow()
   const [open, setOpen] = useState(false)
   const [threads, setThreads] = useState([])
@@ -50,6 +81,9 @@ export default function ChatDock({ isManager = false, api, socket }) {
   const [image, setImage] = useState(null)
   const [preview, setPreview] = useState('')
   const fileRef = useRef(null)
+  // Gợi ý @: bật khi người dùng vừa gõ @ và chưa gõ hết tên
+  const [mentionQuery, setMentionQuery] = useState(null)
+  const inputRef = useRef(null)
   const endRef = useRef(null)
 
   const loadThreads = useCallback(() => {
@@ -129,17 +163,44 @@ export default function ChatDock({ isManager = false, api, socket }) {
     }
   }
 
+  /**
+   * Thả cảm xúc: đổi ngay trên màn rồi mới gọi API.
+   *
+   * Chờ API xong mới vẽ thì bấm xong phải đợi hơn một giây mới thấy gì —
+   * với thao tác một chạm thì cảm giác như bấm hụt. Hỏng thì trả lại trạng
+   * thái cũ và báo lỗi.
+   */
   const react = async (messageId, emoji) => {
     setPickerFor(null)
+    const truoc = messages
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId) return m
+        const list = m.reactions || []
+        const found = list.find((r) => r.emoji === emoji)
+        if (!found) return { ...m, reactions: [...list, { emoji, count: 1, mine: true }] }
+        const next = found.mine
+          ? { ...found, count: found.count - 1, mine: false }
+          : { ...found, count: found.count + 1, mine: true }
+        return {
+          ...m,
+          reactions: list.flatMap((r) => (r.emoji !== emoji ? [r] : next.count > 0 ? [next] : [])),
+        }
+      })
+    )
     try {
       await api.react(messageId, emoji)
-      await loadMessages()
     } catch (err) {
+      setMessages(truoc)
       setError(err.response?.data?.message || 'Không thả được cảm xúc')
     }
   }
 
-  const unreadTotal = threads.reduce((n, t) => n + (t.unread || 0), 0)
+  // Người quản lý đếm theo danh sách luồng (đã mở hộp thì có sẵn), học viên
+  // lấy từ con số server trả kèm bảng — họ không được đọc danh sách luồng
+  const unreadTotal = isManager
+    ? Math.max(threads.reduce((n, t) => n + (t.unread || 0), 0), open ? 0 : unread)
+    : unread
 
   if (!open) {
     return (
@@ -150,7 +211,7 @@ export default function ChatDock({ isManager = false, api, socket }) {
         className="fixed bottom-24 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg shadow-primary-900/20 transition-transform hover:scale-105 active:scale-95 sm:bottom-6"
       >
         <MessageCircle className="h-5 w-5" />
-        {isManager && unreadTotal > 0 && (
+        {unreadTotal > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold">
             {unreadTotal}
           </span>
@@ -278,7 +339,27 @@ export default function ChatDock({ isManager = false, api, socket }) {
                             />
                           </a>
                         )}
-                        {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
+                        {m.body && (
+                          <p className="whitespace-pre-wrap break-words">
+                            {/* Tách @Tên ra để tô đậm; tên có dấu cách nên bắt theo
+                                danh sách thật, không bắt bừa tới khoảng trắng */}
+                            {highlightMentions(m.body, mentionNames).map((part, i) =>
+                              part.mention ? (
+                                <b
+                                  key={i}
+                                  className={clsx(
+                                    'rounded px-0.5 font-semibold',
+                                    mine ? 'bg-white/20' : 'bg-primary-100 text-primary-800'
+                                  )}
+                                >
+                                  {part.text}
+                                </b>
+                              ) : (
+                                <span key={i}>{part.text}</span>
+                              )
+                            )}
+                          </p>
+                        )}
                         <p className={clsx('mt-0.5 text-[10px]', mine ? 'text-white/70' : 'text-slate-400')}>
                           {timeOf(m.created_at)}
                         </p>
@@ -286,7 +367,7 @@ export default function ChatDock({ isManager = false, api, socket }) {
 
                       {m.reactions?.length > 0 && (
                         <div className={clsx('mt-0.5 flex flex-wrap gap-1', mine && 'justify-end')}>
-                          {m.reactions.map((r) => (
+                          {m.reactions.filter((r) => r.count > 0).map((r) => (
                             <button
                               key={r.emoji}
                               type="button"
@@ -375,6 +456,33 @@ export default function ChatDock({ isManager = false, api, socket }) {
             </div>
           )}
 
+          {mentionQuery !== null && mentionNames.length > 0 && (
+            <div className="max-h-32 overflow-y-auto border-t border-slate-100 bg-white">
+              {mentionNames
+                .filter((n) => n.toLowerCase().includes(mentionQuery.toLowerCase()))
+                .slice(0, 6)
+                .map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => {
+                      // Thay đúng đoạn @đang gõ, giữ nguyên phần còn lại của câu
+                      setDraft((d) => d.replace(/(?:^|\s)@([^@]{0,20})$/, (full) => `${full.startsWith('@') ? '' : ' '}@${n} `))
+                      setMentionQuery(null)
+                      inputRef.current?.focus()
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-primary-50"
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[10px] font-bold text-primary-700">
+                      {/* Chữ cái tên gọi: người Việt gọi nhau bằng chữ cuối */}
+                      {n.trim().split(/\s+/).pop().charAt(0).toUpperCase()}
+                    </span>
+                    <span className="truncate">{n}</span>
+                  </button>
+                ))}
+            </div>
+          )}
+
           {preview && (
             <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50 px-3 py-2">
               <img src={preview} alt="Ảnh sắp gửi" className="h-12 w-12 rounded-lg object-cover" />
@@ -421,8 +529,15 @@ export default function ChatDock({ isManager = false, api, socket }) {
             </button>
             <textarea
               rows={1}
+              ref={inputRef}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value
+                setDraft(v)
+                // Chỉ mở gợi ý khi @ đứng đầu dòng hoặc sau khoảng trắng
+                const m = v.slice(0, e.target.selectionStart).match(/(?:^|\s)@([^@]{0,20})$/)
+                setMentionQuery(m ? m[1] : null)
+              }}
               onKeyDown={(e) => {
                 // Enter gửi, Shift+Enter xuống dòng — thói quen của mọi hộp chat
                 if (e.key === 'Enter' && !e.shiftKey) send(e)

@@ -421,6 +421,18 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
     }
   }
 
+  let unreadMessages = 0;
+  if (registrantId) {
+    let q = supabase
+      .from('booking_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('board_id', board.id)
+      .is('read_at', null);
+    q = manager ? q.eq('sender', 'student') : q.eq('registrant_id', registrantId).eq('sender', 'center');
+    const { count } = await q;
+    unreadMessages = count || 0;
+  }
+
   const byKey = groupEntriesBySlotDate(entries);
   const colorOf = assignColors((slots || []).map((s) => s.created_by));
   const mine = [];
@@ -479,6 +491,9 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
     my_all_entries: myAllEntries,
     my_all_count: myAllEntries.length,
     my_requests: myRequests,
+    // Số tin chưa đọc để vẽ chấm đỏ trên nút chat. Người quản lý đếm tin của
+    // MỌI học viên, học viên chỉ đếm tin trung tâm gửi cho mình.
+    unread_messages: unreadMessages,
     // Frontend bật bảng màu + select học viên theo cờ này; quyền thật vẫn do
     // server kiểm lại ở từng API, đây chỉ để khỏi hiện nút bấm vào thì lỗi
     is_manager: manager,

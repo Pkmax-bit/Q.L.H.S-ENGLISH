@@ -66,6 +66,7 @@ export default function BookingBoardPage() {
   const [lastAction, setLastAction] = useState(null)
   // Con dấu đang cầm trên tay: bấm vào buổi nào là đóng dấu vào buổi đó
   const [stampTool, setStampTool] = useState(null)
+  const [unreadMessages, setUnreadMessages] = useState(0)
 
   // Socket chung: lưới nghe 'booking:board_changed', hộp chat nghe 'booking:message'
   const { socket } = useBookingSocket({
@@ -124,6 +125,7 @@ export default function BookingBoardPage() {
         setMyAllEntries(data.my_all_entries || [])
         setMyRequests(data.my_requests || [])
         setIsManager(Boolean(data.is_manager))
+        setUnreadMessages(data.unread_messages || 0)
         setNotFound('')
       } catch (err) {
         if (err.response?.status === 404) {
@@ -1064,7 +1066,18 @@ export default function BookingBoardPage() {
         onApply={applyResolution}
       />
 
-      <ChatDock isManager={isManager} api={chatApi} socket={socket} />
+      <ChatDock
+        isManager={isManager}
+        api={chatApi}
+        socket={socket}
+        unread={unreadMessages}
+        // Học viên chỉ nhắc được trung tâm; người quản lý nhắc được từng học viên
+        mentionNames={
+          isManager
+            ? ['Trung tâm', ...students.map((p) => p.full_name).filter(Boolean)]
+            : ['Trung tâm']
+        }
+      />
 
       <RequestToolPanel
         state={menu.state}
