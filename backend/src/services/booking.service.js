@@ -4,6 +4,7 @@ const jwtConfig = require('../config/jwt');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 const { normalizePhone, isValidPhone, maskName } = require('../utils/phone');
 const { assignColors, DEFAULT_COLOR, PALETTE, nextRegistrantColor } = require('../utils/bookingColors');
+const sheets = require('./bookingSheets.service');
 const { emitNotification } = require('../socket');
 
 const REGISTRANT_EMBED = 'registrant:booking_registrants!booking_entries_registrant_id_fkey(id, full_name, phone)';
@@ -593,6 +594,10 @@ const notifyBoard = (boardId, action, extra = {}) => {
     { board_id: boardId, action, ...extra, ts: Date.now() },
     `booking_board:${boardId}`
   );
+  // Một chỗ duy nhất để móc đồng bộ Sheet vào: mọi thao tác đổi lịch đều đã
+  // gọi qua đây rồi. Rải lời gọi vào 13 chỗ sửa dữ liệu thì chỉ cần quên một
+  // chỗ là Sheet lệch mà không ai biết.
+  sheets.henDongBo(boardId);
 };
 
 /**
@@ -1695,6 +1700,15 @@ const closePoll = async (messageId, registrantId) => {
   return { message_id: messageId };
 };
 
+/** Nút "Đồng bộ ngay": ghi lại Sheet không chờ hẹn giờ. Chỉ trung tâm bấm được. */
+const syncSheetNow = async (slug, registrantId) => {
+  if (!(await isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Bạn không có quyền đồng bộ Sheet' };
+  }
+  const board = await fetchBoardBySlug(slug);
+  return sheets.dongBoNgay(board.id);
+};
+
 /**
  * Thu hồi một tin nhắn.
  *
@@ -2702,6 +2716,8 @@ module.exports = {
   closePoll,
   deletePoll,
   deleteMessage,
+  syncSheetNow,
+  sheetsConfigured: sheets.coCauHinh,
   listThreads,
   managerSetRegistrantColor,
   managerSetRegistrantPrice,

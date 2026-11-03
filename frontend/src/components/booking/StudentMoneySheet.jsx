@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, Users, Wallet, X } from 'lucide-react'
+import { Check, Sheet, Users, Wallet, X } from 'lucide-react'
 import clsx from 'clsx'
 import Button from '../common/Button'
 import LoadingSpinner from '../common/LoadingSpinner'
@@ -18,7 +18,7 @@ import { useIsNarrow } from '../../hooks/useIsNarrow'
  * Cột "Đã xong" đếm buổi có đóng dấu hoàn thành, không phải mọi buổi đã đăng
  * ký — tiền chỉ tính khi đã dạy.
  */
-export default function StudentMoneySheet({ open, onClose, load, onSetPrice, busy = false }) {
+export default function StudentMoneySheet({ open, onClose, load, onSetPrice, onSync, busy = false }) {
   const narrow = useIsNarrow()
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -182,12 +182,28 @@ export default function StudentMoneySheet({ open, onClose, load, onSetPrice, bus
           )}
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50 px-4 py-3">
-          <span className="flex items-center gap-2 text-sm text-slate-600">
-            <Wallet className="h-4 w-4 text-emerald-600" />
-            {tong.done} buổi đã hoàn thành
-          </span>
-          <span className="text-base font-bold text-emerald-700">{formatMoney(tong.amount)}</span>
+        <div className="border-t border-slate-100 bg-slate-50 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-2 text-sm text-slate-600">
+              <Wallet className="h-4 w-4 text-emerald-600" />
+              {tong.done} buổi đã hoàn thành
+            </span>
+            <span className="text-base font-bold text-emerald-700">{formatMoney(tong.amount)}</span>
+          </div>
+          {/* Server đã tự ghi sang Sheet sau mỗi lần sửa lịch; nút này cho lúc
+              muốn chắc chắn Sheet đã đúng trước khi gửi ai đó xem. */}
+          {onSync && (
+            <Button
+              size="sm"
+              variant="outline"
+              icon={Sheet}
+              loading={busy}
+              onClick={onSync}
+              className="mt-2 w-full"
+            >
+              Đồng bộ Google Sheet ngay
+            </Button>
+          )}
         </div>
       </div>
     </>

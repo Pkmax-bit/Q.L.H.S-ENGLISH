@@ -258,6 +258,12 @@ const closePoll = handle(async (req, res) => {
   return response.success(res, result, 'Đã khóa bình chọn');
 });
 
+const syncSheet = handle(async (req, res) => {
+  const result = await bookingService.syncSheetNow(req.params.slug, req.registrant.id);
+  const tom = result.tabs.map((t) => `${t.nam} (${t.rows} buổi)`).join(', ');
+  return response.success(res, result, tom ? `Đã ghi sang Sheet: ${tom}` : 'Chưa có buổi nào để ghi');
+});
+
 const deleteMessage = handle(async (req, res) => {
   const result = await bookingService.deleteMessage(req.params.messageId, req.registrant.id);
   return response.success(res, result, 'Đã thu hồi tin nhắn');
@@ -356,6 +362,7 @@ module.exports = {
   closePoll,
   deletePoll,
   deleteMessage,
+  syncSheet,
   managerSetRegistrantColor,
   managerSetRegistrantPrice,
   adminCancelRequest,

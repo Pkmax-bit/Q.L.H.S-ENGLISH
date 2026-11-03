@@ -130,6 +130,23 @@ export default function BookingBoardPage() {
     [slug]
   )
 
+  /**
+   * Ghi lịch sang Google Sheet ngay, không chờ hẹn giờ 8 giây của server.
+   * Mỗi lần sửa lịch server vẫn tự ghi; nút này cho lúc muốn chắc chắn Sheet
+   * đã đúng trước khi gửi cho ai đó xem.
+   */
+  const syncSheet = async () => {
+    setSavingRequest(true)
+    try {
+      const res = await bookingService.syncSheet(slug)
+      showFlash('success', res.data?.message || 'Đã ghi sang Sheet')
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không ghi được sang Sheet')
+    } finally {
+      setSavingRequest(false)
+    }
+  }
+
   const setStudentPrice = async (registrantId, price) => {
     setSavingRequest(true)
     try {
@@ -1264,6 +1281,7 @@ export default function BookingBoardPage() {
         busy={savingRequest}
         load={loadStudentMoney}
         onSetPrice={setStudentPrice}
+        onSync={syncSheet}
       />
 
       {/* Chốt tiền lúc đóng dấu hoàn thành */}
