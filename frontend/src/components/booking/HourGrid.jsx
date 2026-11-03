@@ -331,12 +331,21 @@ export default function HourGrid({
       const isNameRow = !isStart && mine.start + step >= minute && mine.start + step < subEnd
       // Dòng thứ ba của khối in ghi chú, buổi nào đủ dài mới có chỗ
       const isNoteRow = !isStart && mine.start + 2 * step >= minute && mine.start + 2 * step < subEnd
-      // Dấu mộc đóng ở GIỮA khối, như đóng lên giữa tờ giấy. Ô giữa là ô duy
-      // nhất biết mình ở giữa — các ô khác không biết khối dài bao nhiêu.
       const cellCount = Math.max(1, Math.round((mine.end - mine.start) / step))
       const idxInBlock = Math.round((minute - mine.start) / step)
-      const isStampRow = idxInBlock === Math.floor((cellCount - 1) / 2)
-      const stampFits = showLabel && cellCount >= 2
+      // Những ô đầu khối đã có chữ: giờ, rồi tên, rồi ghi chú.
+      const hasName = showLabel && Boolean(myReq.full_name)
+      const hasNote = showLabel && Boolean(myReq.note)
+      const textRows =
+        1 + (hasName && cellCount >= 2 ? 1 : 0) + (hasNote && cellCount >= 3 ? 1 : 0)
+      // Dấu mộc đóng vào khoảng TRỐNG dưới phần chữ, không đóng vào giữa khối
+      // nữa: giữa một buổi bốn ô rơi đúng vào ô thứ hai — ô ghi tên — nên tên
+      // học viên nằm lọt dưới con dấu đỏ, nhìn chỉ thấy dấu.
+      //
+      // Hết chỗ trống thì thôi không đóng dấu to, quay về huy hiệu nhỏ ở đầu
+      // khối (nhánh !stampFits bên dưới): mất con dấu còn hơn mất cái tên.
+      const stampFits = showLabel && cellCount > textRows
+      const isStampRow = idxInBlock === textRows + Math.floor((cellCount - textRows - 1) / 2)
       const label = `${DAY_SHORT[dow]} ${myReq.start_time}–${myReq.end_time}${
         myReq.full_name ? ` · ${myReq.full_name}` : ''
       }${myReq.note ? ` · ${myReq.note}` : ''}`
@@ -455,13 +464,22 @@ export default function HourGrid({
           {isStart && myReq.is_bold && myReq.is_marked && (
             <Star className={clsx('fill-current', showLabel ? 'h-3 w-3' : 'h-2.5 w-2.5')} />
           )}
+          {/* Buổi dài đúng một ô thì không có dòng thứ hai cho tên, mà cao 28px
+              không nhồi được cả giờ lẫn tên. Ưu tiên TÊN: vị trí của khối trên
+              lưới đã nói giờ rồi, còn tên thì không đoán ra được. Giờ chính xác
+              vẫn nằm trong tooltip. */}
           {isStart && showLabel && (
             <span className="truncate">
-              {myReq.start_time}–{myReq.end_time}
+              {cellCount === 1 && myReq.full_name
+                ? myReq.full_name
+                : `${myReq.start_time}–${myReq.end_time}`}
             </span>
           )}
+          {/* Tên là thứ phải đọc được đầu tiên trên khối: nhìn lưới là biết ai
+              học giờ nào. Trước để mờ 80% nên chữ 10px trên nền màu nhạt gần
+              như chìm mất. */}
           {isNameRow && showLabel && myReq.full_name && (
-            <span className="truncate font-medium opacity-80">{myReq.full_name}</span>
+            <span className="truncate font-semibold">{myReq.full_name}</span>
           )}
           {isNoteRow && showLabel && myReq.note && (
             <span className="truncate font-normal italic opacity-70">{myReq.note}</span>
