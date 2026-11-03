@@ -53,8 +53,15 @@ router.get('/public/boards/:slug/students', publicLimiter, bookingAuth, controll
 router.get('/public/boards/:slug/activity', publicLimiter, bookingAuth, controller.listMyBoardActivity);
 // Chat: học viên chỉ đụng luồng của mình, quản lý xem được mọi luồng (service kiểm cờ)
 router.get('/public/boards/:slug/messages', publicLimiter, bookingAuth, controller.listMessages);
-router.post('/public/boards/:slug/messages', publicLimiter, bookingAuth, controller.sendMessage);
+router.post(
+  '/public/boards/:slug/messages',
+  publicLimiter,
+  bookingAuth,
+  controller.chatImageUpload,
+  controller.sendMessage
+);
 router.get('/public/boards/:slug/threads', publicLimiter, bookingAuth, controller.listThreads);
+router.post('/public/messages/:messageId/reactions', publicLimiter, bookingAuth, controller.toggleReaction);
 // Sắp xếp ngay trên trang công khai, chỉ số có cờ quản lý
 router.get('/public/boards/:slug/pool', publicLimiter, bookingAuth, scheduling.managerListPool);
 router.post('/public/requests/:requestId/detach', publicLimiter, bookingAuth, scheduling.managerDetachRequest);

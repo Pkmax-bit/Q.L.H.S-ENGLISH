@@ -1150,12 +1150,32 @@ const listMessages = async (slug, registrantId, targetId = null) => {
 
   const { data, error } = await supabase
     .from('booking_messages')
-    .select('id, sender, body, created_at, read_at')
+    .select('id, sender, body, created_at, read_at, reply_to, image_url')
     .eq('board_id', board.id)
     .eq('registrant_id', thread)
     .order('created_at', { ascending: true })
     .limit(300);
   if (error) throw error;
+
+  const rows = data || [];
+  const byId = new Map(rows.map((m) => [m.id, m]));
+
+  // Cảm xúc của cả luồng lấy một lần rồi gom, không hỏi từng tin
+  const { data: reactions, error: rErr } = await supabase
+    .from('booking_message_reactions')
+    .select('message_id, registrant_id, emoji')
+    .in('message_id', rows.length ? rows.map((m) => m.id) : ['00000000-0000-0000-0000-000000000000']);
+  if (rErr) throw rErr;
+
+  const byMessage = new Map();
+  for (const r of reactions || []) {
+    if (!byMessage.has(r.message_id)) byMessage.set(r.message_id, new Map());
+    const perEmoji = byMessage.get(r.message_id);
+    if (!perEmoji.has(r.emoji)) perEmoji.set(r.emoji, { emoji: r.emoji, count: 0, mine: false });
+    const entry = perEmoji.get(r.emoji);
+    entry.count += 1;
+    if (r.registrant_id === registrantId) entry.mine = true;
+  }
 
   // Mở luồng ra là coi như đã đọc phần của phía bên kia
   const mine = manager && targetId ? 'student' : 'center';
@@ -1167,12 +1187,113 @@ const listMessages = async (slug, registrantId, targetId = null) => {
     .eq('sender', mine)
     .is('read_at', null);
 
-  return { thread_id: thread, messages: data || [] };
+  const messages = rows.map((m) => {
+    const quoted = m.reply_to ? byId.get(m.reply_to) : null;
+    return {
+      ...m,
+      reactions: [...(byMessage.get(m.id)?.values() || [])],
+      // Trích dẫn kèm luôn trong tin, khỏi phải tra ngược ở client
+      reply: quoted
+        ? {
+            id: quoted.id,
+            sender: quoted.sender,
+            body: quoted.body ? quoted.body.slice(0, 160) : '[Hình ảnh]',
+          }
+        : m.reply_to
+          ? { id: m.reply_to, sender: null, body: null } // tin gốc đã bị xóa
+          : null,
+    };
+  });
+
+  return { thread_id: thread, messages };
 };
 
-const sendMessage = async (slug, registrantId, { body, registrant_id: targetId } = {}) => {
+/**
+ * Thả hoặc bỏ một cảm xúc. Thả lại đúng emoji đó là bỏ — không có nút xóa riêng.
+ */
+const toggleReaction = async (messageId, emoji, registrantId) => {
+  const icon = String(emoji || '').trim();
+  if (!icon || icon.length > 8) throw { statusCode: 400, message: 'Cảm xúc không hợp lệ' };
+
+  const { data: msg, error } = await supabase
+    .from('booking_messages')
+    .select('id, board_id, registrant_id')
+    .eq('id', messageId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!msg) throw { statusCode: 404, message: 'Không tìm thấy tin nhắn' };
+
+  // Chỉ người trong luồng đó, hoặc người quản lý, mới thả được
+  const manager = await isManagerSession(registrantId);
+  if (!manager && msg.registrant_id !== registrantId) {
+    throw { statusCode: 403, message: 'Bạn không xem được tin nhắn này' };
+  }
+
+  const { data: existing, error: exErr } = await supabase
+    .from('booking_message_reactions')
+    .select('message_id')
+    .eq('message_id', messageId)
+    .eq('registrant_id', registrantId)
+    .eq('emoji', icon)
+    .maybeSingle();
+  if (exErr) throw exErr;
+
+  if (existing) {
+    const { error: delErr } = await supabase
+      .from('booking_message_reactions')
+      .delete()
+      .eq('message_id', messageId)
+      .eq('registrant_id', registrantId)
+      .eq('emoji', icon);
+    if (delErr) throw delErr;
+  } else {
+    const { error: insErr } = await supabase
+      .from('booking_message_reactions')
+      .insert({ message_id: messageId, registrant_id: registrantId, emoji: icon });
+    if (insErr) throw insErr;
+  }
+
+  // Hai phía đang mở hộp chat phải thấy ngay, y như tin nhắn mới
+  const payload = { board_id: msg.board_id, thread_id: msg.registrant_id, reaction: true };
+  emitNotification('booking:message', payload, `booking_thread:${msg.registrant_id}`);
+  emitNotification('booking:message', payload, `booking_manager:${msg.board_id}`);
+
+  return { message_id: messageId, emoji: icon, added: !existing };
+};
+
+const BOOKING_CHAT_BUCKET = () => process.env.BOOKING_CHAT_BUCKET || 'booking-chat';
+
+/**
+ * Đẩy một tấm ảnh lên kho rồi trả link công khai.
+ *
+ * Tên file gắn id ngẫu nhiên: hai người gửi cùng một tấm "IMG_1234.jpg" thì
+ * không đè nhau, và không ai đoán được đường dẫn ảnh của người khác.
+ */
+const uploadChatImage = async (file, registrantId) => {
+  const okTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+  if (!okTypes.includes(file.mimetype)) {
+    throw { statusCode: 400, message: 'Chỉ nhận ảnh PNG, JPG, WEBP hoặc GIF' };
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw { statusCode: 400, message: 'Ảnh tối đa 5MB' };
+  }
+
+  const safe = String(file.originalname || 'anh').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+  const path = `${registrantId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safe}`;
+
+  const { error } = await supabase.storage
+    .from(BOOKING_CHAT_BUCKET())
+    .upload(path, file.buffer, { contentType: file.mimetype, upsert: false });
+  if (error) throw error;
+
+  const { data } = supabase.storage.from(BOOKING_CHAT_BUCKET()).getPublicUrl(path);
+  return { url: data.publicUrl, path };
+};
+
+const sendMessage = async (slug, registrantId, { body, registrant_id: targetId, reply_to: replyTo } = {}, file = null) => {
   const text = String(body || '').trim();
-  if (!text) throw { statusCode: 400, message: 'Chưa nhập nội dung' };
+  // Tin chỉ có ảnh là chuyện thường, nên chỉ chặn khi KHÔNG có gì cả
+  if (!text && !file) throw { statusCode: 400, message: 'Chưa nhập nội dung' };
   if (text.length > 2000) throw { statusCode: 400, message: 'Tin nhắn tối đa 2000 ký tự' };
 
   const board = await fetchBoardBySlug(slug);
@@ -1181,10 +1302,20 @@ const sendMessage = async (slug, registrantId, { body, registrant_id: targetId }
   const thread = targetId && manager ? targetId : registrantId;
   const sender = manager && targetId && targetId !== registrantId ? 'center' : manager ? 'center' : 'student';
 
+  const image = file ? await uploadChatImage(file, registrantId) : null;
+
   const { data, error } = await supabase
     .from('booking_messages')
-    .insert({ board_id: board.id, registrant_id: thread, sender, body: text })
-    .select('id, sender, body, created_at')
+    .insert({
+      board_id: board.id,
+      registrant_id: thread,
+      sender,
+      body: text || null,
+      reply_to: replyTo || null,
+      image_url: image?.url || null,
+      image_path: image?.path || null,
+    })
+    .select('id, sender, body, created_at, reply_to, image_url')
     .single();
   if (error) throw error;
 
@@ -1193,7 +1324,7 @@ const sendMessage = async (slug, registrantId, { body, registrant_id: targetId }
     actor: await actorFromRegistrant(registrantId),
     action: 'message.send',
     targetId: data.id,
-    detail: { ben: sender === 'center' ? 'trung tâm' : 'học viên' },
+    detail: { ben: sender === 'center' ? 'trung tâm' : 'học viên', co_anh: Boolean(image) },
   });
 
   // Đẩy ngay cho hai phía đang mở hộp chat: phòng của chính luồng đó, và phòng
@@ -2105,6 +2236,7 @@ module.exports = {
   listActivityBySlug,
   listMessages,
   sendMessage,
+  toggleReaction,
   listThreads,
   managerSetRegistrantColor,
   adminCancelRequest,

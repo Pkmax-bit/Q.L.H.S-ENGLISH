@@ -93,7 +93,9 @@ export default function BookingBoardPage() {
           .then((res) => res.data?.data ?? res.data ?? { messages: [] }),
       listThreads: () =>
         bookingService.listBoardThreads(slug).then((res) => res.data?.data ?? res.data ?? []),
-      send: (body, registrantId) => bookingService.sendBoardMessage(slug, body, registrantId),
+      send: (body, registrantId, replyTo, image) =>
+        bookingService.sendBoardMessage(slug, body, registrantId, replyTo, image),
+      react: (messageId, emoji) => bookingService.reactToBoardMessage(messageId, emoji),
     }),
     [slug]
   )
@@ -172,14 +174,13 @@ export default function BookingBoardPage() {
   // Phải đặt SAU reloadPool: hook đọc biến trước lúc nó được khai báo thì cả
   // trang văng vào error boundary ngay lần render đầu.
   useEffect(() => {
-    const sock = socket?.current
-    if (!sock) return undefined
+    if (!socket) return undefined
     const onChanged = () => {
       load({ silent: true })
       if (isManager) reloadPool()
     }
-    sock.on('booking:board_changed', onChanged)
-    return () => sock.off('booking:board_changed', onChanged)
+    socket.on('booking:board_changed', onChanged)
+    return () => socket.off('booking:board_changed', onChanged)
   }, [socket, load, isManager, reloadPool])
 
   useEffect(() => {
@@ -941,9 +942,14 @@ export default function BookingBoardPage() {
               busySlotId={busySlotId}
               stepMinutes={step}
               selected={[...selectedIds, ...selectedCells.map((c) => c.key)]}
-              // Khối buổi học in cả tên: lưới dùng chung với trang quản trị, nơi
-              // mỗi khối là một học viên khác nhau
-              myRequests={myRequests.map((r) => ({ ...r, full_name: registrant?.full_name }))}
+              // Khối in tên chủ buổi. Server đã trả tên cho người quản lý (thấy
+              // buổi của mọi người), chỉ khi KHÔNG có mới điền tên người đang
+              // đăng nhập — buổi đó là của chính họ. Trước đây ghi đè vô điều
+              // kiện nên mọi khối đều mang tên người đang xem.
+              myRequests={myRequests.map((r) => ({
+                ...r,
+                full_name: r.full_name || registrant?.full_name || null,
+              }))}
               onToggleSelect={handleToggleSelect}
               onSlotClick={handleSlotClick}
               onRequestClick={handleCancelRequest}

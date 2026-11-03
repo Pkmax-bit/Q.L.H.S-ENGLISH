@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { io } from 'socket.io-client'
 
 /**
@@ -14,35 +14,41 @@ import { io } from 'socket.io-client'
  * Vào phòng bảng ngay khi nối được VÀ mỗi lần nối lại: mạng rớt rồi lên lại
  * thì socket.io tự nối nhưng KHÔNG tự vào lại phòng, không gắn vào 'connect'
  * là im lặng mất hết sự kiện từ đó về sau.
+ *
+ * Trả socket qua STATE chứ không qua ref. Ref không làm component vẽ lại, nên
+ * effect bên ngoài chạy đúng một lần lúc mới gắn — mà lúc đó socket còn là
+ * null (effect của con chạy trước effect của cha). Kết quả: không ai nghe
+ * được gì cả, chat phải chờ vòng hỏi lại. Dùng state thì socket vừa tạo xong
+ * là mọi nơi nghe nó được gắn lại ngay.
  */
 export function useBookingSocket({ bookingToken, token, boardId, isManager = false }) {
-  const socketRef = useRef(null)
+  const [socket, setSocket] = useState(null)
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
     if (!bookingToken && !token) return undefined
 
-    const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001', {
+    const sock = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001', {
       auth: bookingToken ? { bookingToken } : { token },
       transports: ['websocket', 'polling'],
     })
-    socketRef.current = socket
+    setSocket(sock)
 
     const join = () => {
       setConnected(true)
-      if (boardId) socket.emit('booking:join_board', boardId)
-      if (isManager && boardId) socket.emit('booking:join_manager', boardId)
+      if (boardId) sock.emit('booking:join_board', boardId)
+      if (isManager && boardId) sock.emit('booking:join_manager', boardId)
     }
-    socket.on('connect', join)
-    socket.on('disconnect', () => setConnected(false))
+    sock.on('connect', join)
+    sock.on('disconnect', () => setConnected(false))
 
     return () => {
-      socket.off('connect', join)
-      socket.disconnect()
-      socketRef.current = null
+      sock.off('connect', join)
+      sock.disconnect()
+      setSocket(null)
       setConnected(false)
     }
   }, [bookingToken, token, boardId, isManager])
 
-  return { socket: socketRef, connected }
+  return { socket, connected }
 }

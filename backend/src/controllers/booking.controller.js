@@ -1,5 +1,10 @@
+const multer = require('multer');
 const bookingService = require('../services/booking.service');
 const response = require('../utils/response');
+
+// Ảnh chat: giữ trong RAM rồi đẩy thẳng lên Supabase Storage, không ghi
+// tạm xuống đĩa — máy chủ Render có đĩa tạm, khởi động lại là mất.
+const chatUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const handle = (fn) => async (req, res, next) => {
   try {
@@ -192,8 +197,22 @@ const listMessages = handle(async (req, res) => {
 });
 
 const sendMessage = handle(async (req, res) => {
-  const result = await bookingService.sendMessage(req.params.slug, req.registrant.id, req.body || {});
+  const result = await bookingService.sendMessage(
+    req.params.slug,
+    req.registrant.id,
+    req.body || {},
+    req.file || null
+  );
   return response.success(res, result, 'Đã gửi');
+});
+
+const toggleReaction = handle(async (req, res) => {
+  const result = await bookingService.toggleReaction(
+    req.params.messageId,
+    (req.body || {}).emoji,
+    req.registrant.id
+  );
+  return response.success(res, result, result.added ? 'Đã thả cảm xúc' : 'Đã bỏ cảm xúc');
 });
 
 const listThreads = handle(async (req, res) => {
@@ -255,6 +274,7 @@ const adminCancelEntry = handle(async (req, res) => {
 });
 
 module.exports = {
+  chatImageUpload: chatUpload.single('image'),
   identify,
   getPublicBoard,
   getMe,
@@ -286,6 +306,7 @@ module.exports = {
   listMessages,
   sendMessage,
   listThreads,
+  toggleReaction,
   managerSetRegistrantColor,
   adminCancelRequest,
   createSlotFromRequests,

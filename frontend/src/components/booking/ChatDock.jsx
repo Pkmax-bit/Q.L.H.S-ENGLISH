@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, MessageCircle, Send, X } from 'lucide-react'
+import { ArrowLeft, CornerUpLeft, ImagePlus, MessageCircle, Send, SmilePlus, X } from 'lucide-react'
 import clsx from 'clsx'
 import { colorClasses } from '../../lib/bookingUtils'
 import { useIsNarrow } from '../../hooks/useIsNarrow'
@@ -7,6 +7,12 @@ import { useIsNarrow } from '../../hooks/useIsNarrow'
 // Socket đẩy tin ngay; vòng hỏi lại chỉ còn là lưới an toàn cho lúc rớt mạng
 // hoặc socket không nối được (proxy chặn websocket chẳng hạn).
 const POLL_MS = 60000
+
+// Sáu cảm xúc hay dùng. Không mở bảng emoji đầy đủ: thả cảm xúc là thao tác
+// một chạm, bày cả trăm icon ra thì thành đi tìm.
+// ❤ phải kèm U+FE0F mới ra trái tim ĐỎ; thiếu nó hệ điều hành vẽ
+// thành trái tim đen kiểu ký tự chữ
+const EMOJIS = ['👍', '❤️', '😄', '😮', '😢', '🙏']
 
 function timeOf(iso) {
   const d = new Date(iso)
@@ -37,6 +43,13 @@ export default function ChatDock({ isManager = false, api, socket }) {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  // Tin đang trả lời, và tin đang mở bảng cảm xúc
+  const [replyTo, setReplyTo] = useState(null)
+  const [pickerFor, setPickerFor] = useState(null)
+  // Ảnh đang chờ gửi + link xem trước tạm trong trình duyệt
+  const [image, setImage] = useState(null)
+  const [preview, setPreview] = useState('')
+  const fileRef = useRef(null)
   const endRef = useRef(null)
 
   const loadThreads = useCallback(() => {
@@ -70,35 +83,59 @@ export default function ChatDock({ isManager = false, api, socket }) {
   // Nghe trên socket chung của trang, kể cả khi hộp chat đang đóng: có vậy
   // chấm đỏ mới nhảy ngay lúc học viên nhắn, chứ không phải mở hộp ra mới biết
   useEffect(() => {
-    const sock = socket?.current
-    if (!sock) return undefined
+    if (!socket) return undefined
     const onMessage = () => {
       loadThreads()
       loadMessages()
     }
-    sock.on('booking:message', onMessage)
-    return () => sock.off('booking:message', onMessage)
+    socket.on('booking:message', onMessage)
+    return () => socket.off('booking:message', onMessage)
   }, [socket, loadThreads, loadMessages])
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, open])
 
+  // Link xem trước là bộ nhớ của trình duyệt, không thu hồi thì rò rỉ dần
+  useEffect(() => {
+    if (!image) {
+      setPreview('')
+      return undefined
+    }
+    const url = URL.createObjectURL(image)
+    setPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [image])
+
   const send = async (e) => {
     e?.preventDefault()
     const text = draft.trim()
-    if (!text || sending) return
+    // Gửi được khi có chữ HOẶC có ảnh
+    if ((!text && !image) || sending) return
     setSending(true)
     setError('')
     try {
-      await api.send(text, isManager ? activeThread : null)
+      await api.send(text, isManager ? activeThread : null, replyTo?.id || null, image)
       setDraft('')
+      setReplyTo(null)
+      setImage(null)
+      if (fileRef.current) fileRef.current.value = ''
       await loadMessages()
       await loadThreads()
     } catch (err) {
       setError(err.response?.data?.message || 'Không gửi được')
     } finally {
       setSending(false)
+    }
+  }
+
+  const react = async (messageId, emoji) => {
+    setPickerFor(null)
+    try {
+      await api.react(messageId, emoji)
+      await loadMessages()
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không thả được cảm xúc')
     }
   }
 
@@ -207,24 +244,111 @@ export default function ChatDock({ isManager = false, api, socket }) {
               // "của mình" đổi theo vai: quản lý thì tin trung tâm nằm bên phải
               const mine = isManager ? m.sender === 'center' : m.sender === 'student'
               return (
-                <div key={m.id} className={clsx('flex', mine ? 'justify-end' : 'justify-start')}>
-                  <div
-                    className={clsx(
-                      'max-w-[80%] rounded-2xl px-3 py-1.5 text-sm',
-                      mine
-                        ? 'rounded-br-sm bg-primary-600 text-white'
-                        : 'rounded-bl-sm bg-slate-100 text-stone-800'
-                    )}
-                  >
-                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                    <p
-                      className={clsx(
-                        'mt-0.5 text-[10px]',
-                        mine ? 'text-white/70' : 'text-slate-400'
+                <div key={m.id} className={clsx('group flex', mine ? 'justify-end' : 'justify-start')}>
+                  <div className={clsx('flex max-w-[85%] items-end gap-1', mine && 'flex-row-reverse')}>
+                    <div className="min-w-0">
+                      <div
+                        className={clsx(
+                          'rounded-2xl px-3 py-1.5 text-sm',
+                          mine
+                            ? 'rounded-br-sm bg-primary-600 text-white'
+                            : 'rounded-bl-sm bg-slate-100 text-stone-800'
+                        )}
+                      >
+                        {m.reply && (
+                          <div
+                            className={clsx(
+                              'mb-1 border-l-2 pl-2 text-xs',
+                              mine ? 'border-white/50 text-white/80' : 'border-slate-400 text-slate-500'
+                            )}
+                          >
+                            <span className="font-semibold">
+                              {m.reply.sender === 'center' ? 'Trung tâm' : 'Học viên'}
+                            </span>
+                            <span className="block truncate">{m.reply.body || 'Tin đã bị xóa'}</span>
+                          </div>
+                        )}
+                        {m.image_url && (
+                          <a href={m.image_url} target="_blank" rel="noreferrer" className="block">
+                            <img
+                              src={m.image_url}
+                              alt="Ảnh đã gửi"
+                              loading="lazy"
+                              className="mb-1 max-h-52 w-auto max-w-full rounded-lg object-cover"
+                            />
+                          </a>
+                        )}
+                        {m.body && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
+                        <p className={clsx('mt-0.5 text-[10px]', mine ? 'text-white/70' : 'text-slate-400')}>
+                          {timeOf(m.created_at)}
+                        </p>
+                      </div>
+
+                      {m.reactions?.length > 0 && (
+                        <div className={clsx('mt-0.5 flex flex-wrap gap-1', mine && 'justify-end')}>
+                          {m.reactions.map((r) => (
+                            <button
+                              key={r.emoji}
+                              type="button"
+                              onClick={() => react(m.id, r.emoji)}
+                              title={r.mine ? 'Bỏ cảm xúc' : 'Thả cảm xúc này'}
+                              className={clsx(
+                                'flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px]',
+                                r.mine
+                                  ? 'border-primary-400 bg-primary-50 text-primary-700'
+                                  : 'border-slate-200 bg-white text-slate-600 hover:border-primary-300'
+                              )}
+                            >
+                              <span>{r.emoji}</span>
+                              {r.count > 1 && <span className="font-semibold">{r.count}</span>}
+                            </button>
+                          ))}
+                        </div>
                       )}
-                    >
-                      {timeOf(m.created_at)}
-                    </p>
+
+                      {pickerFor === m.id && (
+                        <div
+                          className={clsx(
+                            'mt-1 flex gap-0.5 rounded-full border border-slate-200 bg-white px-1.5 py-1 shadow-md',
+                            mine && 'justify-end'
+                          )}
+                        >
+                          {EMOJIS.map((e) => (
+                            <button
+                              key={e}
+                              type="button"
+                              onClick={() => react(m.id, e)}
+                              className="rounded-full px-1 text-base leading-none transition-transform hover:scale-125"
+                              title={`Thả ${e}`}
+                            >
+                              {e}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Hai nút nhỏ cạnh bong bóng. Để mờ sẵn chứ không ẩn hẳn:
+                        màn cảm ứng không có trạng thái rê chuột, ẩn đi là không
+                        ai biết có trả lời và cảm xúc. */}
+                    <div className="flex shrink-0 flex-col gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                      <button
+                        type="button"
+                        title="Thả cảm xúc"
+                        onClick={() => setPickerFor((cur) => (cur === m.id ? null : m.id))}
+                        className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-primary-600"
+                      >
+                        <SmilePlus className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        title="Trả lời tin này"
+                        onClick={() => setReplyTo(m)}
+                        className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-primary-600"
+                      >
+                        <CornerUpLeft className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -234,7 +358,67 @@ export default function ChatDock({ isManager = false, api, socket }) {
 
           {error && <p className="px-3 pb-1 text-xs text-red-600">{error}</p>}
 
+          {replyTo && (
+            <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50 px-3 py-1.5 text-xs">
+              <CornerUpLeft className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <span className="min-w-0 flex-1 truncate text-slate-600">
+                Trả lời: <b>{replyTo.body}</b>
+              </span>
+              <button
+                type="button"
+                onClick={() => setReplyTo(null)}
+                className="shrink-0 rounded p-0.5 text-slate-400 hover:text-red-500"
+                title="Bỏ trả lời"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          {preview && (
+            <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50 px-3 py-2">
+              <img src={preview} alt="Ảnh sắp gửi" className="h-12 w-12 rounded-lg object-cover" />
+              <span className="min-w-0 flex-1 truncate text-xs text-slate-600">{image?.name}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setImage(null)
+                  if (fileRef.current) fileRef.current.value = ''
+                }}
+                className="shrink-0 rounded p-0.5 text-slate-400 hover:text-red-500"
+                title="Bỏ ảnh"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
           <form onSubmit={send} className="flex items-end gap-2 border-t border-slate-100 p-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (!f) return
+                if (f.size > 5 * 1024 * 1024) {
+                  setError('Ảnh tối đa 5MB')
+                  e.target.value = ''
+                  return
+                }
+                setError('')
+                setImage(f)
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              title="Gửi ảnh"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-primary-600"
+            >
+              <ImagePlus className="h-4 w-4" />
+            </button>
             <textarea
               rows={1}
               value={draft}
@@ -248,7 +432,7 @@ export default function ChatDock({ isManager = false, api, socket }) {
             />
             <button
               type="submit"
-              disabled={sending || !draft.trim()}
+              disabled={sending || (!draft.trim() && !image)}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white disabled:opacity-40"
               title="Gửi"
             >

@@ -131,14 +131,13 @@ export default function BookingBoardDetailPage() {
   })
 
   useEffect(() => {
-    const sock = socket?.current
-    if (!sock) return undefined
+    if (!socket) return undefined
     const onChanged = () => {
       reload()
       reloadReqs()
     }
-    sock.on('booking:board_changed', onChanged)
-    return () => sock.off('booking:board_changed', onChanged)
+    socket.on('booking:board_changed', onChanged)
+    return () => socket.off('booking:board_changed', onChanged)
   }, [socket, reload, reloadReqs])
 
   const publicUrl = board ? `${window.location.origin}/dk/${board.slug}` : ''

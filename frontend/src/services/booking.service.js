@@ -62,8 +62,28 @@ const bookingService = {
     publicApi.get(`/booking/public/boards/${slug}/messages`, {
       params: registrantId ? { registrant_id: registrantId } : undefined,
     }),
-  sendBoardMessage: (slug, body, registrantId) =>
-    publicApi.post(`/booking/public/boards/${slug}/messages`, { body, registrant_id: registrantId }),
+  sendBoardMessage: (slug, body, registrantId, replyTo, image) => {
+    // Có ảnh thì phải gửi dạng multipart; axios tự đặt boundary nên KHÔNG
+    // được tự tay set Content-Type, đặt tay là thiếu boundary và server
+    // không tách nổi phần file
+    if (image) {
+      const form = new FormData()
+      if (body) form.append('body', body)
+      if (registrantId) form.append('registrant_id', registrantId)
+      if (replyTo) form.append('reply_to', replyTo)
+      form.append('image', image)
+      return publicApi.post(`/booking/public/boards/${slug}/messages`, form, {
+        headers: { 'Content-Type': undefined },
+      })
+    }
+    return publicApi.post(`/booking/public/boards/${slug}/messages`, {
+      body,
+      registrant_id: registrantId,
+      reply_to: replyTo || null,
+    })
+  },
+  reactToBoardMessage: (messageId, emoji) =>
+    publicApi.post(`/booking/public/messages/${messageId}/reactions`, { emoji }),
   listBoardThreads: (slug) => publicApi.get(`/booking/public/boards/${slug}/threads`),
   managerListPool: (slug) => publicApi.get(`/booking/public/boards/${slug}/pool`),
   managerDetachRequest: (requestId) => publicApi.post(`/booking/public/requests/${requestId}/detach`),
