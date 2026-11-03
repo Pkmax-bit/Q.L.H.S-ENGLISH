@@ -1691,6 +1691,48 @@ const closePoll = async (messageId, registrantId) => {
   return { message_id: messageId };
 };
 
+/**
+ * Xóa bình chọn. Bình chọn LÀ một tin nhắn nên xóa luôn cả tin: để lại cái
+ * vỏ "[Bình chọn] ..." không bấm được gì thì còn khó hiểu hơn là mất hẳn.
+ * Phiếu bầu đi theo bằng ON DELETE CASCADE.
+ *
+ * Ai xóa được: người tạo, và trung tâm. `sender` chính là phía đã tạo —
+ * 'center' là trung tâm, 'student' là chủ luồng — nên không cần cột tác giả
+ * riêng để biết ai là người tạo.
+ */
+const deletePoll = async (messageId, registrantId) => {
+  const { data: poll, error } = await supabase
+    .from('booking_message_polls')
+    .select('message_id, message:booking_messages!booking_message_polls_message_id_fkey(id, board_id, registrant_id, sender)')
+    .eq('message_id', messageId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!poll?.message) throw { statusCode: 404, message: 'Không tìm thấy bình chọn này' };
+
+  const msg = poll.message;
+  const manager = await isManagerSession(registrantId);
+  const laNguoiTao = manager ? msg.sender === 'center' : msg.sender === 'student' && msg.registrant_id === registrantId;
+  if (!laNguoiTao && !manager) {
+    throw { statusCode: 403, message: 'Chỉ người tạo mới xóa được bình chọn' };
+  }
+
+  const { error: delErr } = await supabase.from('booking_messages').delete().eq('id', messageId);
+  if (delErr) throw delErr;
+
+  logActivity({
+    boardId: msg.board_id,
+    actor: await actorFromRegistrant(registrantId),
+    action: 'poll.delete',
+    targetId: messageId,
+    detail: { nguoi_tao: msg.sender === 'center' ? 'trung tâm' : 'học viên' },
+  });
+
+  const payload = { board_id: msg.board_id, thread_id: msg.registrant_id, poll: true };
+  emitNotification('booking:message', payload, `booking_thread:${msg.registrant_id}`);
+  emitNotification('booking:message', payload, `booking_manager:${msg.board_id}`);
+  return { message_id: messageId };
+};
+
 /** Danh sách luồng cho người quản lý: ai nhắn gì gần nhất, còn mấy tin chưa đọc. */
 const listThreads = async (slug, registrantId) => {
   if (!(await isManagerSession(registrantId))) {
@@ -2597,6 +2639,7 @@ module.exports = {
   createPoll,
   votePoll,
   closePoll,
+  deletePoll,
   listThreads,
   managerSetRegistrantColor,
   managerSetRegistrantPrice,

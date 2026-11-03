@@ -86,6 +86,9 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
   const inputRef = useRef(null)
   // Soạn bình chọn: null = đang đóng, object = đang mở
   const [pollDraft, setPollDraft] = useState(null)
+  // Bình chọn đang chờ xác nhận xóa. Hai nhịp bấm thay cho hộp thoại: xóa là
+  // mất cả phiếu của người khác, mà dựng modal cho một thao tác nhỏ thì nặng tay.
+  const [askDelete, setAskDelete] = useState(null)
   const endRef = useRef(null)
 
   const loadThreads = useCallback(() => {
@@ -262,6 +265,17 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
       await loadMessages()
     } catch (err) {
       setError(err.response?.data?.message || 'Không khóa được bình chọn')
+    }
+  }
+
+  const removePoll = async (messageId) => {
+    setAskDelete(null)
+    try {
+      await api.deletePoll(messageId)
+      setMessages((prev) => prev.filter((m) => m.id !== messageId))
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không xóa được bình chọn')
+      await loadMessages()
     }
   }
 
@@ -451,70 +465,125 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
                             )}
                           </p>
                         )}
+                        {/* Thẻ bình chọn luôn NỀN TRẮNG CHỮ ĐẬM, kể cả khi
+                            nằm trong bong bóng xanh của mình: chữ trắng trên
+                            nền trong mờ thì thanh phiếu và chữ gần như cùng
+                            một sắc, nhìn không ra ai hơn ai. */}
                         {m.poll && (
-                          <div
-                            className={clsx(
-                              'mt-1 rounded-xl p-2',
-                              mine ? 'bg-white/15' : 'bg-white'
-                            )}
-                          >
-                            <p className="mb-1.5 flex items-start gap-1.5 text-sm font-semibold">
-                              <BarChart3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                              <span className="min-w-0">{m.poll.question}</span>
-                            </p>
-                            {m.poll.options.map((o) => {
-                              // Thanh nền chạy theo TỶ LỆ trên tổng số phiếu;
-                              // chưa ai bầu thì để 0 chứ không chia cho 0
-                              const pct = m.poll.voter_count
-                                ? Math.round((o.count / m.poll.voter_count) * 100)
-                                : 0
-                              return (
+                          <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white p-2.5 text-stone-800 shadow-sm">
+                            <div className="mb-2 flex items-start gap-2">
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+                                <BarChart3 className="h-3.5 w-3.5" />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="break-words text-sm font-semibold leading-snug">
+                                  {m.poll.question}
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-slate-400">
+                                  {m.poll.voter_count} người đã chọn
+                                  {m.poll.multi ? ' · chọn nhiều ý' : ''}
+                                </p>
+                              </div>
+                              {m.poll.closed_at && (
+                                <span className="flex shrink-0 items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                                  <Lock className="h-2.5 w-2.5" />
+                                  Đã khóa
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-1">
+                              {m.poll.options.map((o) => {
+                                // Phần trăm tính trên SỐ NGƯỜI bầu, không trên
+                                // tổng phiếu: bình chọn nhiều ý thì tổng phiếu
+                                // vượt quá số người, cộng lại ra hơn 100%
+                                const pct = m.poll.voter_count
+                                  ? Math.round((o.count / m.poll.voter_count) * 100)
+                                  : 0
+                                return (
+                                  <button
+                                    key={o.id}
+                                    type="button"
+                                    disabled={Boolean(m.poll.closed_at)}
+                                    onClick={() => vote(m.id, o.id)}
+                                    title={o.names?.length ? o.names.join(', ') : 'Chưa ai chọn'}
+                                    className={clsx(
+                                      'relative flex w-full items-center gap-2 overflow-hidden rounded-lg border px-2 py-1.5 text-left text-xs transition-colors',
+                                      o.mine
+                                        ? 'border-primary-300 text-primary-900'
+                                        : 'border-slate-200 text-stone-700',
+                                      !m.poll.closed_at && 'hover:border-primary-300'
+                                    )}
+                                  >
+                                    {/* Thanh nền chạy theo tỷ lệ, nằm dưới chữ */}
+                                    <span
+                                      aria-hidden="true"
+                                      style={{ width: `${pct}%` }}
+                                      className={clsx(
+                                        'absolute inset-y-0 left-0 transition-all duration-300',
+                                        o.mine ? 'bg-primary-100' : 'bg-slate-100'
+                                      )}
+                                    />
+                                    <span
+                                      className={clsx(
+                                        'relative flex h-4 w-4 shrink-0 items-center justify-center border',
+                                        m.poll.multi ? 'rounded' : 'rounded-full',
+                                        o.mine
+                                          ? 'border-primary-500 bg-primary-500 text-white'
+                                          : 'border-slate-300 bg-white'
+                                      )}
+                                    >
+                                      {o.mine && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                                    </span>
+                                    <span
+                                      className={clsx(
+                                        'relative min-w-0 flex-1 truncate',
+                                        o.mine && 'font-semibold'
+                                      )}
+                                    >
+                                      {o.text}
+                                    </span>
+                                    <span className="relative shrink-0 tabular-nums text-[11px] text-slate-400">
+                                      {pct}%
+                                    </span>
+                                    <span className="relative w-5 shrink-0 text-right font-semibold tabular-nums">
+                                      {o.count}
+                                    </span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+
+                            {/* Người tạo (và trung tâm) mới thấy hai nút này */}
+                            {(mine || isManager) && (
+                              <div className="mt-2 flex items-center gap-3 border-t border-slate-100 pt-1.5 text-[11px]">
+                                {!m.poll.closed_at && (
+                                  <button
+                                    type="button"
+                                    onClick={() => closePoll(m.id)}
+                                    className="flex items-center gap-1 text-slate-500 hover:text-primary-600"
+                                  >
+                                    <Lock className="h-3 w-3" />
+                                    Khóa
+                                  </button>
+                                )}
                                 <button
-                                  key={o.id}
                                   type="button"
-                                  disabled={Boolean(m.poll.closed_at)}
-                                  onClick={() => vote(m.id, o.id)}
-                                  title={o.names?.length ? o.names.join(', ') : 'Chưa ai chọn'}
+                                  onClick={() =>
+                                    askDelete === m.id ? removePoll(m.id) : setAskDelete(m.id)
+                                  }
+                                  onBlur={() => setAskDelete((cur) => (cur === m.id ? null : cur))}
                                   className={clsx(
-                                    'relative mb-1 flex w-full items-center gap-1.5 overflow-hidden rounded-lg border px-2 py-1 text-left text-xs',
-                                    o.mine
-                                      ? 'border-primary-400 font-semibold'
-                                      : 'border-slate-200 hover:border-primary-300',
-                                    mine ? 'text-white' : 'text-stone-800',
-                                    m.poll.closed_at && 'cursor-default opacity-80'
+                                    'ml-auto flex items-center gap-1',
+                                    askDelete === m.id
+                                      ? 'font-semibold text-red-600'
+                                      : 'text-slate-500 hover:text-red-600'
                                   )}
                                 >
-                                  <span
-                                    aria-hidden="true"
-                                    style={{ width: `${pct}%` }}
-                                    className={clsx(
-                                      'absolute inset-y-0 left-0',
-                                      mine ? 'bg-white/25' : 'bg-primary-100'
-                                    )}
-                                  />
-                                  <span className="relative min-w-0 flex-1 truncate">{o.text}</span>
-                                  {o.mine && <Check className="relative h-3 w-3 shrink-0" />}
-                                  <span className="relative shrink-0 tabular-nums">{o.count}</span>
+                                  <Trash2 className="h-3 w-3" />
+                                  {askDelete === m.id ? 'Bấm lần nữa để xóa' : 'Xóa'}
                                 </button>
-                              )
-                            })}
-                            <p className={clsx('text-[10px]', mine ? 'text-white/70' : 'text-slate-400')}>
-                              {m.poll.voter_count} người đã chọn
-                              {m.poll.multi ? ' · chọn được nhiều ý' : ''}
-                              {m.poll.closed_at ? ' · đã khóa' : ''}
-                            </p>
-                            {isManager && !m.poll.closed_at && (
-                              <button
-                                type="button"
-                                onClick={() => closePoll(m.id)}
-                                className={clsx(
-                                  'mt-1 flex items-center gap-1 text-[10px] underline',
-                                  mine ? 'text-white/80' : 'text-slate-500'
-                                )}
-                              >
-                                <Lock className="h-3 w-3" />
-                                Khóa bình chọn
-                              </button>
+                              </div>
                             )}
                           </div>
                         )}

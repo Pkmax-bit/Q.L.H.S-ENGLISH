@@ -160,6 +160,7 @@ export default function BookingBoardPage() {
       createPoll: (data) => bookingService.createPoll(slug, data),
       vote: (messageId, optionId) => bookingService.votePoll(messageId, optionId),
       closePoll: (messageId) => bookingService.closePoll(messageId),
+      deletePoll: (messageId) => bookingService.deletePoll(messageId),
     }),
     [slug]
   )

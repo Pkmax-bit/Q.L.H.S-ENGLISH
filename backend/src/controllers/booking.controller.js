@@ -258,6 +258,11 @@ const closePoll = handle(async (req, res) => {
   return response.success(res, result, 'Đã khóa bình chọn');
 });
 
+const deletePoll = handle(async (req, res) => {
+  const result = await bookingService.deletePoll(req.params.messageId, req.registrant.id);
+  return response.success(res, result, 'Đã xóa bình chọn');
+});
+
 const managerSetRegistrantPrice = handle(async (req, res) => {
   const result = await bookingService.managerSetRegistrantPrice(
     req.params.registrantId,
@@ -344,6 +349,7 @@ module.exports = {
   createPoll,
   votePoll,
   closePoll,
+  deletePoll,
   managerSetRegistrantColor,
   managerSetRegistrantPrice,
   adminCancelRequest,
