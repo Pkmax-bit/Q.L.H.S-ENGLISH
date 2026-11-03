@@ -1,5 +1,9 @@
 /**
- * Đẩy lịch học của bảng đăng ký sang Google Sheets — MỖI NĂM MỘT TAB.
+ * Đẩy lịch sang Google Sheets — MỖI NĂM MỘT TAB.
+ *
+ * Tab chỉ chứa các buổi ĐÃ ĐÓNG DẤU HOÀN THÀNH, kèm số tiền thật đã chốt.
+ * Đây là SỔ TIỀN chứ không phải lịch sắp tới: buổi mới đăng ký thì chưa dạy,
+ * đưa vào thì cộng lại ra số cao hơn tiền thật thu được.
  *
  * CÁCH ĐỒNG BỘ: ghi lại TOÀN BỘ tab của năm bị ảnh hưởng, không ghi từng dòng
  * theo từng thay đổi. Ghi từng dòng thì phải nhớ dòng nào ứng với buổi nào;
@@ -57,7 +61,7 @@ const COT = [
   'Điện thoại',
   'Bảng',
   'Ghi chú',
-  'Trạng thái',
+  'Chốt lúc',
   'Tiền',
 ];
 
@@ -180,12 +184,16 @@ const docBuoiTrongNam = async (nam) => {
     .from('booking_requests')
     .select(
       'session_date, start_time, end_time, note, done_at, amount, color, ' +
-        'registrant:booking_registrants!booking_requests_registrant_id_fkey(full_name, phone, color), ' +
+        'registrant:booking_registrants!booking_requests_registrant_id_fkey(full_name, phone, color, price_per_session), ' +
         'board:booking_boards!booking_requests_board_id_fkey(title)'
     )
     .gte('session_date', `${nam}-01-01`)
     .lte('session_date', `${nam}-12-31`)
     .in('status', ['pending', 'approved'])
+    // CHỈ buổi đã đóng dấu hoàn thành. Tab này là sổ tiền: buổi mới đăng ký
+    // chưa dạy, đưa vào thì cộng lại ra số cao hơn tiền thật thu được, mà
+    // người đọc Sheet không có cột nào để biết dòng nào đã dạy dòng nào chưa.
+    .not('done_at', 'is', null)
     .order('session_date', { ascending: true })
     .limit(TOI_DA_DONG);
   if (error) throw error;
@@ -204,6 +212,25 @@ const soPhut = (bd, kt) => {
   return h2 * 60 + m2 - (h1 * 60 + m1);
 };
 
+/**
+ * Tiền của một buổi: số THẬT đã chốt lúc đóng dấu; buổi nào chốt trước khi có
+ * chức năng học phí thì chưa có số nào, lấy tạm giá mặc định của học viên.
+ *
+ * Giá mặc định chỉ là chỗ dựa cuối: nó là giá HÔM NAY, còn buổi kia dạy từ
+ * bao giờ không biết. Bao giờ cũng ưu tiên số đã đóng băng trên chính buổi đó.
+ */
+const tienCuaBuoi = (r) => {
+  if (r.amount !== null && r.amount !== undefined) return Number(r.amount);
+  const mac = r.registrant?.price_per_session;
+  return mac === null || mac === undefined ? '' : Number(mac);
+};
+
+const gioVN = (iso) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false });
+};
+
 const dongCuaBuoi = (r) => [
   String(r.session_date).slice(0, 10),
   DAY_VN[new Date(`${String(r.session_date).slice(0, 10)}T00:00:00`).getDay()],
@@ -214,15 +241,23 @@ const dongCuaBuoi = (r) => [
   r.registrant?.phone || '',
   r.board?.title || '',
   r.note || '',
-  r.done_at ? 'Hoàn thành' : 'Chưa học',
-  r.done_at && r.amount !== null && r.amount !== undefined ? Number(r.amount) : '',
+  gioVN(r.done_at),
+  tienCuaBuoi(r),
 ];
+
+/**
+ * Bảng sẽ ghi lên Sheet của một năm. Tách riêng khỏi phần gọi mạng để còn
+ * xem được nội dung mà không cần chìa khóa Google.
+ */
+const bangChoNam = async (nam) => {
+  const buoi = await docBuoiTrongNam(nam);
+  return { buoi, bang: [COT, ...buoi.map(dongCuaBuoi)] };
+};
 
 /** Ghi lại toàn bộ một tab năm. */
 const ghiTabNam = async (token, fileId, nam) => {
-  const buoi = await docBuoiTrongNam(nam);
+  const { buoi, bang } = await bangChoNam(nam);
   const sheetId = await tabCuaNam(token, fileId, nam);
-  const bang = [COT, ...buoi.map(dongCuaBuoi)];
 
   // Xóa sạch rồi ghi đè. Không dùng update đè lên vùng cũ: tuần này ít buổi
   // hơn tuần trước thì mấy dòng thừa ở dưới vẫn nằm nguyên đó.
@@ -335,4 +370,4 @@ const henDongBo = (boardId) => {
   );
 };
 
-module.exports = { henDongBo, dongBoNgay, coCauHinh };
+module.exports = { henDongBo, dongBoNgay, coCauHinh, bangChoNam };
