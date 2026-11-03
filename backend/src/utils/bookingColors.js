@@ -45,7 +45,26 @@ const assignColors = (creatorIds = []) => {
   return map;
 };
 
+/**
+ * Màu cho một học viên MỚI: lấy màu đang ít người dùng nhất.
+ *
+ * Không hash theo UUID như màu người tạo ca: ở đây mục đích là phân biệt người
+ * này với người kia trên cùng một lưới, nên phải rải đều. Dưới 9 người thì
+ * chắc chắn không trùng; quá 9 thì buộc lặp, nhưng vẫn đều chứ không dồn cục.
+ */
+const nextRegistrantColor = (usedColors = []) => {
+  const count = new Map(PALETTE.map((c) => [c, 0]));
+  for (const c of usedColors) {
+    if (count.has(c)) count.set(c, count.get(c) + 1);
+  }
+  let best = PALETTE[0];
+  for (const c of PALETTE) {
+    if (count.get(c) < count.get(best)) best = c;
+  }
+  return best;
+};
+
 /** Ca không rõ người tạo (dữ liệu cũ, hoặc tài khoản đã xóa) */
 const DEFAULT_COLOR = 'slate';
 
-module.exports = { PALETTE, DEFAULT_COLOR, assignColors, hashIndex };
+module.exports = { PALETTE, DEFAULT_COLOR, assignColors, hashIndex, nextRegistrantColor };

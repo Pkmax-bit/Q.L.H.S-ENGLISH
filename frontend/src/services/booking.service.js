@@ -51,6 +51,8 @@ const bookingService = {
   cancelMyEntry: (entryId) => publicApi.delete(`/booking/public/entries/${entryId}`),
   createRequests: (slug, cells) => publicApi.post(`/booking/public/boards/${slug}/requests`, { cells }),
   cancelMyRequest: (requestId) => publicApi.delete(`/booking/public/requests/${requestId}`),
+  updateMyRequest: (requestId, patch) =>
+    publicApi.patch(`/booking/public/requests/${requestId}`, patch),
 
   // ---- quản trị (admin / giáo viên) ----
   listBoards: (params) => api.get('/booking/boards', { params }),
@@ -70,6 +72,12 @@ const bookingService = {
     api.get(`/booking/boards/${boardId}/registrations.csv`, { params, responseType: 'blob' }),
   listRequests: (boardId, params) => api.get(`/booking/boards/${boardId}/requests`, { params }),
   reviewRequests: (data) => api.post('/booking/requests/review', data),
+  // Chỉ admin: backend chặn ở authorize('admin'), đây chỉ là đường gọi
+  setRegistrantColor: (registrantId, color) =>
+    api.patch(`/booking/registrants/${registrantId}/color`, { color }),
+  setRequestsColor: (ids, color) => api.post('/booking/requests/color', { ids, color }),
+  updateRequest: (requestId, patch) => api.patch(`/booking/requests/${requestId}`, patch),
+  adminCancelRequest: (requestId) => api.delete(`/booking/requests/${requestId}`),
   createSlotFromRequests: (boardId, data) => api.post(`/booking/boards/${boardId}/requests/open-slot`, data),
   adminAddEntry: (slotId, data) => api.post(`/booking/slots/${slotId}/entries`, data),
   adminCancelEntry: (entryId) => api.delete(`/booking/entries/${entryId}`),

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CalendarDays, LayoutGrid, List, Lock, LogOut, RefreshCw, TriangleAlert } from 'lucide-react'
+import { CalendarDays, HelpCircle, LayoutGrid, List, Lock, LogOut, RefreshCw, TriangleAlert } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Button from '../components/common/Button'
 import Select from '../components/common/Select'
@@ -9,8 +9,10 @@ import WeekPicker from '../components/booking/WeekPicker'
 import WeekSlotGrid from '../components/booking/WeekSlotGrid'
 import HourGrid from '../components/booking/HourGrid'
 import SelectionBar from '../components/booking/SelectionBar'
-import RequestDialog from '../components/booking/RequestDialog'
 import MyBookingsBar from '../components/booking/MyBookingsBar'
+import RequestToolPanel from '../components/booking/RequestToolPanel'
+import BookingHelpSheet from '../components/booking/BookingHelpSheet'
+import { useContextMenu } from '../hooks/useContextMenu'
 import bookingService, { bookingSession } from '../services/booking.service'
 import { DAY_SHORT, STEP_OPTIONS, formatDate, formatDateTime, mergeCells } from '../lib/bookingUtils'
 
@@ -39,7 +41,9 @@ export default function BookingBoardPage() {
   const [myRequests, setMyRequests] = useState([])
   const [selectedCells, setSelectedCells] = useState([])
   const [booking, setBooking] = useState(false)
-  const [requestDialog, setRequestDialog] = useState(false)
+  const [savingRequest, setSavingRequest] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
+  const menu = useContextMenu()
 
   // Lưới trả về từng ô 15 phút; ô liền nhau trong cùng ngày là MỘT buổi học, nên
   // mọi thứ người dùng nhìn thấy và mọi thứ gửi lên server đều dùng bản đã gộp.
@@ -251,37 +255,53 @@ export default function BookingBoardPage() {
     }
   }
 
-  /**
-   * Bấm nút xác nhận: ca có sẵn thì giữ chỗ luôn, còn ô trống thì MỞ HỘP CHỌN
-   * LỊCH để hỏi giờ + số buổi trước khi gửi.
-   */
+  /** Bấm nút xác nhận: ca có sẵn thì giữ chỗ, ô trống thì gửi nguyện vọng luôn */
   const handleConfirm = async () => {
     if (selectedIds.length > 0) await handleConfirmBooking()
-    if (selectedCells.length > 0) setRequestDialog(true)
+    if (mergedCells.length > 0) await submitRequests()
   }
 
-  const submitRequests = async ({ session_count: sessionCount, note, start_time: st, end_time: en }) => {
+  /**
+   * Gửi thẳng các buổi vừa kéo chọn, không hỏi thêm gì.
+   *
+   * Trước đây mở một hộp thoại hỏi số buổi của khóa, nhưng kéo xong còn phải
+   * qua một bước nữa thì rườm rà: mỗi dải kéo là MỘT buổi, server tự hiểu
+   * `session_count = 1`. Muốn học thêm buổi nào thì kéo thêm ô đó.
+   */
+  const submitRequests = async () => {
     setBooking(true)
     try {
       const res = await bookingService.createRequests(
         slug,
         mergedCells.map((c) => ({
           session_date: c.date,
-          // Chọn đúng một khung thì dùng giờ người dùng vừa sửa trong hộp thoại
-          start_time: st && mergedCells.length === 1 ? st : c.start_time,
-          end_time: en && mergedCells.length === 1 ? en : c.end_time,
-          session_count: sessionCount,
-          note,
+          start_time: c.start_time,
+          end_time: c.end_time,
         }))
       )
       showFlash('success', res.data?.message || 'Đã gửi nguyện vọng')
       setSelectedCells([])
-      setRequestDialog(false)
     } catch (err) {
       showFlash('error', err.response?.data?.message || 'Không gửi được nguyện vọng')
     } finally {
       setBooking(false)
       await load({ silent: true })
+    }
+  }
+
+  // Lưu giờ / ghi chú từ bảng công cụ chuột phải. Chỉ gửi phần thay đổi nên
+  // sửa mỗi ghi chú thì giờ không bị ghi đè theo.
+  const saveRequest = async (request, patch) => {
+    setSavingRequest(true)
+    try {
+      await bookingService.updateMyRequest(request.id, patch)
+      showFlash('success', 'Đã lưu thay đổi')
+      menu.close()
+      await load({ silent: true })
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không lưu được')
+    } finally {
+      setSavingRequest(false)
     }
   }
 
@@ -376,8 +396,7 @@ export default function BookingBoardPage() {
 
         {board?.is_accepting && limitReached && (
           <div className="mb-4 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-800">
-            Bạn đã giữ đủ {board.max_slots_per_person} ca cho tuần này. Muốn đổi ca khác thì hủy một ca
-            trước{multiWeek ? ', hoặc chuyển sang tuần khác' : ''} nhé.
+            Đã đủ {board.max_slots_per_person} ca tuần này. Hủy một ca để đổi{multiWeek ? ', hoặc xem tuần khác' : ''}.
           </div>
         )}
 
@@ -396,14 +415,23 @@ export default function BookingBoardPage() {
         <WeekPicker weeks={weeks} selected={week} onSelect={handleSelectWeek} disabled={refreshing} />
 
         <div className="mb-3 flex items-center justify-between">
+          {/* Chỉ dẫn thao tác chuyển hết vào nút "?" — để ngoài này thì mỗi lần
+              vào trang phải đọc lại một đoạn mà thật ra chỉ cần đọc một lần */}
           <p className="text-xs text-slate-400">
             {multiWeek && board?.selected_week
-              ? `Đang xem tuần ${formatDate(board.selected_week)} – ${formatDate(board.selected_week_end)}`
-              : `Số chỗ cập nhật mỗi ${REFRESH_MS / 1000} giây`}
-            {view === 'hours' &&
-              ' · bấm ô có lớp để giữ chỗ · ô trống thì kéo dọc (hoặc chạm nhiều ô liền nhau) để chọn cả khung giờ muốn học'}
+              ? `Tuần ${formatDate(board.selected_week)} – ${formatDate(board.selected_week_end)}`
+              : ''}
           </p>
           <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={HelpCircle}
+              onClick={() => setHelpOpen(true)}
+              title="Hướng dẫn đăng ký"
+            >
+              <span className="hidden sm:inline">Hướng dẫn</span>
+            </Button>
             {view === 'hours' && (
               <Select
                 value={String(step)}
@@ -438,12 +466,16 @@ export default function BookingBoardPage() {
           </div>
         </div>
 
-        {slots.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center">
-            <p className="text-sm text-slate-500">Tuần này chưa có ca nào được mở.</p>
-          </div>
-        ) : view === 'hours' ? (
+        {/* Lưới giờ vẫn hiện khi bảng CHƯA có ca nào: giờ trống mới là chỗ học viên
+            kéo chọn để đăng ký, ẩn lưới đi là hết đường đăng ký. Chỉ dạng danh
+            sách theo ngày mới cần báo trống, vì nó chỉ liệt kê ca có sẵn. */}
+        {view === 'hours' ? (
           <>
+            {slots.length === 0 && (
+              <p className="mb-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-500">
+                Tuần này chưa có ca nào — chọn giờ bạn muốn học.
+              </p>
+            )}
             <HourGrid
               mode="public"
               board={board}
@@ -452,17 +484,13 @@ export default function BookingBoardPage() {
               busySlotId={busySlotId}
               stepMinutes={step}
               selected={[...selectedIds, ...selectedCells.map((c) => c.key)]}
-              myRequests={myRequests}
+              // Khối buổi học in cả tên: lưới dùng chung với trang quản trị, nơi
+              // mỗi khối là một học viên khác nhau
+              myRequests={myRequests.map((r) => ({ ...r, full_name: registrant?.full_name }))}
               onToggleSelect={handleToggleSelect}
               onSlotClick={handleSlotClick}
               onRequestClick={handleCancelRequest}
-            />
-            <RequestDialog
-              isOpen={requestDialog}
-              cells={mergedCells}
-              saving={booking}
-              onClose={() => setRequestDialog(false)}
-              onSubmit={submitRequests}
+              onRequestContextMenu={menu.open}
             />
             <SelectionBar
               count={selectedIds.length + mergedCells.length}
@@ -477,10 +505,10 @@ export default function BookingBoardPage() {
               ]}
               actionLabel={
                 mergedCells.length === 0
-                  ? `Đặt lịch ${selectedIds.length} ca`
+                  ? `Giữ chỗ ${selectedIds.length} ca`
                   : selectedIds.length === 0
-                    ? `Chọn số buổi cho ${mergedCells.length} buổi`
-                    : `Đặt ${selectedIds.length} ca + chọn số buổi`
+                    ? `Đăng ký ${mergedCells.length} buổi học`
+                    : `Giữ ${selectedIds.length} ca + đăng ký ${mergedCells.length} buổi`
               }
               loading={booking}
               onConfirm={handleConfirm}
@@ -490,14 +518,20 @@ export default function BookingBoardPage() {
               }}
               hint={
                 mergedCells.length > 0
-                  ? 'Giờ chưa có lớp chỉ là nguyện vọng — trung tâm xem rồi mới mở lớp, chưa giữ chỗ cho bạn.'
+                  ? 'Là nguyện vọng, chưa phải giữ chỗ.'
                   : board?.max_slots_per_person > 0 &&
                       myEntries.length + selectedIds.length > board.max_slots_per_person
-                    ? `Bảng giới hạn ${board.max_slots_per_person} ca/tuần, bạn đã giữ ${myEntries.length} — phần vượt sẽ bị từ chối.`
+                    ? `Tối đa ${board.max_slots_per_person} ca/tuần, bạn đã giữ ${myEntries.length}.`
                     : null
               }
             />
           </>
+        ) : slots.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center">
+            <p className="text-sm text-slate-500">
+              Chưa có ca nào. Chuyển sang <b>Theo giờ</b> để chọn giờ.
+            </p>
+          </div>
         ) : (
           <WeekSlotGrid
             board={board}
@@ -508,6 +542,21 @@ export default function BookingBoardPage() {
           />
         )}
       </main>
+
+      {/* Chuột phải vào buổi đã đăng ký: sửa ghi chú hoặc rút. Đổi màu không có
+          ở đây — màu là việc xếp lớp của trung tâm, học viên chỉ xem. */}
+      <BookingHelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      <RequestToolPanel
+        state={menu.state}
+        onClose={menu.close}
+        busy={savingRequest}
+        onSave={saveRequest}
+        onCancel={(request) => {
+          menu.close()
+          handleCancelRequest(request)
+        }}
+      />
 
       <MyBookingsBar
         entries={myAllEntries}

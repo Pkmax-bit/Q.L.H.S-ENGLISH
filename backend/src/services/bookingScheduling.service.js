@@ -149,7 +149,7 @@ const listRegistrants = async (queryParams = {}) => {
 
   let q = supabase
     .from('booking_registrants')
-    .select('id, full_name, phone, created_at, last_login_at');
+    .select('id, full_name, phone, color, created_at, last_login_at');
   if (search) {
     const safe = search.replace(/[%,()]/g, '');
     q = q.or(`full_name.ilike.%${safe}%,phone.ilike.%${safe}%`);

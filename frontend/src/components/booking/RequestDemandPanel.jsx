@@ -13,6 +13,9 @@ import { DAY_SHORT, formatShortDate } from '../../lib/bookingUtils'
  *
  * Sắp xếp theo SỐ NGƯỜI MUỐN giảm dần, không theo thời gian gửi: việc của admin
  * là "mở ca nào trước", nên giờ đông nhất phải nằm trên cùng.
+ *
+ * Không tô màu ở đây: từ 046 màu gắn với HỌC VIÊN, đổi trong bảng công cụ
+ * chuột phải trên lưới giờ.
  */
 export default function RequestDemandPanel({
   demand = [],

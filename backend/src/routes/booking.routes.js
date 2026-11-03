@@ -46,6 +46,7 @@ router.delete('/public/entries/:entryId', publicLimiter, bookingAuth, controller
 // Nguyện vọng giờ học: ô trống trên lưới, KHÔNG giữ chỗ
 router.post('/public/boards/:slug/requests', publicLimiter, bookingAuth, controller.createRequests);
 router.delete('/public/requests/:requestId', publicLimiter, bookingAuth, controller.cancelMyRequest);
+router.patch('/public/requests/:requestId', publicLimiter, bookingAuth, controller.updateMyRequest);
 
 // ============================ QUẢN TRỊ (admin + giáo viên) ============================
 
@@ -66,6 +67,14 @@ router.get('/boards/:id/registrations.csv', auth, authorize('admin', 'teacher'),
 
 router.get('/boards/:id/requests', auth, authorize('admin', 'teacher'), controller.listRequests);
 router.post('/requests/review', auth, authorize('admin', 'teacher'), controller.reviewRequests);
+// Tô màu buổi học: CHỈ admin. Giáo viên xem và duyệt được, nhưng màu là cách
+// trung tâm xếp lớp trên lưới — để nhiều người đổi thì bảng màu hết ý nghĩa.
+// Màu gắn với HỌC VIÊN (046), không còn gắn từng buổi. Chỉ admin: màu là cách
+// trung tâm phân biệt người trên lưới, để nhiều người đổi thì bảng màu loạn.
+router.patch('/registrants/:registrantId/color', auth, authorize('admin'), controller.setRegistrantColor);
+router.post('/requests/color', auth, authorize('admin'), controller.setRequestsColor);
+router.patch('/requests/:requestId', auth, authorize('admin', 'teacher'), controller.updateRequest);
+router.delete('/requests/:requestId', auth, authorize('admin'), controller.adminCancelRequest);
 router.post('/boards/:id/requests/open-slot', auth, authorize('admin', 'teacher'), controller.createSlotFromRequests);
 
 router.post('/slots/:slotId/entries', auth, authorize('admin', 'teacher'), controller.adminAddEntry);

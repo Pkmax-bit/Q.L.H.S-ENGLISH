@@ -3,7 +3,7 @@ const { supabase } = require('../config/database');
 const jwtConfig = require('../config/jwt');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 const { normalizePhone, isValidPhone, maskName } = require('../utils/phone');
-const { assignColors, DEFAULT_COLOR } = require('../utils/bookingColors');
+const { assignColors, DEFAULT_COLOR, PALETTE, nextRegistrantColor } = require('../utils/bookingColors');
 
 const REGISTRANT_EMBED = 'registrant:booking_registrants!booking_entries_registrant_id_fkey(id, full_name, phone)';
 const SLUG_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789'; // bỏ l, o, 0, 1 cho dễ đọc qua điện thoại
@@ -274,10 +274,15 @@ const identify = async ({ phone, full_name }) => {
     throw { statusCode: 400, message: 'Họ tên phải từ 2 đến 80 ký tự' };
   }
 
+  // Cấp màu ngay lúc tạo: chọn màu đang ít người dùng nhất nên 9 người đầu
+  // không ai trùng ai trên lưới
+  const { data: usedRows } = await supabase.from('booking_registrants').select('color');
+  const color = nextRegistrantColor((usedRows || []).map((r) => r.color).filter(Boolean));
+
   const { data: created, error: insErr } = await supabase
     .from('booking_registrants')
-    .insert({ phone: normalized, full_name: name, last_login_at: new Date().toISOString() })
-    .select('id, phone, full_name')
+    .insert({ phone: normalized, full_name: name, color, last_login_at: new Date().toISOString() })
+    .select('id, phone, full_name, color')
     .single();
   if (insErr) {
     // Hai tab cùng bấm đăng ký một lúc -> unique violation, đọc lại cho mượt
@@ -375,9 +380,17 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
   // Nguyện vọng của chính mình trong bảng này, để lưới đánh dấu ô đã gửi
   const myRequests = [];
   if (registrantId) {
+    // Màu khối buổi học = màu của chính học viên này (046), không phải màu
+    // tô tay từng buổi nữa
+    const { data: me } = await supabase
+      .from('booking_registrants')
+      .select('color')
+      .eq('id', registrantId)
+      .maybeSingle();
+    const myColor = me?.color || null;
     const { data: reqs, error: reqErr } = await supabase
       .from('booking_requests')
-      .select('id, session_date, start_time, end_time, status, session_count')
+      .select('id, session_date, start_time, end_time, status, session_count, color, note')
       .eq('board_id', board.id)
       .eq('registrant_id', registrantId)
       .in('status', ['pending', 'approved'])
@@ -391,6 +404,8 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
         end_time: String(r.end_time).slice(0, 5),
         status: r.status,
         session_count: r.session_count,
+        color: myColor || r.color || null,
+        note: r.note || null,
       });
     }
   }
@@ -663,6 +678,135 @@ const cancelRequest = async (requestId, registrantId) => {
   if (row.registrant_id !== registrantId) {
     throw { statusCode: 403, message: 'Bạn chỉ có thể rút nguyện vọng của mình' };
   }
+  if (row.status === 'cancelled') return { id: requestId };
+
+  const { error: upErr } = await supabase
+    .from('booking_requests')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', requestId);
+  if (upErr) throw upErr;
+  return { id: requestId };
+};
+
+/**
+ * Sửa một buổi đã đăng ký: giờ, ghi chú, số buổi, màu.
+ *
+ * `registrantId` khác null = người đăng ký tự sửa, chỉ đụng được buổi của
+ * chính mình và KHÔNG đổi màu (màu là việc xếp lớp của trung tâm).
+ * Null = admin/giáo viên sửa hộ; riêng màu thì route chỉ cho admin.
+ *
+ * Giờ mới đi qua đúng hàm slotRange như lúc tạo, nên 09:15–09:50 hay
+ * "bắt đầu + thời lượng" đều nhận, và end <= start bị chặn ngay.
+ */
+const updateRequest = async (requestId, patch = {}, { registrantId = null, canColor = false } = {}) => {
+  const { data: row, error } = await supabase
+    .from('booking_requests')
+    .select('id, registrant_id, status, start_time, end_time')
+    .eq('id', requestId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) throw { statusCode: 404, message: 'Không tìm thấy buổi đăng ký này' };
+  if (registrantId && row.registrant_id !== registrantId) {
+    throw { statusCode: 403, message: 'Bạn chỉ sửa được buổi của mình' };
+  }
+
+  const update = { updated_at: new Date().toISOString() };
+
+  if (patch.start_time !== undefined || patch.end_time !== undefined) {
+    const range = slotRange({
+      start_time: patch.start_time ?? String(row.start_time).slice(0, 5),
+      end_time: patch.end_time ?? String(row.end_time).slice(0, 5),
+    });
+    update.start_time = range.start_time;
+    update.end_time = range.end_time;
+  }
+
+  if (patch.note !== undefined) {
+    const clean = patch.note === null || String(patch.note).trim() === ''
+      ? null
+      : String(patch.note).trim().slice(0, 500);
+    update.note = clean;
+  }
+
+  if (patch.session_count !== undefined) {
+    const n = Number(patch.session_count);
+    if (!Number.isInteger(n) || n < 1 || n > 200) {
+      throw { statusCode: 400, message: 'Số buổi phải từ 1 đến 200' };
+    }
+    update.session_count = n;
+  }
+
+  if (patch.registrant_id !== undefined) {
+    if (registrantId) throw { statusCode: 403, message: 'Chỉ trung tâm đổi được học viên của buổi' };
+    const { data: person, error: pErr } = await supabase
+      .from('booking_registrants')
+      .select('id')
+      .eq('id', patch.registrant_id)
+      .maybeSingle();
+    if (pErr) throw pErr;
+    if (!person) throw { statusCode: 404, message: 'Không tìm thấy học viên này' };
+    update.registrant_id = patch.registrant_id;
+  }
+
+  if (patch.color !== undefined) {
+    if (!canColor) throw { statusCode: 403, message: 'Chỉ quản trị viên đổi được màu' };
+    const next = patch.color === null || patch.color === '' ? null : String(patch.color);
+    if (next !== null && !PALETTE.includes(next) && next !== DEFAULT_COLOR) {
+      throw { statusCode: 400, message: `Màu không hợp lệ: ${next}` };
+    }
+    update.color = next;
+  }
+
+  if (Object.keys(update).length === 1) {
+    throw { statusCode: 400, message: 'Không có gì để sửa' };
+  }
+
+  const { error: upErr } = await supabase
+    .from('booking_requests')
+    .update(update)
+    .eq('id', requestId);
+  if (upErr) {
+    // uniq_booking_request_open: người đó đã có buổi đúng ngày giờ này rồi
+    if (upErr.code === '23505') {
+      throw { statusCode: 409, message: 'Học viên này đã có buổi ở đúng khung giờ đó' };
+    }
+    throw upErr;
+  }
+  return { id: requestId };
+};
+
+/** Đổi màu cố định của một học viên. Chỉ admin (chặn ở route). */
+const setRegistrantColor = async (registrantId, color) => {
+  const next = color === null || color === undefined || color === '' ? null : String(color);
+  if (next !== null && !PALETTE.includes(next) && next !== DEFAULT_COLOR) {
+    throw { statusCode: 400, message: `Màu không hợp lệ: ${next}` };
+  }
+  const { data, error } = await supabase
+    .from('booking_registrants')
+    .update({ color: next })
+    .eq('id', registrantId)
+    .select('id, full_name, color')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw { statusCode: 404, message: 'Không tìm thấy học viên này' };
+  return data;
+};
+
+/**
+ * Admin gỡ một buổi đã đăng ký khỏi lưới.
+ *
+ * Chuyển status sang 'cancelled' chứ KHÔNG xóa hàng: cần biết giờ nào từng có
+ * người muốn học để nhìn lại nhu cầu, xóa trắng là mất luôn dữ liệu đó. Chỉ số
+ * trạng thái chặn cũng dựa vào đây để người ta đăng ký lại được giờ đã hủy.
+ */
+const adminCancelRequest = async (requestId) => {
+  const { data: row, error } = await supabase
+    .from('booking_requests')
+    .select('id, status')
+    .eq('id', requestId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) throw { statusCode: 404, message: 'Không tìm thấy buổi đăng ký này' };
   if (row.status === 'cancelled') return { id: requestId };
 
   const { error: upErr } = await supabase
@@ -1258,7 +1402,7 @@ const listRequests = async (boardId, queryParams = {}) => {
 
   let query = supabase
     .from('booking_requests')
-    .select('id, session_date, start_time, end_time, status, note, session_count, created_at, review_note, created_slot_id, registrant:booking_registrants!booking_requests_registrant_id_fkey(id, full_name, phone)')
+    .select('id, session_date, start_time, end_time, status, note, session_count, color, created_at, review_note, created_slot_id, registrant:booking_registrants!booking_requests_registrant_id_fkey(id, full_name, phone, color)')
     .eq('board_id', boardId);
 
   if (queryParams.status) query = query.eq('status', queryParams.status);
@@ -1278,6 +1422,8 @@ const listRequests = async (boardId, queryParams = {}) => {
     status: r.status,
     note: r.note,
     session_count: r.session_count,
+    // Màu của học viên là màu hiển thị; color riêng của buổi chỉ còn là dự phòng
+    color: r.registrant?.color || r.color || null,
     review_note: r.review_note,
     created_slot_id: r.created_slot_id,
     created_at: r.created_at,
@@ -1301,11 +1447,15 @@ const listRequests = async (boardId, queryParams = {}) => {
         end_time: r.end_time,
         count: 0,
         total_sessions: 0,
+        color: null,
         people: [],
         request_ids: [],
       });
     }
     const b = bucket.get(key);
+    // Màu của cả khung giờ: lấy màu đầu tiên tìm thấy. Admin tô theo khung nên
+    // cả nhóm vốn cùng màu; có lệch thì màu nào đặt trước thắng, không trộn.
+    if (!b.color && r.color) b.color = r.color;
     b.count += 1;
     b.total_sessions += r.session_count || 1;
     b.people.push({ full_name: r.full_name, phone: r.phone, session_count: r.session_count || 1 });
@@ -1343,6 +1493,32 @@ const reviewRequests = async (ids, status, currentUser, reviewNote = null) => {
   if (error) throw error;
 
   return { updated: data?.length || 0, requested: ids.length };
+};
+
+/**
+ * Tô màu cho một nhóm buổi đã đăng ký. Chỉ admin gọi được (xem booking.routes).
+ *
+ * Màu là quyết định xếp lớp của trung tâm nên không cho người đăng ký đổi: API
+ * công khai không có đường nào ghi vào cột này, và route này nằm sau authorize('admin').
+ * Truyền color = null để gỡ màu, buổi quay lại hổ phách "chưa xếp".
+ */
+const setRequestsColor = async (ids, color) => {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw { statusCode: 400, message: 'Chưa chọn buổi nào để tô màu' };
+  }
+  const next = color === null || color === undefined || color === '' ? null : String(color);
+  if (next !== null && !PALETTE.includes(next) && next !== DEFAULT_COLOR) {
+    throw { statusCode: 400, message: `Màu không hợp lệ: ${next}` };
+  }
+
+  const { data, error } = await supabase
+    .from('booking_requests')
+    .update({ color: next, updated_at: new Date().toISOString() })
+    .in('id', ids)
+    .select('id');
+  if (error) throw error;
+
+  return { updated: data?.length || 0, color: next };
 };
 
 /**
@@ -1468,6 +1644,10 @@ module.exports = {
   exportRegistrationsCsv,
   listRequests,
   reviewRequests,
+  setRequestsColor,
+  updateRequest,
+  setRegistrantColor,
+  adminCancelRequest,
   createSlotFromRequests,
   adminAddEntry,
   adminCancelEntry,

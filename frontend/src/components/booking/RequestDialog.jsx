@@ -85,7 +85,7 @@ export default function RequestDialog({ isOpen, cells = [], saving = false, onCl
         <div className="rounded-xl border border-primary-200 bg-primary-50 px-3 py-2">
           <p className="flex items-center gap-1.5 text-sm font-semibold text-primary-900">
             <CalendarClock className="h-4 w-4" />
-            {cells.length === 1 ? 'Khung giờ đã chọn' : `${cells.length} khung giờ đã chọn`}
+            {cells.length === 1 ? 'Buổi học bạn chọn' : `${cells.length} buổi học bạn chọn`}
           </p>
           <div className="mt-1.5 flex flex-wrap gap-1">
             {cells.map((c) => (
@@ -118,7 +118,7 @@ export default function RequestDialog({ isOpen, cells = [], saving = false, onCl
 
         <div>
           <label className="mb-1 block text-sm font-medium text-stone-700">
-            Muốn học bao nhiêu buổi? <span className="ml-1 text-red-500">*</span>
+            Khóa học dài bao nhiêu buổi? <span className="ml-1 text-red-500">*</span>
           </label>
           <div className="flex flex-wrap gap-2">
             {SESSION_PRESETS.map((n) => (
@@ -160,7 +160,7 @@ export default function RequestDialog({ isOpen, cells = [], saving = false, onCl
           )}
           {cells.length > 1 && (
             <p className="mt-1 text-sm text-gray-500">
-              Áp dụng cho cả {cells.length} khung giờ đã chọn.
+              Áp dụng cho cả {cells.length} buổi học đã chọn.
             </p>
           )}
         </div>

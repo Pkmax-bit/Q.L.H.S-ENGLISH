@@ -17,12 +17,14 @@ import WeekPicker from '../components/booking/WeekPicker'
 import HourGrid from '../components/booking/HourGrid'
 import SelectionBar from '../components/booking/SelectionBar'
 import RequestDemandPanel from '../components/booking/RequestDemandPanel'
+import RequestToolPanel from '../components/booking/RequestToolPanel'
+import { useContextMenu } from '../hooks/useContextMenu'
 import SchedulingBoard from '../components/booking/SchedulingBoard'
 import { useFetch } from '../hooks/useFetch'
 import { useAuth } from '../hooks/useAuth'
 import { ToastContext } from '../context/ToastContext'
 import bookingService from '../services/booking.service'
-import { DAY_SHORT, STEP_OPTIONS, WEEK_ORDER, colorClasses, formatDate, formatDateTime, formatMoney, formatShortDate, mergeCells } from '../lib/bookingUtils'
+import { DAY_SHORT, SLOT_COLORS, STEP_OPTIONS, WEEK_ORDER, colorClasses, formatDate, formatDateTime, formatMoney, formatShortDate, mergeCells } from '../lib/bookingUtils'
 
 const STATUS_BADGE = {
   confirmed: 'bg-emerald-100 text-emerald-700',
@@ -60,12 +62,46 @@ export default function BookingBoardDetailPage() {
   )
   const { data: poolData, loading: poolLoading, execute: reloadPool } = useFetch(fetchPool, [id, isAdmin])
 
+  // Danh sách học viên cho select trong bảng công cụ — chỉ admin đọc được
+  const fetchStudents = useCallback(
+    () => (isAdmin ? bookingService.listRegistrants({}) : Promise.resolve({ data: { data: [] } })),
+    [isAdmin]
+  )
+  const { data: studentsData, execute: reloadStudents } = useFetch(fetchStudents, [isAdmin])
+  const students = useMemo(
+    () => (Array.isArray(studentsData) ? studentsData : studentsData?.data || []),
+    [studentsData]
+  )
+
   const board = data?.board
   const weeks = useMemo(() => data?.weeks || [], [data])
   const creators = useMemo(() => data?.creators || [], [data])
   const slots = useMemo(() => data?.slots || [], [data])
   const registrationRows = useMemo(() => regsData?.data || [], [regsData])
   const demand = useMemo(() => reqsData?.demand || [], [reqsData])
+  // Nguyện vọng vẽ lên lưới: chỉ của tuần đang xem, vì lưới là thời khóa biểu
+  // một tuần. reqsData phủ mọi tuần nên không lọc là các tuần đè lên nhau.
+  const weekRequests = useMemo(() => {
+    const rows = reqsData?.data || []
+    const from = data?.board?.selected_week
+    const to = data?.board?.selected_week_end
+    if (!from || !to) return []
+    return rows
+      .filter((r) => r.date >= from && r.date <= to && ['pending', 'approved'].includes(r.status))
+      .map((r) => ({
+        id: r.id,
+        registrant_id: r.registrant_id,
+        date: r.date,
+        start_time: r.start_time,
+        end_time: r.end_time,
+        status: r.status,
+        session_count: r.session_count,
+        color: r.color,
+        note: r.note,
+        full_name: r.full_name,
+        phone: r.phone,
+      }))
+  }, [reqsData, data])
   const pool = useMemo(() => (Array.isArray(poolData) ? poolData : []), [poolData])
   const [requestBusy, setRequestBusy] = useState(false)
 
@@ -80,6 +116,7 @@ export default function BookingBoardDetailPage() {
   const [addEntrySlot, setAddEntrySlot] = useState(null)
   const [entryForm, setEntryForm] = useState({ phone: '', full_name: '' })
   const [addingEntry, setAddingEntry] = useState(false)
+  const requestMenu = useContextMenu()
 
   const publicUrl = board ? `${window.location.origin}/dk/${board.slug}` : ''
   const multiWeek = (board?.week_count || 1) > 1
@@ -130,6 +167,28 @@ export default function BookingBoardDetailPage() {
       setRequestBusy(false)
     }
   }
+
+  // Một buổi lẻ trên lưới: đổi màu / duyệt / từ chối / hủy chỉ buổi đó, khác
+  // với các nút ở tab Nguyện vọng vốn áp cho cả khung giờ
+  const runOnRequest = async (fn, okMessage, failMessage) => {
+    setRequestBusy(true)
+    try {
+      const res = await fn()
+      success(res?.data?.message || okMessage)
+      reloadReqs()
+    } catch (err) {
+      showError(err.response?.data?.message || failMessage)
+    } finally {
+      setRequestBusy(false)
+    }
+  }
+
+  const saveRequest = (request, patch) =>
+    runOnRequest(
+      () => bookingService.updateRequest(request.id, patch),
+      'Đã lưu thay đổi',
+      'Không lưu được'
+    ).then(() => requestMenu.close())
 
   const handleRejectRequests = async (bucket) => {
     setRequestBusy(true)
@@ -447,7 +506,12 @@ export default function BookingBoardDetailPage() {
               weekStart={board.selected_week}
               stepMinutes={step}
               selected={selectedCells.map((c) => c.key)}
+              myRequests={weekRequests}
               onToggleSelect={toggleCell}
+              // Bấm vào khối đã đăng ký = chọn cả buổi đó: mở tab Nguyện vọng,
+              // nơi tô màu / mở ca / từ chối cho đúng khung giờ ấy
+              onRequestClick={() => setTab('requests')}
+              onRequestContextMenu={requestMenu.open}
               onSlotClick={(slot) => {
                 setSlotPrefill(null)
                 setEditingSlot(slot)
@@ -620,6 +684,51 @@ export default function BookingBoardDetailPage() {
           emptyIcon={Users}
         />
       )}
+
+      {/* Chuột phải vào một buổi trên lưới: cả bộ công cụ của đúng buổi đó.
+          Bảng màu chỉ mở cho admin, khớp authorize('admin') ở backend. */}
+      <RequestToolPanel
+        state={requestMenu.state}
+        onClose={requestMenu.close}
+        canAdmin
+        canColor={isAdmin}
+        busy={requestBusy}
+        onSave={saveRequest}
+        students={students}
+        onSetColor={(request, color) =>
+          // Màu thuộc về HỌC VIÊN: đổi ở đây là đổi trên mọi buổi của người đó
+          runOnRequest(
+            () => bookingService.setRegistrantColor(request.registrant_id, color),
+            'Đã đổi màu học viên',
+            'Không đổi được màu'
+          ).then(reloadStudents)
+        }
+        onChangeStudent={(request, registrantId) =>
+          runOnRequest(
+            () => bookingService.updateRequest(request.id, { registrant_id: registrantId }),
+            'Đã đổi học viên của buổi này',
+            'Không đổi được học viên'
+          ).then(() => requestMenu.close())
+        }
+        onReview={(request, status) =>
+          runOnRequest(
+            () => bookingService.reviewRequests({ ids: [request.id], status }),
+            status === 'approved' ? 'Đã duyệt' : 'Đã từ chối',
+            'Không đổi được trạng thái'
+          ).then(() => requestMenu.close())
+        }
+        onOpenSlot={() => {
+          requestMenu.close()
+          setTab('requests')
+        }}
+        onCancel={(request) =>
+          runOnRequest(
+            () => bookingService.adminCancelRequest(request.id),
+            'Đã hủy buổi đăng ký',
+            'Không hủy được'
+          ).then(() => requestMenu.close())
+        }
+      />
 
       <BookingSlotForm
         isOpen={slotFormOpen}

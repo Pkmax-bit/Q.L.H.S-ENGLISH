@@ -157,6 +157,41 @@ const reviewRequests = handle(async (req, res) => {
   );
 });
 
+const updateMyRequest = handle(async (req, res) => {
+  const result = await bookingService.updateRequest(req.params.requestId, req.body || {}, {
+    registrantId: req.registrant.id,
+  });
+  return response.success(res, result, 'Đã lưu thay đổi');
+});
+
+const updateRequest = handle(async (req, res) => {
+  const result = await bookingService.updateRequest(req.params.requestId, req.body || {}, {
+    // Màu chỉ admin đổi được, giáo viên vẫn sửa được giờ và ghi chú
+    canColor: req.user?.role === 'admin',
+  });
+  return response.success(res, result, 'Đã lưu thay đổi');
+});
+
+const setRegistrantColor = handle(async (req, res) => {
+  const result = await bookingService.setRegistrantColor(req.params.registrantId, (req.body || {}).color);
+  return response.success(res, result, `Đã đổi màu của ${result.full_name}`);
+});
+
+const adminCancelRequest = handle(async (req, res) => {
+  const result = await bookingService.adminCancelRequest(req.params.requestId);
+  return response.success(res, result, 'Đã hủy buổi đăng ký');
+});
+
+const setRequestsColor = handle(async (req, res) => {
+  const { ids, color } = req.body || {};
+  const result = await bookingService.setRequestsColor(ids, color);
+  return response.success(
+    res,
+    result,
+    result.color ? `Đã tô màu ${result.updated} buổi` : `Đã gỡ màu ${result.updated} buổi`
+  );
+});
+
 const createSlotFromRequests = handle(async (req, res) => {
   const result = await bookingService.createSlotFromRequests(req.params.id, req.body || {}, req.user);
   return response.created(
@@ -198,6 +233,11 @@ module.exports = {
   exportRegistrations,
   listRequests,
   reviewRequests,
+  setRequestsColor,
+  updateMyRequest,
+  updateRequest,
+  setRegistrantColor,
+  adminCancelRequest,
   createSlotFromRequests,
   adminAddEntry,
   adminCancelEntry,
