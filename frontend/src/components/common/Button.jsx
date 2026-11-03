@@ -15,6 +15,10 @@ const variants = {
 }
 
 const sizes = {
+  // Cỡ cho thanh công cụ nhiều nút. Đệm dọc rộng hơn trên điện thoại rồi mới
+  // bóp lại từ 640px: ở đây nút chỉ còn mỗi icon, để py-1 là cao 24px — nhỏ
+  // hơn đầu ngón tay, bấm hay trượt sang nút bên cạnh.
+  xs: 'px-2 py-2 text-xs gap-1.5 sm:py-1',
   sm: 'px-3 py-1.5 text-sm',
   md: 'px-4 py-2 text-sm',
   lg: 'px-6 py-2.5 text-base',
@@ -36,7 +40,7 @@ export default function Button({
       type={type}
       disabled={disabled || loading}
       className={clsx(
-        'inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]',
+        'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]',
         variants[variant],
         sizes[size],
         className

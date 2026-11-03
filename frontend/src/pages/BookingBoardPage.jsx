@@ -1026,7 +1026,7 @@ export default function BookingBoardPage() {
           <div className="flex w-full items-center gap-1 overflow-x-auto">
             <Button
               variant="ghost"
-              size="sm"
+              size="xs"
               icon={HelpCircle}
               onClick={() => setHelpOpen(true)}
               title="Hướng dẫn đăng ký"
@@ -1038,7 +1038,7 @@ export default function BookingBoardPage() {
                 này". Vẽ chung thì không ai phân biệt được cái nào đã chắc. */}
             <Button
               variant={boardMode === 'free' ? 'primary' : 'ghost'}
-              size="sm"
+              size="xs"
               icon={CalendarClock}
               onClick={() => {
                 setBoardMode((m) => (m === 'free' ? 'lesson' : 'free'))
@@ -1055,7 +1055,7 @@ export default function BookingBoardPage() {
             </Button>
             {boardMode === 'free' && isManager && (
               <Button
-                size="sm"
+                size="xs"
                 variant="outline"
                 icon={Wand2}
                 loading={planning}
@@ -1068,7 +1068,7 @@ export default function BookingBoardPage() {
             {isManager && (
               <>
                 <Button
-                  size="sm"
+                  size="xs"
                   variant={arranging ? 'primary' : 'outline'}
                   icon={Move}
                   // Thoát khi khu chờ còn người thì hỏi lại: tắt chế độ là khay
@@ -1096,7 +1096,7 @@ export default function BookingBoardPage() {
                 </Button>
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="xs"
                   icon={RotateCcw}
                   disabled={!lastAction || savingRequest}
                   onClick={undoLast}
@@ -1106,7 +1106,7 @@ export default function BookingBoardPage() {
                 </Button>
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="xs"
                   icon={Users}
                   onClick={() => setMoneyOpen(true)}
                   title="Học viên, học phí một buổi và tiền đã thu"
@@ -1115,7 +1115,7 @@ export default function BookingBoardPage() {
                 </Button>
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="xs"
                   icon={History}
                   onClick={() => setLogOpen(true)}
                   title="Nhật ký ai làm gì"
@@ -1129,7 +1129,7 @@ export default function BookingBoardPage() {
                 value={String(step)}
                 onChange={handleStepChange}
                 options={STEP_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
-                className="w-28 py-1.5 text-xs"
+                className="w-24 py-1 text-xs"
               />
             )}
             {/* MỘT nút đổi qua lại, không phải hai nút cạnh nhau: hai nút chiếm
@@ -1137,7 +1137,7 @@ export default function BookingBoardPage() {
                 đang xem. Nhãn là NƠI SẼ TỚI, nên bấm xong nhãn đổi theo. */}
             <Button
               variant="ghost"
-              size="sm"
+              size="xs"
               icon={view === 'hours' ? List : LayoutGrid}
               onClick={() => setView((v) => (v === 'hours' ? 'list' : 'hours'))}
               title={view === 'hours' ? 'Xem dạng danh sách' : 'Xem dạng lưới giờ'}
@@ -1146,7 +1146,7 @@ export default function BookingBoardPage() {
             </Button>
             <Button
               variant="ghost"
-              size="sm"
+              size="xs"
               onClick={() => {
                 load({ silent: true })
                 if (boardMode === 'free') loadAvailability()
