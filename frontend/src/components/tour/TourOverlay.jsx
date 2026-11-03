@@ -1,35 +1,101 @@
-import { useMemo } from 'react'
-import { X, ChevronLeft, ChevronRight, MousePointerClick, Eye, SkipForward } from 'lucide-react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { X, ChevronLeft, ChevronRight, SkipForward } from 'lucide-react'
 import clsx from 'clsx'
 
-function tooltipPosition(rect, placement, tooltipW = 360, tooltipH = 280) {
-  const gap = 14
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  let top = 24
-  let left = Math.max(16, (vw - tooltipW) / 2)
+const EDGE = 10
+const GAP = 10
+const PANEL_W = 268
 
-  if (!rect) {
-    return { top: Math.max(24, vh / 2 - tooltipH / 2), left }
+function clamp(n, min, max) {
+  return Math.min(Math.max(n, min), max)
+}
+
+function computePanelBox(rect, placement, panelW, panelH, vw, vh) {
+  const maxW = Math.min(panelW || PANEL_W, vw - EDGE * 2)
+  const maxH = Math.min(panelH || 220, Math.min(vh * 0.42, 280))
+  const narrow = vw < 640
+
+  if (narrow || !rect) {
+    const h = Math.min(maxH, vh * 0.38)
+    return {
+      top: clamp(vh - h - EDGE, EDGE, vh - EDGE),
+      left: EDGE,
+      width: Math.min(vw - EDGE * 2, 320),
+      maxHeight: h,
+      docked: true,
+    }
   }
 
-  const place = placement || 'bottom'
+  const prefer = placement || 'bottom'
+  const space = {
+    top: rect.top - EDGE,
+    bottom: vh - rect.bottom - EDGE,
+    left: rect.left - EDGE,
+    right: vw - rect.right - EDGE,
+  }
 
-  if (place === 'right') {
-    top = Math.min(Math.max(16, rect.top), vh - tooltipH - 16)
-    left = Math.min(rect.left + rect.width + gap, vw - tooltipW - 16)
-  } else if (place === 'left') {
-    top = Math.min(Math.max(16, rect.top), vh - tooltipH - 16)
-    left = Math.max(16, rect.left - tooltipW - gap)
-  } else if (place === 'top') {
-    top = Math.max(16, rect.top - tooltipH - gap)
-    left = Math.min(Math.max(16, rect.left + rect.width / 2 - tooltipW / 2), vw - tooltipW - 16)
+  const order =
+    prefer === 'right'
+      ? ['right', 'left', 'bottom', 'top']
+      : prefer === 'left'
+        ? ['left', 'right', 'bottom', 'top']
+        : prefer === 'top'
+          ? ['top', 'bottom', 'right', 'left']
+          : ['bottom', 'top', 'right', 'left']
+
+  let chosen = order[0]
+  for (const side of order) {
+    const need = side === 'left' || side === 'right' ? maxW + GAP : maxH + GAP
+    if (space[side] >= need * 0.5) {
+      chosen = side
+      break
+    }
+  }
+
+  const bestSpace = Math.max(space.top, space.bottom, space.left, space.right)
+  if (bestSpace < 120) {
+    const h = Math.min(maxH, vh * 0.36)
+    return {
+      top: clamp(vh - h - EDGE, EDGE, vh - EDGE),
+      left: EDGE,
+      width: Math.min(vw - EDGE * 2, 320),
+      maxHeight: h,
+      docked: true,
+    }
+  }
+
+  let top
+  let left
+  let availH = maxH
+
+  if (chosen === 'bottom') {
+    top = rect.bottom + GAP
+    left = rect.left + rect.width / 2 - maxW / 2
+    availH = Math.min(maxH, vh - top - EDGE)
+  } else if (chosen === 'top') {
+    availH = Math.min(maxH, rect.top - GAP - EDGE)
+    top = rect.top - GAP - availH
+    left = rect.left + rect.width / 2 - maxW / 2
+  } else if (chosen === 'right') {
+    left = rect.right + GAP
+    top = rect.top
+    availH = Math.min(maxH, vh - EDGE - top)
   } else {
-    top = Math.min(rect.top + rect.height + gap, vh - tooltipH - 16)
-    left = Math.min(Math.max(16, rect.left + rect.width / 2 - tooltipW / 2), vw - tooltipW - 16)
+    left = rect.left - GAP - maxW
+    top = rect.top
+    availH = Math.min(maxH, vh - EDGE - top)
   }
 
-  return { top, left }
+  left = clamp(left, EDGE, vw - maxW - EDGE)
+  top = clamp(top, EDGE, vh - Math.min(availH, maxH) - EDGE)
+
+  return {
+    top,
+    left,
+    width: maxW,
+    maxHeight: Math.max(120, availH),
+    docked: false,
+  }
 }
 
 export default function TourOverlay({
@@ -43,196 +109,192 @@ export default function TourOverlay({
   onPrev,
   onClose,
 }) {
-  const pos = useMemo(
-    () => tooltipPosition(rect, step.placement),
-    [rect, step.placement]
+  const panelRef = useRef(null)
+  const [box, setBox] = useState(() =>
+    computePanelBox(rect, step.placement, PANEL_W, 200, window.innerWidth, window.innerHeight)
   )
 
-  const holeStyle = rect
-    ? {
-        top: rect.top,
-        left: rect.left,
-        width: rect.width,
-        height: rect.height,
-      }
-    : null
+  useLayoutEffect(() => {
+    const update = () => {
+      const el = panelRef.current
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const measuredW = el?.offsetWidth || Math.min(PANEL_W, vw - EDGE * 2)
+      const measuredH = el?.scrollHeight || 200
+      setBox(computePanelBox(rect, step.placement, measuredW, measuredH, vw, vh))
+    }
+
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('scroll', update, true)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('scroll', update, true)
+    }
+  }, [rect, step.placement, stepIndex, status, step.title])
+
+  const holeStyle = useMemo(
+    () =>
+      rect
+        ? {
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height,
+          }
+        : null,
+    [rect]
+  )
 
   const needClick = step.advanceOn === 'click' && status === 'ready'
+  const showNext =
+    step.advanceOn === 'next' || status === 'missing' || status === 'missing-optional'
 
   return (
     <div className="fixed inset-0 z-[200] pointer-events-none" aria-live="polite">
       {holeStyle ? (
         <>
-          <div className="absolute inset-0 pointer-events-auto" aria-hidden>
-            <div className="absolute bg-black/55" style={{ top: 0, left: 0, right: 0, height: Math.max(0, holeStyle.top) }} />
-            <div
-              className="absolute bg-black/55"
-              style={{
-                top: holeStyle.top + holeStyle.height,
-                left: 0,
-                right: 0,
-                bottom: 0,
-              }}
-            />
-            <div
-              className="absolute bg-black/55"
-              style={{
-                top: holeStyle.top,
-                left: 0,
-                width: Math.max(0, holeStyle.left),
-                height: holeStyle.height,
-              }}
-            />
-            <div
-              className="absolute bg-black/55"
-              style={{
-                top: holeStyle.top,
-                left: holeStyle.left + holeStyle.width,
-                right: 0,
-                height: holeStyle.height,
-              }}
-            />
-          </div>
           <div
-            className="absolute rounded-xl ring-4 ring-amber-400 shadow-[0_0_0_9999px_rgba(0,0,0,0.01)] pointer-events-none animate-pulse"
+            className="absolute bg-black/50 pointer-events-auto"
+            style={{ top: 0, left: 0, right: 0, height: Math.max(0, holeStyle.top) }}
+            aria-hidden
+          />
+          <div
+            className="absolute bg-black/50 pointer-events-auto"
+            style={{
+              top: holeStyle.top + holeStyle.height,
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }}
+            aria-hidden
+          />
+          <div
+            className="absolute bg-black/50 pointer-events-auto"
+            style={{
+              top: holeStyle.top,
+              left: 0,
+              width: Math.max(0, holeStyle.left),
+              height: holeStyle.height,
+            }}
+            aria-hidden
+          />
+          <div
+            className="absolute bg-black/50 pointer-events-auto"
+            style={{
+              top: holeStyle.top,
+              left: holeStyle.left + holeStyle.width,
+              right: 0,
+              height: holeStyle.height,
+            }}
+            aria-hidden
+          />
+          <div
+            className="absolute rounded-lg ring-2 ring-amber-400 pointer-events-none"
             style={holeStyle}
           />
         </>
       ) : (
-        <div className="absolute inset-0 bg-black/50 pointer-events-auto" />
+        <div className="absolute inset-0 bg-black/45 pointer-events-auto" />
       )}
 
       <div
-        className="absolute w-[min(100%-1.5rem,22.5rem)] max-h-[min(70vh,28rem)] overflow-y-auto pointer-events-auto rounded-2xl border border-amber-200 bg-white shadow-2xl shadow-black/30"
-        style={{ top: pos.top, left: pos.left }}
+        ref={panelRef}
+        className={clsx(
+          'fixed pointer-events-auto overflow-y-auto overscroll-contain border border-amber-200/90 bg-white shadow-lg',
+          box.docked ? 'rounded-t-xl rounded-b-lg' : 'rounded-xl'
+        )}
+        style={{
+          top: box.top,
+          left: box.left,
+          width: box.width,
+          maxHeight: box.maxHeight,
+          maxWidth: `calc(100vw - ${EDGE * 2}px)`,
+        }}
         role="dialog"
         aria-label={tour.title}
       >
-        <div className="flex items-start justify-between gap-2 px-4 pt-3 pb-1 sticky top-0 bg-white z-10">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
-              {tour.title} · Bước {stepIndex + 1}/{tour.steps.length}
+        <div className="flex items-center justify-between gap-1.5 px-2.5 pt-2 pb-1 sticky top-0 bg-white z-10 border-b border-stone-100/80">
+          <div className="min-w-0">
+            <p className="text-[9px] font-semibold uppercase tracking-wide text-amber-700/90 truncate leading-none">
+              {stepIndex + 1}/{tour.steps.length} · {tour.title.replace(/^Tour:\s*/i, '')}
             </p>
-            <h3 className="text-base font-semibold text-stone-900 mt-0.5 leading-snug">{step.title}</h3>
+            <h3 className="text-[13px] font-semibold text-stone-900 mt-0.5 leading-tight truncate">
+              {step.title.replace(/^Bước \d+\s*[—–-]\s*/, '')}
+            </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700 shrink-0"
+            className="p-0.5 rounded text-stone-400 hover:bg-stone-100 hover:text-stone-700 shrink-0"
             aria-label="Đóng tour"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        <div className="px-4 pb-3 space-y-2.5">
-          <p className="text-sm text-stone-800 flex gap-2">
-            <MousePointerClick className="h-4 w-4 shrink-0 text-primary-600 mt-0.5" />
-            <span>
-              <span className="font-semibold text-primary-800">Làm gì: </span>
-              {step.body}
-            </span>
-          </p>
+        <div className="px-2.5 py-1.5 space-y-1.5">
+          <p className="text-[12px] text-stone-700 leading-snug">{step.body}</p>
 
           {step.fill && (
-            <p className="text-xs text-indigo-900 bg-indigo-50 border border-indigo-100 rounded-lg px-2.5 py-2">
-              <span className="font-semibold">Điền mẫu: </span>
-              {step.fill}
-            </p>
-          )}
-
-          {step.appear && (
-            <p className="text-xs text-emerald-900 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-2 flex gap-2">
-              <Eye className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-              <span>
-                <strong className="font-semibold">Sẽ hiện / đang thấy: </strong>
-                {step.appear}
-              </span>
-            </p>
-          )}
-
-          {Array.isArray(step.hints) && step.hints.length > 0 && (
-            <ul className="text-xs text-stone-600 space-y-1 pl-1 border-l-2 border-amber-200 ml-0.5">
-              {step.hints.map((h) => (
-                <li key={h} className="pl-2 leading-relaxed">
-                  • {h}
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {status === 'locating' && (
-            <p className="text-xs text-stone-500">Đang tìm chỗ cần bấm trên màn hình…</p>
-          )}
-          {(status === 'missing' || status === 'missing-optional') && (
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-2">
-              {status === 'missing-optional'
-                ? 'Chưa thấy nút này (có thể bạn chưa mở lớp / chưa đủ quyền). Bấm Bỏ qua để tiếp tục.'
-                : 'Không tìm thấy vị trí cần bấm. Mở đúng trang rồi bấm Tiếp, hoặc Đóng tour và bắt đầu lại.'}
+            <p className="text-[11px] text-indigo-800 bg-indigo-50/90 rounded px-1.5 py-1 leading-snug">
+              <span className="font-semibold">VD:</span> {step.fill.replace(/^Ví dụ:\s*/i, '')}
             </p>
           )}
 
           {needClick && (
-            <p className="text-xs font-semibold text-primary-700 bg-primary-50 rounded-lg px-2.5 py-1.5">
-              → Bấm đúng chỗ đang sáng (viền vàng) để sang bước tiếp.
-            </p>
+            <p className="text-[10px] font-medium text-primary-700">Bấm chỗ viền vàng →</p>
           )}
           {step.advanceOn === 'next' && status === 'ready' && (
-            <p className="text-xs font-medium text-stone-600">
-              → Điền / chọn xong ô đang sáng, rồi bấm <strong>Tiếp</strong> bên dưới.
+            <p className="text-[10px] text-stone-500">Điền xong → Tiếp</p>
+          )}
+
+          {status === 'locating' && (
+            <p className="text-[10px] text-stone-400">Đang tìm…</p>
+          )}
+          {(status === 'missing' || status === 'missing-optional') && (
+            <p className="text-[10px] text-amber-800 bg-amber-50 rounded px-1.5 py-1 leading-snug">
+              {status === 'missing-optional'
+                ? 'Chưa thấy — bấm Bỏ qua.'
+                : 'Không tìm thấy — mở đúng trang hoặc Tiếp.'}
             </p>
           )}
         </div>
 
-        <div className="sticky bottom-0 flex items-center justify-between gap-2 px-4 py-3 border-t border-stone-100 bg-stone-50/95 rounded-b-2xl">
+        <div className="sticky bottom-0 flex items-center justify-between gap-1 px-2 py-1.5 border-t border-stone-100 bg-stone-50/95">
           <button
             type="button"
             onClick={onPrev}
             disabled={stepIndex === 0}
             className={clsx(
-              'inline-flex items-center gap-1 text-sm font-medium px-2 py-1.5 rounded-lg',
+              'inline-flex items-center gap-0.5 text-[11px] font-medium px-1.5 py-1 rounded',
               stepIndex === 0 ? 'text-stone-300' : 'text-stone-600 hover:bg-white'
             )}
           >
-            <ChevronLeft className="h-4 w-4" /> Trước
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Trước
           </button>
 
-          <div className="flex items-center gap-1.5">
-            {(status === 'missing-optional' || (status === 'missing' && step.optional)) && (
+          <div className="flex items-center gap-1">
+            {(status === 'missing-optional' || (status === 'missing' && step.optional) || needClick) &&
+              !isLast && (
+                <button
+                  type="button"
+                  onClick={onNext}
+                  className="inline-flex items-center gap-0.5 text-[11px] text-stone-500 hover:text-amber-800 px-1"
+                >
+                  <SkipForward className="h-3 w-3" />
+                  Bỏ qua
+                </button>
+              )}
+            {(showNext || (needClick && isLast)) && (
               <button
                 type="button"
                 onClick={onNext}
-                className="inline-flex items-center gap-1 text-sm font-medium px-2.5 py-1.5 rounded-lg text-amber-800 hover:bg-amber-100"
-              >
-                <SkipForward className="h-4 w-4" /> Bỏ qua
-              </button>
-            )}
-            {(step.advanceOn === 'next' || status === 'missing' || status === 'missing-optional') && (
-              <button
-                type="button"
-                onClick={onNext}
-                className="inline-flex items-center gap-1 text-sm font-semibold px-3 py-1.5 rounded-xl bg-primary-600 text-white hover:bg-primary-700"
+                className="inline-flex items-center gap-0.5 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-primary-600 text-white hover:bg-primary-700"
               >
                 {isLast ? 'Xong' : 'Tiếp'}
-                {!isLast && <ChevronRight className="h-4 w-4" />}
-              </button>
-            )}
-            {needClick && !isLast && (
-              <button
-                type="button"
-                onClick={onNext}
-                className="text-xs text-stone-500 underline px-1"
-              >
-                Bỏ qua
-              </button>
-            )}
-            {needClick && isLast && (
-              <button
-                type="button"
-                onClick={onNext}
-                className="inline-flex items-center gap-1 text-sm font-semibold px-3 py-1.5 rounded-xl bg-primary-600 text-white hover:bg-primary-700"
-              >
-                Xong
+                {!isLast && <ChevronRight className="h-3.5 w-3.5" />}
               </button>
             )}
           </div>

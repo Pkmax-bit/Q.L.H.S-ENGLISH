@@ -155,13 +155,8 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {!isEdit && (
-          <div className="rounded-lg bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-950 leading-relaxed">
-            <strong>Sau khi tạo lớp, làm tiếp 3 bước để thu được học phí:</strong>
-            <ol className="mt-2 list-decimal list-inside space-y-1 text-xs sm:text-sm">
-              <li>Vào <strong>Thời khóa biểu</strong> — thêm các buổi học trong tuần</li>
-              <li>Vào chi tiết lớp → tab <strong>Học phí</strong> — chọn cách tính và đơn giá</li>
-              <li>Thêm học sinh → bấm <strong>Sinh hóa đơn</strong> → <strong>Thu tiền</strong></li>
-            </ol>
+          <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 text-xs text-blue-900 leading-relaxed">
+            <strong>3 bước sau khi tạo lớp:</strong> (1) Thêm lịch học ở menu Lịch học → (2) Tab Học phí → cấu hình giá → (3) Thêm học sinh và sinh hóa đơn.
           </div>
         )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -171,7 +166,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             value={form.name}
             onChange={handleChange}
             error={errors.name}
-            placeholder="VD: TOEIC 550+ ca tối"
+            placeholder="Lớp Toán A1"
             required
             dataTour="class-field-name"
           />
@@ -201,7 +196,6 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             onChange={handleChange}
             error={errors.max_students}
             placeholder="30"
-            required
             dataTour="class-field-max"
           />
           <Select
@@ -209,6 +203,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             name="status"
             value={form.status}
             onChange={handleChange}
+            dataTour="class-field-status"
             options={[
               { value: 'active', label: 'Hoạt động' },
               { value: 'inactive', label: 'Ngừng hoạt động' },
@@ -246,6 +241,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
           onChange={handleChange}
           placeholder="Mô tả lớp học..."
           rows={3}
+          dataTour="class-field-desc"
         />
       </form>
 

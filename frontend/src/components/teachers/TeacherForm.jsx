@@ -98,6 +98,7 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
           name="avatar_url"
           fullName={form.full_name}
           onChange={(url) => setForm((prev) => ({ ...prev, avatar_url: url }))}
+          dataTour="teacher-field-avatar"
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -132,7 +133,7 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
             dataTour="teacher-field-phone"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" data-tour="teacher-field-active">
           <input
             type="checkbox"
             id="is_active"

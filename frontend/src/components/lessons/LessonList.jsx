@@ -2,6 +2,7 @@ import { useState, useContext, useCallback } from 'react'
 import { Plus, Download, BookCopy, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react'
 import Table from '../common/Table'
 import Button from '../common/Button'
+import PageTourButton from '../tour/PageTourButton'
 import StatusBadge from '../common/StatusBadge'
 import ConfirmDialog from '../common/ConfirmDialog'
 import LoadingSpinner from '../common/LoadingSpinner'
@@ -134,7 +135,10 @@ export default function LessonList() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Bài học</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900">Bài học</h1>
+            <PageTourButton />
+          </div>
           <p className="text-sm text-gray-500 mt-1">
             {isTeacher ? 'Bài học các lớp bạn phụ trách' : 'Quản lý danh sách bài học'}
           </p>

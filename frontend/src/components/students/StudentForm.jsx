@@ -2,6 +2,7 @@ import { useState, useEffect, useContext } from 'react'
 import Modal from '../common/Modal'
 import Input from '../common/Input'
 import Button from '../common/Button'
+import AvatarPicker from '../common/AvatarPicker'
 import { ToastContext } from '../../context/ToastContext'
 import studentsService from '../../services/students.service'
 import { validateForm, required, email, phone } from '../../utils/validators'
@@ -83,18 +84,53 @@ export default function StudentForm({ isOpen, onClose, student, onSuccess }) {
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>Hủy</Button>
-          <Button data-tour="student-form-save" onClick={handleSubmit} loading={loading}>{isEdit ? 'Cập nhật' : 'Thêm mới'}</Button>
+          <Button data-tour="student-form-save" onClick={handleSubmit} loading={loading}>
+            {isEdit ? 'Cập nhật' : 'Thêm mới'}
+          </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
+        <AvatarPicker
+          value={form.avatar_url}
+          name="avatar_url"
+          fullName={form.full_name}
+          onChange={(url) => setForm((prev) => ({ ...prev, avatar_url: url }))}
+          dataTour="student-field-avatar"
+        />
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input label="Họ tên" name="full_name" value={form.full_name} onChange={handleChange} error={errors.full_name} placeholder="Nguyễn Văn A" required dataTour="student-field-name" />
-          <Input label="Email" name="email" type="email" value={form.email} onChange={handleChange} error={errors.email} placeholder="example@email.com" dataTour="student-field-email" />
-          <Input label="Số điện thoại" name="phone" value={form.phone} onChange={handleChange} error={errors.phone} placeholder="0901234567" dataTour="student-field-phone" />
-          <Input label="Ảnh đại diện (URL)" name="avatar_url" value={form.avatar_url} onChange={handleChange} placeholder="https://example.com/avatar.jpg" />
+          <Input
+            label="Họ tên"
+            name="full_name"
+            value={form.full_name}
+            onChange={handleChange}
+            error={errors.full_name}
+            placeholder="Nguyễn Văn A"
+            required
+            dataTour="student-field-name"
+          />
+          <Input
+            label="Email"
+            name="email"
+            type="email"
+            value={form.email}
+            onChange={handleChange}
+            error={errors.email}
+            placeholder="example@email.com"
+            dataTour="student-field-email"
+          />
+          <Input
+            label="Số điện thoại"
+            name="phone"
+            value={form.phone}
+            onChange={handleChange}
+            error={errors.phone}
+            placeholder="0901234567"
+            dataTour="student-field-phone"
+          />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" data-tour="student-field-active">
           <input
             type="checkbox"
             id="is_active"

@@ -2,6 +2,7 @@ import { useState, useContext, useCallback, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Plus, ChevronLeft, ChevronRight, Calendar, LayoutGrid, List, Columns3, MapPin, Clock, User, Filter } from 'lucide-react'
 import Button from '../common/Button'
+import PageTourButton from '../tour/PageTourButton'
 import LoadingSpinner from '../common/LoadingSpinner'
 import ConfirmDialog from '../common/ConfirmDialog'
 import ScheduleForm from './ScheduleForm'
@@ -408,7 +409,10 @@ export default function ScheduleView() {
     <div>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Thời khóa biểu</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900">Thời khóa biểu</h1>
+            <PageTourButton />
+          </div>
           <p className="text-sm text-gray-500 mt-1">{roleDescriptions[user?.role] || 'Lịch học'}</p>
         </div>
         {canEdit && (

@@ -2,6 +2,7 @@ import { useState, useContext, useCallback } from 'react'
 import { Plus, Download } from 'lucide-react'
 import Table from '../common/Table'
 import Button from '../common/Button'
+import PageTourButton from '../tour/PageTourButton'
 import StatusBadge from '../common/StatusBadge'
 import ConfirmDialog from '../common/ConfirmDialog'
 import StudentForm from './StudentForm'
@@ -75,7 +76,10 @@ export default function StudentList() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Học sinh</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-gray-900">Học sinh</h1>
+            <PageTourButton />
+          </div>
           <p className="text-sm text-gray-500 mt-1">Quản lý danh sách học sinh</p>
         </div>
         <div className="flex gap-2">

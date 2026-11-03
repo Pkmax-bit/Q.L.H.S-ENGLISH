@@ -82,6 +82,16 @@ export function TourProvider({ children }) {
   const step = tour?.steps?.[stepIndex] ?? null
   const isLast = tour ? stepIndex >= tour.steps.length - 1 : false
 
+  // Tour kẹt (id sai / step lệch sau HMR) → tự tắt để nút ? hiện lại
+  useEffect(() => {
+    if (tourId && !step) {
+      setTourId(null)
+      setStepIndex(0)
+      setRect(null)
+      setStatus('idle')
+    }
+  }, [tourId, step])
+
   const clearPoll = () => {
     if (pollRef.current) {
       clearInterval(pollRef.current)
@@ -177,30 +187,40 @@ export function TourProvider({ children }) {
     setStepIndex((i) => Math.max(0, i - 1))
   }, [])
 
-  // advanceOn click: lắng nghe click đúng target
+  // advanceOn click: bấm đúng vùng spotlight (kể cả con bên trong nút)
   useEffect(() => {
     if (!step || step.advanceOn !== 'click' || status !== 'ready') return
-    const el = queryTarget(step.selector)
-    if (!el) return
+    let advanced = false
 
-    const onClick = () => {
+    const onClick = (e) => {
+      const target = queryTarget(step.selector)
+      if (!target || advanced) return
+      if (!target.contains(e.target) && e.target !== target) return
+      advanced = true
       // Cho NavLink/Button/form mở xong rồi mới next
       window.setTimeout(() => goNext(), 450)
     }
-    el.addEventListener('click', onClick, { once: true })
-    return () => el.removeEventListener('click', onClick)
+
+    document.addEventListener('click', onClick, true)
+    return () => document.removeEventListener('click', onClick, true)
   }, [step, status, goNext, stepIndex])
 
   const startTour = useCallback(
-    (id) => {
+    (id, options = {}) => {
       const t = TOURS[id]
       if (!t) return
+      const startAt = Math.min(
+        Math.max(0, options.startAt ?? 0),
+        Math.max(0, t.steps.length - 1)
+      )
       clearPoll()
       setTourId(id)
-      setStepIndex(0)
+      setStepIndex(startAt)
       setStatus('locating')
-      // Bắt đầu từ trang hướng dẫn để user thấy menu
-      navigate('/guide')
+      // Từ trang hướng dẫn: về /guide để thấy menu. Từ nút trang: ở lại trang hiện tại.
+      if (!options.stayOnPage) {
+        navigate('/guide')
+      }
     },
     [navigate]
   )
