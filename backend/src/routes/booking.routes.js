@@ -47,6 +47,25 @@ router.delete('/public/entries/:entryId', publicLimiter, bookingAuth, controller
 router.post('/public/boards/:slug/requests', publicLimiter, bookingAuth, controller.createRequests);
 router.delete('/public/requests/:requestId', publicLimiter, bookingAuth, controller.cancelMyRequest);
 router.patch('/public/requests/:requestId', publicLimiter, bookingAuth, controller.updateMyRequest);
+// Hai đường dành cho SỐ ĐƯỢC ĐÁNH DẤU QUẢN LÝ (047). Không có middleware riêng:
+// cờ nằm ở DB và được service đọc lại theo phiên, middleware chỉ xác thực phiên.
+router.get('/public/boards/:slug/students', publicLimiter, bookingAuth, controller.listBoardStudents);
+router.get('/public/boards/:slug/activity', publicLimiter, bookingAuth, controller.listMyBoardActivity);
+// Chat: học viên chỉ đụng luồng của mình, quản lý xem được mọi luồng (service kiểm cờ)
+router.get('/public/boards/:slug/messages', publicLimiter, bookingAuth, controller.listMessages);
+router.post('/public/boards/:slug/messages', publicLimiter, bookingAuth, controller.sendMessage);
+router.get('/public/boards/:slug/threads', publicLimiter, bookingAuth, controller.listThreads);
+// Sắp xếp ngay trên trang công khai, chỉ số có cờ quản lý
+router.get('/public/boards/:slug/pool', publicLimiter, bookingAuth, scheduling.managerListPool);
+router.post('/public/requests/:requestId/detach', publicLimiter, bookingAuth, scheduling.managerDetachRequest);
+router.post('/public/pool/:itemId/schedule', publicLimiter, bookingAuth, scheduling.managerScheduleFromPool);
+router.delete('/public/pool/:itemId', publicLimiter, bookingAuth, scheduling.managerRemoveFromPool);
+router.patch(
+  '/public/registrants/:registrantId/color',
+  publicLimiter,
+  bookingAuth,
+  controller.managerSetRegistrantColor
+);
 
 // ============================ QUẢN TRỊ (admin + giáo viên) ============================
 
@@ -66,6 +85,7 @@ router.get('/boards/:id/registrations', auth, authorize('admin', 'teacher'), con
 router.get('/boards/:id/registrations.csv', auth, authorize('admin', 'teacher'), controller.exportRegistrations);
 
 router.get('/boards/:id/requests', auth, authorize('admin', 'teacher'), controller.listRequests);
+router.get('/boards/:id/activity', auth, authorize('admin', 'teacher'), controller.listActivity);
 router.post('/requests/review', auth, authorize('admin', 'teacher'), controller.reviewRequests);
 // Tô màu buổi học: CHỈ admin. Giáo viên xem và duyệt được, nhưng màu là cách
 // trung tâm xếp lớp trên lưới — để nhiều người đổi thì bảng màu hết ý nghĩa.
@@ -94,6 +114,9 @@ router.delete('/price-tiers/:tierId', ...admin, scheduling.deletePriceTier);
 router.get('/boards/:id/pool', ...admin, scheduling.listPool);
 router.post('/boards/:id/pool', ...admin, scheduling.addToPool);
 router.delete('/pool/:itemId', ...admin, scheduling.removeFromPool);
+// Gỡ một buổi khỏi lưới xuống khu chờ, và kéo ngược từ khu chờ vào lưới
+router.post('/requests/:requestId/detach', ...admin, scheduling.detachRequestToPool);
+router.post('/pool/:itemId/schedule', ...admin, scheduling.scheduleFromPool);
 
 router.post('/slots/:slotId/assign', ...admin, scheduling.assignToSlot);
 router.put('/entries/:entryId/price', ...admin, scheduling.updateEntryPrice);

@@ -62,6 +62,36 @@ const removeFromPool = handle(async (req, res) => {
   return response.success(res, result, 'Đã bỏ khỏi giờ chờ sắp');
 });
 
+const detachRequestToPool = handle(async (req, res) => {
+  const result = await svc.detachRequestToPool(req.params.requestId, req.user);
+  return response.success(res, result, 'Đã gỡ vào khu chờ sắp xếp');
+});
+
+const scheduleFromPool = handle(async (req, res) => {
+  const result = await svc.scheduleFromPool(req.params.itemId, req.body || {});
+  return response.success(res, result, 'Đã xếp vào lưới');
+});
+
+const managerListPool = handle(async (req, res) => {
+  const result = await svc.managerListPool(req.params.slug, req.registrant.id);
+  return response.success(res, result, 'Lấy khu chờ thành công');
+});
+
+const managerDetachRequest = handle(async (req, res) => {
+  const result = await svc.managerDetachRequest(req.params.requestId, req.registrant.id);
+  return response.success(res, result, 'Đã gỡ vào khu chờ sắp xếp');
+});
+
+const managerRemoveFromPool = handle(async (req, res) => {
+  const result = await svc.managerRemoveFromPool(req.params.itemId, req.registrant.id);
+  return response.success(res, result, 'Đã bỏ khỏi khu chờ');
+});
+
+const managerScheduleFromPool = handle(async (req, res) => {
+  const result = await svc.managerScheduleFromPool(req.params.itemId, req.body || {}, req.registrant.id);
+  return response.success(res, result, 'Đã xếp vào lưới');
+});
+
 // ---- xếp / gỡ / chuyển ----
 
 const assignToSlot = handle(async (req, res) => {
@@ -97,6 +127,12 @@ module.exports = {
   listPool,
   addToPool,
   removeFromPool,
+  detachRequestToPool,
+  scheduleFromPool,
+  managerListPool,
+  managerRemoveFromPool,
+  managerDetachRequest,
+  managerScheduleFromPool,
   assignToSlot,
   updateEntryPrice,
   detachToPool,

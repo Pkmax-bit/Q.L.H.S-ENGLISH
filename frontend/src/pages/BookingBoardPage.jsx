@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { CalendarDays, HelpCircle, LayoutGrid, List, Lock, LogOut, RefreshCw, TriangleAlert } from 'lucide-react'
+import clsx from 'clsx'
+import { BadgeCheck, Bold, CalendarDays, Eraser, HelpCircle, History, LayoutGrid, List, Lock, LogOut, Move, RefreshCw, RotateCcw, Star, TriangleAlert } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Button from '../components/common/Button'
+import Modal from '../components/common/Modal'
 import Select from '../components/common/Select'
 import PhoneGate from '../components/booking/PhoneGate'
 import WeekPicker from '../components/booking/WeekPicker'
@@ -12,11 +14,18 @@ import SelectionBar from '../components/booking/SelectionBar'
 import MyBookingsBar from '../components/booking/MyBookingsBar'
 import RequestToolPanel from '../components/booking/RequestToolPanel'
 import BookingHelpSheet from '../components/booking/BookingHelpSheet'
+import ActivityLogSheet from '../components/booking/ActivityLogSheet'
+import ChatDock from '../components/booking/ChatDock'
+import SchedulingTray from '../components/booking/SchedulingTray'
+import DropConflictDialog from '../components/booking/DropConflictDialog'
 import { useContextMenu } from '../hooks/useContextMenu'
+import { useBookingSocket } from '../hooks/useBookingSocket'
 import bookingService, { bookingSession } from '../services/booking.service'
 import { DAY_SHORT, STEP_OPTIONS, formatDate, formatDateTime, mergeCells } from '../lib/bookingUtils'
 
-const REFRESH_MS = 25000
+// Socket đã đẩy thay đổi tới ngay; vòng này chỉ còn là lưới an toàn khi
+// websocket rớt hoặc bị proxy chặn, nên giãn từ 25 giây lên 2 phút.
+const REFRESH_MS = 120000
 
 export default function BookingBoardPage() {
   const { slug } = useParams()
@@ -43,11 +52,51 @@ export default function BookingBoardPage() {
   const [booking, setBooking] = useState(false)
   const [savingRequest, setSavingRequest] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
+  // Cờ do server trả (047). Chỉ bật nút; quyền thật server kiểm lại từng lần gọi.
+  const [isManager, setIsManager] = useState(false)
+  const [students, setStudents] = useState([])
+  const [logOpen, setLogOpen] = useState(false)
+  // Chế độ sắp xếp của người quản lý: tắt mặc định, bật mới kéo được khối
+  const [arranging, setArranging] = useState(false)
+  const [pool, setPool] = useState([])
+  const [conflict, setConflict] = useState(null)
+  const [exitPrompt, setExitPrompt] = useState(false)
+  // Việc vừa làm + cách làm ngược lại. Giữ MỘT bước thôi: xếp lịch là chuỗi
+  // thao tác nhanh, nhớ cả chồng rồi hoàn tác nhầm bước thứ tư còn rối hơn.
+  const [lastAction, setLastAction] = useState(null)
+  // Con dấu đang cầm trên tay: bấm vào buổi nào là đóng dấu vào buổi đó
+  const [stampTool, setStampTool] = useState(null)
+
+  // Socket chung: lưới nghe 'booking:board_changed', hộp chat nghe 'booking:message'
+  const { socket } = useBookingSocket({
+    bookingToken: bookingSession.getToken(),
+    boardId: board?.id,
+    isManager,
+  })
   const menu = useContextMenu()
 
   // Lưới trả về từng ô 15 phút; ô liền nhau trong cùng ngày là MỘT buổi học, nên
   // mọi thứ người dùng nhìn thấy và mọi thứ gửi lên server đều dùng bản đã gộp.
   const mergedCells = useMemo(() => mergeCells(selectedCells), [selectedCells])
+
+  const loadActivity = useCallback(
+    () => bookingService.listBoardActivity(slug).then((res) => res.data?.data ?? res.data ?? []),
+    [slug]
+  )
+
+  // Gom API chat lại một chỗ để ChatDock không phải biết slug
+  const chatApi = useMemo(
+    () => ({
+      listMessages: (registrantId) =>
+        bookingService
+          .listBoardMessages(slug, registrantId)
+          .then((res) => res.data?.data ?? res.data ?? { messages: [] }),
+      listThreads: () =>
+        bookingService.listBoardThreads(slug).then((res) => res.data?.data ?? res.data ?? []),
+      send: (body, registrantId) => bookingService.sendBoardMessage(slug, body, registrantId),
+    }),
+    [slug]
+  )
 
   const flashTimer = useRef(null)
   const showFlash = useCallback((type, text) => {
@@ -72,6 +121,7 @@ export default function BookingBoardPage() {
         setMyEntries(data.my_entries || [])
         setMyAllEntries(data.my_all_entries || [])
         setMyRequests(data.my_requests || [])
+        setIsManager(Boolean(data.is_manager))
         setNotFound('')
       } catch (err) {
         if (err.response?.status === 404) {
@@ -102,6 +152,46 @@ export default function BookingBoardPage() {
   }, [load])
 
   useEffect(() => () => clearTimeout(flashTimer.current), [])
+
+
+  const reloadPool = useCallback(() => {
+    if (!isManager) return Promise.resolve()
+    return bookingService
+      .managerListPool(slug)
+      .then((res) => setPool(res.data?.data ?? res.data ?? []))
+      .catch(() => setPool([]))
+  }, [isManager, slug])
+
+  // Nạp khu chờ ngay khi vào, không đợi bật chế độ sắp xếp: con số trên nút
+  // chính là thứ nhắc còn việc dở, mà nút thì luôn hiện
+  useEffect(() => {
+    if (isManager) reloadPool()
+  }, [isManager, reloadPool])
+
+  // Ai đó đổi gì trên bảng -> tải lại ngay, không chờ vòng làm mới.
+  // Phải đặt SAU reloadPool: hook đọc biến trước lúc nó được khai báo thì cả
+  // trang văng vào error boundary ngay lần render đầu.
+  useEffect(() => {
+    const sock = socket?.current
+    if (!sock) return undefined
+    const onChanged = () => {
+      load({ silent: true })
+      if (isManager) reloadPool()
+    }
+    sock.on('booking:board_changed', onChanged)
+    return () => sock.off('booking:board_changed', onChanged)
+  }, [socket, load, isManager, reloadPool])
+
+  useEffect(() => {
+    if (!isManager) {
+      setStudents([])
+      return
+    }
+    bookingService
+      .listBoardStudents(slug)
+      .then((res) => setStudents(res.data?.data ?? res.data ?? []))
+      .catch(() => setStudents([]))
+  }, [isManager, slug])
 
   const handleStepChange = (e) => {
     // Khóa ô trống gắn với mốc phút, đổi bước thì ô cũ trỏ vào khung giờ khác
@@ -208,6 +298,19 @@ export default function BookingBoardPage() {
     try {
       await bookingService.cancelMyRequest(req.id)
       showFlash('success', 'Đã rút nguyện vọng')
+      // Rút là xóa khỏi lưới, nhưng đăng ký lại đúng giờ cũ thì coi như chưa rút
+      setLastAction({
+        label: 'rút đăng ký',
+        run: () =>
+          bookingService.createRequests(slug, [
+            {
+              session_date: req.date,
+              start_time: req.start_time,
+              end_time: req.end_time,
+              note: req.note || null,
+            },
+          ]),
+      })
     } catch (err) {
       showFlash('error', err.response?.data?.message || 'Không rút được')
     }
@@ -292,16 +395,265 @@ export default function BookingBoardPage() {
   // Lưu giờ / ghi chú từ bảng công cụ chuột phải. Chỉ gửi phần thay đổi nên
   // sửa mỗi ghi chú thì giờ không bị ghi đè theo.
   const saveRequest = async (request, patch) => {
+    // Chụp lại giờ cũ TRƯỚC khi gọi API để còn đường quay lại
+    const before = {
+      session_date: request.date,
+      start_time: request.start_time,
+      end_time: request.end_time,
+    }
     setSavingRequest(true)
     try {
       await bookingService.updateMyRequest(request.id, patch)
       showFlash('success', 'Đã lưu thay đổi')
+      if (patch.session_date || patch.start_time) {
+        setLastAction({
+          label: 'dời buổi học',
+          run: () => bookingService.updateMyRequest(request.id, before),
+        })
+      }
       menu.close()
       await load({ silent: true })
     } catch (err) {
       showFlash('error', err.response?.data?.message || 'Không lưu được')
     } finally {
       setSavingRequest(false)
+    }
+  }
+
+  const toMin = (t) => {
+    const [h, m] = String(t).split(':')
+    return Number(h) * 60 + Number(m)
+  }
+  const pad2 = (n) => String(n).padStart(2, '0')
+  const fmtMin = (t) => `${pad2(Math.floor(t / 60))}:${pad2(t % 60)}`
+
+  /** Những gì đang chắn khoảng [from,to) của một ngày, trừ chính buổi đang kéo */
+  const blockersIn = (date, from, to, exceptId) => {
+    const dow = new Date(`${date}T00:00:00`).getDay()
+    const fromRequests = myRequests
+      .filter((r) => r.date === date && r.id !== exceptId)
+      .filter((r) => toMin(r.start_time) < to && toMin(r.end_time) > from)
+      .map((r) => ({
+        kind: 'request',
+        id: r.id,
+        label: r.full_name || 'Buổi học',
+        color: r.color || null,
+        note: r.note || null,
+        start: toMin(r.start_time),
+        end: toMin(r.end_time),
+      }))
+    const fromSlots = slots
+      .filter((x) => x.day_of_week === dow && x.date === date)
+      .filter((x) => toMin(x.start_time) < to && toMin(x.end_time) > from)
+      .map((x) => ({
+        kind: 'slot',
+        id: x.id,
+        label: x.label || 'Ca đã mở',
+        color: x.color || null,
+        start: toMin(x.start_time),
+        end: toMin(x.end_time),
+      }))
+    return [...fromRequests, ...fromSlots].sort((a, b) => a.start - b.start)
+  }
+
+  /**
+   * Kéo khối sang ô khác: giữ nguyên thời lượng, chỉ dời điểm bắt đầu.
+   * Chỗ mới không đủ trống thì KHÔNG tự cắt — mở hộp hỏi, vì cắt ngắn buổi của
+   * học viên sau lưng họ là chuyện không sửa lại được bằng Ctrl+Z.
+   */
+  const moveRequest = (requestId, { date, minute }) => {
+    const req = myRequests.find((r) => r.id === requestId)
+    if (!req) return
+    const duration = toMin(req.end_time) - toMin(req.start_time)
+    const end = Math.min(24 * 60 - 1, minute + duration)
+    if (date === req.date && minute === toMin(req.start_time)) return
+
+    const blockers = blockersIn(date, minute, end, requestId)
+    if (blockers.length === 0) {
+      saveRequest(req, { session_date: date, start_time: fmtMin(minute), end_time: fmtMin(end) })
+      return
+    }
+    setConflict({
+      request: req,
+      date,
+      start: minute,
+      end,
+      blockers,
+      // Trống tới đâu = tới lúc cái chắn đầu tiên bắt đầu
+      freeUntil: blockers[0].start,
+    })
+  }
+
+  /**
+   * Áp dụng những gì người dùng vừa chỉnh trong hộp trùng giờ.
+   *
+   * Dời các thẻ CHẮN trước, đặt thẻ đang kéo sau: server chặn hai buổi cùng
+   * người chồng giờ, làm ngược lại là chính bước đầu tiên đã bị từ chối.
+   */
+  const applyResolution = async ({ target, moves }) => {
+    const c = conflict
+    if (!c) return
+    setConflict(null)
+    setSavingRequest(true)
+    try {
+      for (const m of moves) {
+        await bookingService.updateMyRequest(m.id, {
+          session_date: c.date,
+          start_time: m.start_time,
+          end_time: m.end_time,
+        })
+      }
+      if (c.kind === 'pool') {
+        await bookingService.managerScheduleFromPool(c.poolItemId, {
+          session_date: c.date,
+          ...target,
+        })
+      } else {
+        await bookingService.updateMyRequest(c.request.id, { session_date: c.date, ...target })
+      }
+      showFlash('success', moves.length ? `Đã dời ${moves.length} buổi và đặt lại giờ` : 'Đã đặt lại giờ')
+      menu.close()
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không áp dụng được')
+    } finally {
+      setSavingRequest(false)
+      await Promise.all([load({ silent: true }), reloadPool()])
+    }
+  }
+
+  const detachRequest = async (requestId) => {
+    setSavingRequest(true)
+    try {
+      const res = await bookingService.managerDetachRequest(requestId)
+      const gone = myRequests.find((r) => r.id === requestId)
+      const poolItemId = (res.data?.data ?? res.data)?.pool_item_id
+      showFlash('success', res.data?.message || 'Đã gỡ vào khu chờ')
+      if (poolItemId && gone) {
+        setLastAction({
+          label: 'gỡ vào khu chờ',
+          run: () =>
+            bookingService.managerScheduleFromPool(poolItemId, {
+              session_date: gone.date,
+              start_time: gone.start_time,
+              end_time: gone.end_time,
+            }),
+        })
+      }
+      menu.close()
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không gỡ được')
+    } finally {
+      setSavingRequest(false)
+      await Promise.all([load({ silent: true }), reloadPool()])
+    }
+  }
+
+  const doScheduleFromPool = async (itemId, date, minute, endMinute) => {
+    setSavingRequest(true)
+    try {
+      const res = await bookingService.managerScheduleFromPool(itemId, {
+        session_date: date,
+        start_time: fmtMin(minute),
+        end_time: fmtMin(endMinute),
+      })
+      const newId = (res.data?.data ?? res.data)?.id
+      showFlash('success', res.data?.message || 'Đã xếp vào lưới')
+      if (newId) {
+        setLastAction({
+          label: 'xếp từ khu chờ',
+          run: () => bookingService.managerDetachRequest(newId),
+        })
+      }
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không xếp được')
+    } finally {
+      setSavingRequest(false)
+      await Promise.all([load({ silent: true }), reloadPool()])
+    }
+  }
+
+  /**
+   * Thả một người từ khu chờ xuống lưới. Đi qua ĐÚNG lớp kiểm tra như kéo khối:
+   * trước đây đường này không kiểm gì cả nên thả chồng lên buổi khác vẫn lọt,
+   * tạo ra hai buổi cùng giờ của cùng một người.
+   */
+  const scheduleFromPool = (itemId, { date, minute }) => {
+    const item = pool.find((p) => p.id === itemId)
+    const duration = item?.duration_minutes || 60
+    const end = Math.min(24 * 60 - 1, minute + duration)
+    const blockers = blockersIn(date, minute, end, null)
+
+    if (blockers.length === 0) {
+      doScheduleFromPool(itemId, date, minute, end)
+      return
+    }
+    setConflict({
+      kind: 'pool',
+      poolItemId: itemId,
+      request: { full_name: item?.full_name || 'Học viên' },
+      date,
+      start: minute,
+      end,
+      blockers,
+      freeUntil: blockers[0].start,
+    })
+  }
+
+  /**
+   * Bật/tắt dấu đánh dấu hoặc dấu hoàn thành. Gọi API ngay, không chờ bấm Lưu:
+   * đây là thao tác tích một cái trong lúc lướt qua hàng chục buổi.
+   */
+  const toggleFlag = async (request, patch) => {
+    setSavingRequest(true)
+    try {
+      await bookingService.updateMyRequest(request.id, patch)
+      // Quay lại đúng những trường vừa đụng, không đụng trường khác
+      const before = {}
+      if (patch.is_marked !== undefined) before.is_marked = Boolean(request.is_marked)
+      if (patch.is_bold !== undefined) before.is_bold = Boolean(request.is_bold)
+      if (patch.done !== undefined) before.done = Boolean(request.done_at)
+      const ten = patch.is_bold !== undefined ? 'tô đậm' : patch.is_marked !== undefined ? 'đánh dấu' : 'đóng dấu'
+      setLastAction({
+        label: Object.keys(before).length > 1 ? 'gỡ dấu' : ten,
+        run: () => bookingService.updateMyRequest(request.id, before),
+      })
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không đổi được')
+    } finally {
+      setSavingRequest(false)
+      await load({ silent: true })
+    }
+  }
+
+  /**
+   * Đóng dấu bằng công cụ đang cầm. Mỗi con dấu BẬT/TẮT theo trạng thái hiện
+   * có của buổi đó, nên quét qua một loạt rồi quét lại là gỡ ra — không cần
+   * đổi sang công cụ khác để xóa.
+   */
+  const applyStamp = (request, tool) => {
+    const patch =
+      tool === 'bold'
+        ? { is_bold: !request.is_bold }
+        : tool === 'mark'
+          ? { is_marked: !request.is_marked }
+          : tool === 'done'
+            ? { done: !request.done_at }
+            : { is_bold: false, is_marked: false, done: false }
+    return toggleFlag(request, patch)
+  }
+
+  const undoLast = async () => {
+    if (!lastAction) return
+    setSavingRequest(true)
+    try {
+      await lastAction.run()
+      showFlash('success', `Đã hoàn tác: ${lastAction.label}`)
+      setLastAction(null)
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không hoàn tác được')
+    } finally {
+      setSavingRequest(false)
+      await Promise.all([load({ silent: true }), reloadPool()])
     }
   }
 
@@ -349,10 +701,14 @@ export default function BookingBoardPage() {
   const limitReached =
     board?.max_slots_per_person > 0 && myEntries.length >= board.max_slots_per_person
 
+  // Cột dọc cao đúng một màn hình: đầu trang và thanh "chỗ của tôi" co theo nội
+  // dung, lưới nuốt hết chỗ còn lại nên không hở mảng trắng nào. Thanh dưới nằm
+  // TRONG cột thay vì neo cứng — neo cứng thì phải đoán chiều cao nó để chừa
+  // padding, mà chiều cao đó đổi theo số ca đang giữ.
   return (
-    <div className="min-h-screen bg-slate-50 pb-28">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-50">
+      <header className="shrink-0 border-b border-slate-200 bg-white">
+        <div className="w-full px-3 py-3 sm:px-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h1 className="font-display text-lg font-semibold text-stone-900 sm:text-xl">
@@ -364,9 +720,9 @@ export default function BookingBoardPage() {
                   ? `${board.week_count} tuần: ${formatDate(board.week_start)} – ${formatDate(board.week_end)}`
                   : `Tuần ${formatDate(board?.week_start)} – ${formatDate(board?.week_end)}`}
               </p>
-              {board?.description && (
-                <p className="mt-2 max-w-2xl text-sm text-slate-600">{board.description}</p>
-              )}
+              {/* Mô tả bảng không in ra đây nữa: nội dung của nó là chỉ dẫn thao
+                  tác, mà thao tác đã nằm trong nút "Hướng dẫn". Dữ liệu vẫn còn
+                  trong bảng, trang quản trị vẫn hiện. */}
             </div>
 
             <div className="flex items-center gap-2">
@@ -382,7 +738,7 @@ export default function BookingBoardPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
+      <main className="flex w-full min-h-0 flex-1 flex-col px-3 py-3 sm:px-5">
         {!board?.is_accepting && (
           <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <Lock className="mt-0.5 h-4 w-4 shrink-0" />
@@ -432,6 +788,56 @@ export default function BookingBoardPage() {
             >
               <span className="hidden sm:inline">Hướng dẫn</span>
             </Button>
+            {isManager && (
+              <>
+                <Button
+                  size="sm"
+                  variant={arranging ? 'primary' : 'outline'}
+                  icon={Move}
+                  // Thoát khi khu chờ còn người thì hỏi lại: tắt chế độ là khay
+                  // biến mất khỏi màn, dễ tưởng đã xếp xong hết
+                  onClick={() =>
+                    arranging && pool.length > 0 ? setExitPrompt(true) : setArranging((v) => !v)
+                  }
+                  title={
+                    pool.length > 0
+                      ? `Còn ${pool.length} buổi chờ xếp`
+                      : 'Bật để kéo khối sang giờ khác và gỡ vào khu chờ'
+                  }
+                >
+                  <span className="hidden sm:inline">{arranging ? 'Đang sắp xếp' : 'Sắp xếp'}</span>
+                  {pool.length > 0 && (
+                    <span
+                      className={clsx(
+                        'ml-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[11px] font-bold',
+                        arranging ? 'bg-white text-primary-700' : 'bg-amber-500 text-white'
+                      )}
+                    >
+                      {pool.length}
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={RotateCcw}
+                  disabled={!lastAction || savingRequest}
+                  onClick={undoLast}
+                  title={lastAction ? `Hoàn tác: ${lastAction.label}` : 'Chưa có gì để hoàn tác'}
+                >
+                  <span className="hidden sm:inline">Hoàn tác</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={History}
+                  onClick={() => setLogOpen(true)}
+                  title="Nhật ký ai làm gì"
+                >
+                  <span className="hidden sm:inline">Nhật ký</span>
+                </Button>
+              </>
+            )}
             {view === 'hours' && (
               <Select
                 value={String(step)}
@@ -470,14 +876,65 @@ export default function BookingBoardPage() {
             kéo chọn để đăng ký, ẩn lưới đi là hết đường đăng ký. Chỉ dạng danh
             sách theo ngày mới cần báo trống, vì nó chỉ liệt kê ca có sẵn. */}
         {view === 'hours' ? (
-          <>
+          // min-h-0 là bắt buộc: thiếu nó thì con flex không chịu co lại dưới
+          // chiều cao nội dung, lưới đẩy cả trang dài ra thay vì tự cuộn
+          <div className="flex min-h-0 flex-1 flex-col">
+            {isManager && (
+              <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5">
+                <span className="mr-1 text-xs font-medium text-slate-500">Con dấu</span>
+                {[
+                  { key: 'bold', label: 'Tô đậm', icon: Bold },
+                  { key: 'mark', label: 'Đánh dấu', icon: Star },
+                  { key: 'done', label: 'Hoàn thành', icon: BadgeCheck },
+                  { key: 'clear', label: 'Gỡ dấu', icon: Eraser },
+                ].map((t) => (
+                  <Button
+                    key={t.key}
+                    size="sm"
+                    variant={stampTool === t.key ? 'primary' : 'ghost'}
+                    icon={t.icon}
+                    disabled={savingRequest}
+                    // Bấm lại chính nó là bỏ cầm — không cần nút "thôi" riêng
+                    onClick={() => setStampTool((cur) => (cur === t.key ? null : t.key))}
+                  >
+                    {t.label}
+                  </Button>
+                ))}
+                {stampTool && (
+                  <span className="ml-1 text-xs text-primary-700">
+                    Bấm vào buổi để đóng dấu · bấm lần nữa để gỡ · bấm lại nút để thôi
+                  </span>
+                )}
+              </div>
+            )}
+
             {slots.length === 0 && (
               <p className="mb-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-500">
                 Tuần này chưa có ca nào — chọn giờ bạn muốn học.
               </p>
             )}
+            {isManager && arranging && (
+              <SchedulingTray
+                items={pool}
+                busy={savingRequest}
+                onDetach={detachRequest}
+                onRemove={async (itemId) => {
+                  setSavingRequest(true)
+                  try {
+                    await bookingService.managerRemoveFromPool(itemId)
+                    showFlash('success', 'Đã bỏ khỏi khu chờ')
+                  } catch (err) {
+                    showFlash('error', err.response?.data?.message || 'Không bỏ được')
+                  } finally {
+                    setSavingRequest(false)
+                    await reloadPool()
+                  }
+                }}
+              />
+            )}
             <HourGrid
               mode="public"
+              fillHeight
               board={board}
               slots={slots}
               weekStart={week}
@@ -491,6 +948,15 @@ export default function BookingBoardPage() {
               onSlotClick={handleSlotClick}
               onRequestClick={handleCancelRequest}
               onRequestContextMenu={menu.open}
+              canDrag={isManager && arranging}
+              // Người quản lý bấm vào thẻ thì MỞ công cụ, không rút: thẻ đó
+              // thường là của học viên khác, bấm nhầm một cái là mất buổi của họ
+              clickAction={isManager ? 'panel' : 'cancel'}
+              stampTool={isManager ? stampTool : null}
+              onStamp={applyStamp}
+              allowPast={isManager}
+              onMoveRequest={moveRequest}
+              onDropPoolItem={scheduleFromPool}
             />
             <SelectionBar
               count={selectedIds.length + mergedCells.length}
@@ -510,6 +976,11 @@ export default function BookingBoardPage() {
                     ? `Đăng ký ${mergedCells.length} buổi học`
                     : `Giữ ${selectedIds.length} ca + đăng ký ${mergedCells.length} buổi`
               }
+              shortLabel={
+                mergedCells.length === 0
+                  ? `Giữ ${selectedIds.length}`
+                  : `Đăng ký ${mergedCells.length}`
+              }
               loading={booking}
               onConfirm={handleConfirm}
               onClear={() => {
@@ -525,7 +996,7 @@ export default function BookingBoardPage() {
                     : null
               }
             />
-          </>
+          </div>
         ) : slots.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center">
             <p className="text-sm text-slate-500">
@@ -545,13 +1016,73 @@ export default function BookingBoardPage() {
 
       {/* Chuột phải vào buổi đã đăng ký: sửa ghi chú hoặc rút. Đổi màu không có
           ở đây — màu là việc xếp lớp của trung tâm, học viên chỉ xem. */}
-      <BookingHelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <BookingHelpSheet open={helpOpen} onClose={() => setHelpOpen(false)} isManager={isManager} />
+
+      <ActivityLogSheet
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+        load={loadActivity}
+      />
+
+      <Modal
+        isOpen={exitPrompt}
+        onClose={() => setExitPrompt(false)}
+        title={`Còn ${pool.length} buổi chưa xếp`}
+        size="sm"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setExitPrompt(false)
+                setArranging(false)
+              }}
+            >
+              Để lại làm sau
+            </Button>
+            <Button onClick={() => setExitPrompt(false)}>Tiếp tục xếp</Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600">
+          {pool.length} buổi đang nằm trong khu chờ sắp xếp. Thoát bây giờ thì chúng{' '}
+          <b>vẫn được giữ nguyên</b> — con số trên nút <b>Sắp xếp</b> nhắc bạn còn việc dở, bật lại
+          lúc nào cũng xếp tiếp được.
+        </p>
+      </Modal>
+
+      <DropConflictDialog
+        conflict={conflict}
+        busy={savingRequest}
+        onClose={() => setConflict(null)}
+        onApply={applyResolution}
+      />
+
+      <ChatDock isManager={isManager} api={chatApi} socket={socket} />
 
       <RequestToolPanel
         state={menu.state}
         onClose={menu.close}
         busy={savingRequest}
+        canColor={isManager}
+        students={students}
         onSave={saveRequest}
+        onToggleFlag={toggleFlag}
+        onSetColor={(request, color) => {
+          setSavingRequest(true)
+          bookingService
+            .managerSetRegistrantColor(request.registrant_id, color)
+            .then((res) => showFlash('success', res.data?.message || 'Đã đổi màu'))
+            .catch((err) => showFlash('error', err.response?.data?.message || 'Không đổi được màu'))
+            .finally(async () => {
+              setSavingRequest(false)
+              await load({ silent: true })
+            })
+        }}
+        onChangeStudent={(request, registrantId) =>
+          saveRequest(request, { registrant_id: registrantId })
+        }
+        onDetach={isManager ? (request) => detachRequest(request.id) : undefined}
         onCancel={(request) => {
           menu.close()
           handleCancelRequest(request)

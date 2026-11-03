@@ -1,8 +1,8 @@
-import { useCallback, useContext, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   ArrowLeft, CalendarDays, Copy, Download, ExternalLink, EyeOff,
-  Hourglass, Pencil, Plus, Trash2, UserPlus, Users, X,
+  Hourglass, Move, Pencil, Plus, Trash2, UserPlus, Users, X,
 } from 'lucide-react'
 import clsx from 'clsx'
 import Button from '../components/common/Button'
@@ -18,7 +18,9 @@ import HourGrid from '../components/booking/HourGrid'
 import SelectionBar from '../components/booking/SelectionBar'
 import RequestDemandPanel from '../components/booking/RequestDemandPanel'
 import RequestToolPanel from '../components/booking/RequestToolPanel'
+import SchedulingTray from '../components/booking/SchedulingTray'
 import { useContextMenu } from '../hooks/useContextMenu'
+import { useBookingSocket } from '../hooks/useBookingSocket'
 import SchedulingBoard from '../components/booking/SchedulingBoard'
 import { useFetch } from '../hooks/useFetch'
 import { useAuth } from '../hooks/useAuth'
@@ -116,7 +118,28 @@ export default function BookingBoardDetailPage() {
   const [addEntrySlot, setAddEntrySlot] = useState(null)
   const [entryForm, setEntryForm] = useState({ phone: '', full_name: '' })
   const [addingEntry, setAddingEntry] = useState(false)
+  // Chế độ sắp xếp: bật mới kéo được khối trên lưới và mới hiện khu chờ. Để
+  // bật sẵn thì chỉ cần lỡ tay kéo một cái là buổi của học viên nhảy sang giờ khác.
+  const [arranging, setArranging] = useState(false)
   const requestMenu = useContextMenu()
+
+  // Học viên đăng ký ở trang công khai thì lưới quản trị phải hiện ngay, không
+  // bắt admin bấm Làm mới. Dùng accessToken vì đây là phiên nội bộ.
+  const { socket } = useBookingSocket({
+    token: localStorage.getItem('accessToken'),
+    boardId: id,
+  })
+
+  useEffect(() => {
+    const sock = socket?.current
+    if (!sock) return undefined
+    const onChanged = () => {
+      reload()
+      reloadReqs()
+    }
+    sock.on('booking:board_changed', onChanged)
+    return () => sock.off('booking:board_changed', onChanged)
+  }, [socket, reload, reloadReqs])
 
   const publicUrl = board ? `${window.location.origin}/dk/${board.slug}` : ''
   const multiWeek = (board?.week_count || 1) > 1
@@ -189,6 +212,54 @@ export default function BookingBoardDetailPage() {
       'Đã lưu thay đổi',
       'Không lưu được'
     ).then(() => requestMenu.close())
+
+  // Kéo khối sang ô khác: giữ nguyên thời lượng, chỉ dời điểm bắt đầu
+  const moveRequest = (requestId, { date, minute }) => {
+    const req = weekRequests.find((r) => r.id === requestId)
+    if (!req) return
+    const toMin = (t) => {
+      const [h, m] = String(t).split(':')
+      return Number(h) * 60 + Number(m)
+    }
+    const pad = (n) => String(n).padStart(2, '0')
+    const fmt = (t) => `${pad(Math.floor(t / 60))}:${pad(t % 60)}`
+    const duration = toMin(req.end_time) - toMin(req.start_time)
+    const end = Math.min(24 * 60 - 1, minute + duration)
+    if (date === req.date && minute === toMin(req.start_time)) return
+    runOnRequest(
+      () =>
+        bookingService.updateRequest(requestId, {
+          session_date: date,
+          start_time: fmt(minute),
+          end_time: fmt(end),
+        }),
+      'Đã dời buổi học',
+      'Không dời được'
+    )
+  }
+
+  const detachRequest = (requestId) =>
+    runOnRequest(
+      () => bookingService.detachRequestToPool(requestId),
+      'Đã gỡ vào khu chờ',
+      'Không gỡ được'
+    ).then(() => {
+      requestMenu.close()
+      reloadPool()
+    })
+
+  const scheduleFromPool = (itemId, { date, minute }) => {
+    const pad = (n) => String(n).padStart(2, '0')
+    runOnRequest(
+      () =>
+        bookingService.scheduleFromPool(itemId, {
+          session_date: date,
+          start_time: `${pad(Math.floor(minute / 60))}:${pad(minute % 60)}`,
+        }),
+      'Đã xếp vào lưới',
+      'Không xếp được'
+    ).then(reloadPool)
+  }
 
   const handleRejectRequests = async (bucket) => {
     setRequestBusy(true)
@@ -486,6 +557,17 @@ export default function BookingBoardDetailPage() {
                 <b>Tạo lịch</b> · bấm ca có sẵn để sửa
               </p>
               <div className="flex items-center gap-2">
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant={arranging ? 'primary' : 'outline'}
+                    icon={Move}
+                    onClick={() => setArranging((v) => !v)}
+                    title="Bật để kéo khối sang giờ khác và gỡ vào khu chờ"
+                  >
+                    {arranging ? 'Đang sắp xếp' : 'Sắp xếp'}
+                  </Button>
+                )}
                 <span className="text-xs text-slate-400">Bước giờ</span>
                 <Select
                   value={String(step)}
@@ -499,6 +581,20 @@ export default function BookingBoardDetailPage() {
                 />
               </div>
             </div>
+            {isAdmin && arranging && (
+              <SchedulingTray
+                items={pool}
+                busy={requestBusy}
+                onDetach={detachRequest}
+                onRemove={(itemId) =>
+                  runOnRequest(
+                    () => bookingService.removeFromPool(itemId),
+                    'Đã bỏ khỏi khu chờ',
+                    'Không bỏ được'
+                  ).then(reloadPool)
+                }
+              />
+            )}
             <HourGrid
               mode="admin"
               board={board}
@@ -512,6 +608,9 @@ export default function BookingBoardDetailPage() {
               // nơi tô màu / mở ca / từ chối cho đúng khung giờ ấy
               onRequestClick={() => setTab('requests')}
               onRequestContextMenu={requestMenu.open}
+              canDrag={isAdmin && arranging}
+              onMoveRequest={moveRequest}
+              onDropPoolItem={scheduleFromPool}
               onSlotClick={(slot) => {
                 setSlotPrefill(null)
                 setEditingSlot(slot)
@@ -522,6 +621,7 @@ export default function BookingBoardDetailPage() {
               count={mergedCells.length}
               items={mergedCells.map((c) => `${DAY_SHORT[c.day_of_week]} ${c.start_time}–${c.end_time}`)}
               actionLabel={`Tạo lịch ${mergedCells.length} ca`}
+              shortLabel={`Tạo ${mergedCells.length}`}
               onConfirm={openCreateFromCells}
               onClear={() => setSelectedCells([])}
             />
@@ -721,6 +821,7 @@ export default function BookingBoardDetailPage() {
           requestMenu.close()
           setTab('requests')
         }}
+        onDetach={isAdmin ? (request) => detachRequest(request.id) : undefined}
         onCancel={(request) =>
           runOnRequest(
             () => bookingService.adminCancelRequest(request.id),

@@ -53,6 +53,23 @@ const bookingService = {
   cancelMyRequest: (requestId) => publicApi.delete(`/booking/public/requests/${requestId}`),
   updateMyRequest: (requestId, patch) =>
     publicApi.patch(`/booking/public/requests/${requestId}`, patch),
+  // Chỉ số được đánh dấu quản lý gọi được; server kiểm cờ, không phải ẩn nút
+  listBoardStudents: (slug) => publicApi.get(`/booking/public/boards/${slug}/students`),
+  managerSetRegistrantColor: (registrantId, color) =>
+    publicApi.patch(`/booking/public/registrants/${registrantId}/color`, { color }),
+  listBoardActivity: (slug) => publicApi.get(`/booking/public/boards/${slug}/activity`),
+  listBoardMessages: (slug, registrantId) =>
+    publicApi.get(`/booking/public/boards/${slug}/messages`, {
+      params: registrantId ? { registrant_id: registrantId } : undefined,
+    }),
+  sendBoardMessage: (slug, body, registrantId) =>
+    publicApi.post(`/booking/public/boards/${slug}/messages`, { body, registrant_id: registrantId }),
+  listBoardThreads: (slug) => publicApi.get(`/booking/public/boards/${slug}/threads`),
+  managerListPool: (slug) => publicApi.get(`/booking/public/boards/${slug}/pool`),
+  managerDetachRequest: (requestId) => publicApi.post(`/booking/public/requests/${requestId}/detach`),
+  managerRemoveFromPool: (itemId) => publicApi.delete(`/booking/public/pool/${itemId}`),
+  managerScheduleFromPool: (itemId, data) =>
+    publicApi.post(`/booking/public/pool/${itemId}/schedule`, data),
 
   // ---- quản trị (admin / giáo viên) ----
   listBoards: (params) => api.get('/booking/boards', { params }),
@@ -71,6 +88,7 @@ const bookingService = {
   exportRegistrations: (boardId, params) =>
     api.get(`/booking/boards/${boardId}/registrations.csv`, { params, responseType: 'blob' }),
   listRequests: (boardId, params) => api.get(`/booking/boards/${boardId}/requests`, { params }),
+  listActivity: (boardId, params) => api.get(`/booking/boards/${boardId}/activity`, { params }),
   reviewRequests: (data) => api.post('/booking/requests/review', data),
   // Chỉ admin: backend chặn ở authorize('admin'), đây chỉ là đường gọi
   setRegistrantColor: (registrantId, color) =>
@@ -92,6 +110,8 @@ const bookingService = {
   listPool: (boardId) => api.get(`/booking/boards/${boardId}/pool`),
   addToPool: (boardId, data) => api.post(`/booking/boards/${boardId}/pool`, data),
   removeFromPool: (itemId) => api.delete(`/booking/pool/${itemId}`),
+  detachRequestToPool: (requestId) => api.post(`/booking/requests/${requestId}/detach`),
+  scheduleFromPool: (itemId, data) => api.post(`/booking/pool/${itemId}/schedule`, data),
 
   assignToSlot: (slotId, data) => api.post(`/booking/slots/${slotId}/assign`, data),
   updateEntryPrice: (entryId, priceTierId) =>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useIsNarrow } from '../../hooks/useIsNarrow'
-import { Check, Hand, Plus, Users } from 'lucide-react'
+import { BadgeCheck, Check, Hand, Plus, Star, Users } from 'lucide-react'
 import clsx from 'clsx'
 import {
   DAY_SHORT, MAX_MINUTE_OF_DAY, WEEK_ORDER, colorClasses, formatMoney, formatShortDate,
@@ -52,6 +52,14 @@ export default function HourGrid({
   onSlotClick,
   onRequestClick,
   onRequestContextMenu,
+  canDrag = false,
+  allowPast = false,
+  clickAction = 'cancel',
+  stampTool = null,
+  onStamp,
+  onMoveRequest,
+  onDropPoolItem,
+  fillHeight = false,
 }) {
   const accepting = board?.is_accepting
   const isAdmin = mode === 'admin'
@@ -85,6 +93,41 @@ export default function HourGrid({
 
   // Nhấn giữ = chuột phải. Màn cảm ứng không có chuột phải, không có cái này
   // thì trên điện thoại không cách nào mở bảng công cụ của buổi học.
+  // Cao hết phần cha chừa cho: cha là flex column, lưới nhận `flex-1` nên
+  // không còn khoảng trống thừa. Trước đây đo bằng getBoundingClientRect rồi
+  // tính 100vh trừ đi — sai vài chục px mỗi lần phần đầu trang đổi chiều cao,
+  // và luôn để lại một mảng trắng ở dưới.
+  const scrollRef = useRef(null)
+
+  // Đang kéo cái gì (dragover không đọc được dataTransfer, trình duyệt chỉ cho
+  // đọc lúc drop) + ô đang rê tới, để vẽ trước chỗ sẽ rơi vào
+  const dragInfoRef = useRef(null)
+  const [dropHint, setDropHint] = useState(null) // { dow, start, end, ok }
+
+  // Vạch "bây giờ": nhìn lưới là biết ngay đang ở đâu trong ngày, buổi nào đã
+  // qua, buổi nào sắp tới. Nhịp một phút — lưới giờ không cần chính xác hơn.
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60000)
+    return () => clearInterval(id)
+  }, [])
+  const todayIso = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+
+  // Mở trang là cuộn tới giờ hiện tại: lưới dài 17 tiếng, mở ra luôn thấy 7h
+  // sáng trong khi việc đang xảy ra lúc 3h chiều. Chỉ làm MỘT lần lúc mở, sau
+  // đó người dùng cuộn đi đâu là việc của họ.
+  const scrolledRef = useRef(false)
+  useEffect(() => {
+    if (scrolledRef.current || !fillHeight) return
+    const el = scrollRef.current
+    if (!el || el.clientHeight === 0) return
+    const hourH = el.scrollHeight / (HOURS.length + 1)
+    const offset = (Math.floor(nowMinutes / 60) - FIRST_HOUR) * hourH
+    if (offset > 0) el.scrollTop = Math.max(0, offset - hourH / 2)
+    scrolledRef.current = true
+  }, [fillHeight, nowMinutes])
+
   const holdRef = useRef(null)
   const heldRef = useRef(false)
   const cancelHold = () => {
@@ -137,6 +180,18 @@ export default function HourGrid({
     let end = minute + step
     while (isCellSelected(dow, end)) end += step
     return { start, end }
+  }
+
+  /** Khoảng [from,to) trong ngày này có vướng ca đã mở hay buổi nào khác không */
+  const rangeBlocked = (dow, date, from, to, exceptRequestId = null) => {
+    const daySlots = byDay.get(dow) || []
+    const hitSlot = daySlots.some(
+      (x) => toMinutes(x.start_time) < to && toMinutes(x.end_time) > from
+    )
+    if (hitSlot) return true
+    return myRequestRanges.some(
+      (x) => x.date === date && x.req.id !== exceptRequestId && x.start < to && x.end > from
+    )
   }
 
   // Ca nằm ngoài 7h–23h vẫn phải hiện ở đâu đó, không được im lặng biến mất
@@ -260,7 +315,9 @@ export default function HourGrid({
 
     const past = date ? isPastDate(date) : false
     const mine = date ? requestAt(date, minute, subEnd) : null
-    const canAct = isAdmin || (accepting && !past)
+    // Ngày đã qua vẫn mờ đi cho dễ phân biệt, nhưng người quản lý thao tác được:
+    // xếp bù buổi đã dạy, sửa giờ ghi sai hôm trước
+    const canAct = isAdmin || allowPast || (accepting && !past)
 
     if (mine) {
       const myReq = mine.req
@@ -274,6 +331,12 @@ export default function HourGrid({
       const isNameRow = !isStart && mine.start + step >= minute && mine.start + step < subEnd
       // Dòng thứ ba của khối in ghi chú, buổi nào đủ dài mới có chỗ
       const isNoteRow = !isStart && mine.start + 2 * step >= minute && mine.start + 2 * step < subEnd
+      // Dấu mộc đóng ở GIỮA khối, như đóng lên giữa tờ giấy. Ô giữa là ô duy
+      // nhất biết mình ở giữa — các ô khác không biết khối dài bao nhiêu.
+      const cellCount = Math.max(1, Math.round((mine.end - mine.start) / step))
+      const idxInBlock = Math.round((minute - mine.start) / step)
+      const isStampRow = idxInBlock === Math.floor((cellCount - 1) / 2)
+      const stampFits = showLabel && cellCount >= 2
       const label = `${DAY_SHORT[dow]} ${myReq.start_time}–${myReq.end_time}${
         myReq.full_name ? ` · ${myReq.full_name}` : ''
       }${myReq.note ? ` · ${myReq.note}` : ''}`
@@ -288,11 +351,44 @@ export default function HourGrid({
       return (
         <button
           type="button"
-          onClick={() => {
+          draggable={canDrag}
+          onDragStart={(e) => {
+            // Kéo cả buổi chứ không kéo một ô: dropEffect dùng 'move' để con trỏ
+            // báo đúng là dời chỗ, không phải tạo thêm
+            e.dataTransfer.effectAllowed = 'move'
+            e.dataTransfer.setData('text/plain', JSON.stringify({ kind: 'request', id: myReq.id }))
+            dragInfoRef.current = {
+              kind: 'request',
+              id: myReq.id,
+              duration: mine.end - mine.start,
+              label: myReq.full_name || '',
+            }
+            cancelHold()
+          }}
+          onDragEnd={() => {
+            dragInfoRef.current = null
+            setDropHint(null)
+          }}
+          onClick={(e) => {
             // Vừa nhấn giữ xong thì trình duyệt vẫn bắn click — bỏ qua, không
             // thì nhả tay ra là rút mất buổi học
             if (heldRef.current) {
               heldRef.current = false
+              return
+            }
+            // Đang cầm một con dấu trên thanh công cụ: bấm là đóng dấu, không
+            // mở bảng. Đóng dấu hàng loạt mà mỗi lần phải mở bảng rồi đóng lại
+            // thì thà bấm chuột phải từng cái.
+            if (stampTool) {
+              onStamp?.(myReq, stampTool)
+              return
+            }
+            // Đang sắp xếp (hoặc người quản lý nhìn buổi của học viên khác) thì
+            // một cú bấm KHÔNG được xóa: ở chế độ đó người ta bấm để cầm thẻ,
+            // mà bấm nhầm là buổi biến mất không dấu vết. Mở bảng công cụ, muốn
+            // rút thì bấm nút rút trong đó.
+            if (clickAction === 'panel') {
+              onRequestContextMenu?.(e, { request: myReq, title: label })
               return
             }
             onRequestClick?.(myReq)
@@ -317,7 +413,17 @@ export default function HourGrid({
           onPointerCancel={cancelHold}
           title={`${isAdmin ? 'Đã đăng ký' : 'Bạn đã đăng ký'} ${label}${
             myReq.session_count > 1 ? ` · ${myReq.session_count} buổi` : ''
-          } — bấm để ${isAdmin ? 'xem nguyện vọng' : 'rút'}, chuột phải để mở menu`}
+          }${myReq.is_bold ? ' · tô đậm' : ''}${myReq.is_marked ? ' · đã đánh dấu' : ''}${
+            myReq.done_at ? ' · đã hoàn thành' : ''
+          } — bấm để ${
+            stampTool
+              ? 'đóng dấu'
+              : clickAction === 'panel'
+                ? 'mở công cụ'
+                : isAdmin
+                  ? 'xem nguyện vọng'
+                  : 'rút'
+          }, chuột phải để mở menu`}
           className={clsx(
             'relative z-10 flex w-full items-center justify-center gap-1 border-x font-semibold',
             cellH,
@@ -325,12 +431,30 @@ export default function HourGrid({
             tone
               ? clsx(tone.border, tone.bg, tone.text, 'hover:brightness-95')
               : 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100',
+            // Ba dấu, ba kiểu khác nhau để phân biệt được khi chồng lên nhau:
+            //   tô đậm   = chữ đậm + viền dày, nền đậm hơn
+            //   đánh dấu = vòng hổ phách quanh khối + ngôi sao
+            //   hoàn thành = nhạt đi, việc xong thì thôi hút mắt
+            myReq.is_bold && 'border-x-2 font-bold brightness-95',
+            myReq.is_marked && 'ring-2 ring-inset ring-amber-400',
+            // Không làm nhạt khối nữa: con dấu đỏ đè lên mới là thứ báo đã xong,
+            // nhạt cả khối thì chính con dấu cũng mờ theo
+            myReq.done_at && !stampFits && 'opacity-60',
             // Một buổi = MỘT khối liền mạch: bo góc và viền ngang chỉ ở hai đầu
             isStart && 'rounded-t-md border-t',
             isEnd && 'rounded-b-md border-b'
           )}
         >
-          {isStart && <Hand className={showLabel ? 'h-3 w-3' : 'h-2.5 w-2.5'} />}
+          {isStart && myReq.done_at && !stampFits ? (
+            <BadgeCheck className={showLabel ? 'h-3 w-3' : 'h-2.5 w-2.5'} />
+          ) : isStart && myReq.is_marked ? (
+            <Star className={clsx('fill-current', showLabel ? 'h-3 w-3' : 'h-2.5 w-2.5')} />
+          ) : isStart ? (
+            <Hand className={showLabel ? 'h-3 w-3' : 'h-2.5 w-2.5'} />
+          ) : null}
+          {isStart && myReq.is_bold && myReq.is_marked && (
+            <Star className={clsx('fill-current', showLabel ? 'h-3 w-3' : 'h-2.5 w-2.5')} />
+          )}
           {isStart && showLabel && (
             <span className="truncate">
               {myReq.start_time}–{myReq.end_time}
@@ -341,6 +465,14 @@ export default function HourGrid({
           )}
           {isNoteRow && showLabel && myReq.note && (
             <span className="truncate font-normal italic opacity-70">{myReq.note}</span>
+          )}
+          {myReq.done_at && isStampRow && stampFits && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 -rotate-[14deg] select-none whitespace-nowrap rounded-[4px] border-2 border-red-500/80 bg-white/35 px-1.5 py-[1px] text-[9px] font-black uppercase leading-tight tracking-[0.12em] text-red-600/90 shadow-[0_0_0_1px_rgba(220,38,38,0.25)_inset]"
+            >
+              Hoàn thành
+            </span>
           )}
           {bridge > 0 && (
             <span
@@ -360,6 +492,12 @@ export default function HourGrid({
 
     const key = cellKey(dow, minute)
     const isSelected = isCellSelected(dow, minute)
+    // Ô trống nhìn như một mảng trắng thì không đoán được 08:15 nằm đâu. Vạch
+    // mờ ở mỗi mốc, đậm hơn ở nửa giờ — đủ để ướm mắt mà không thành kẻ ô.
+    const atHalf = minute % 60 === 30
+    const atHour = minute % 60 === 0
+    const inDrop = dropHint?.dow === dow && minute >= dropHint.start && minute < dropHint.end
+    const dropStart = inDrop && minute === dropHint.start
     const run = isSelected ? runOf(dow, minute) : null
     const isRunStart = isSelected && run.start === minute
 
@@ -437,6 +575,42 @@ export default function HourGrid({
         onPointerDown={handlePointerDown}
         onPointerEnter={handlePointerEnter}
         onClick={handleClick}
+        onDragOver={
+          canDrag
+            ? (e) => {
+                e.preventDefault()
+                const info = dragInfoRef.current
+                const dur = info?.duration || step
+                const end = Math.min(MAX_MINUTE_OF_DAY + 1, minute + dur)
+                // Vẽ sẵn cả khối sẽ rơi xuống, kèm báo đỏ nếu chỗ đó không đủ trống
+                if (dropHint?.dow === dow && dropHint?.start === minute) return
+                setDropHint({
+                  dow,
+                  start: minute,
+                  end,
+                  ok: !rangeBlocked(dow, date, minute, end, info?.id),
+                })
+              }
+            : undefined
+        }
+        onDrop={
+          canDrag
+            ? (e) => {
+                e.preventDefault()
+                let payload = null
+                try {
+                  payload = JSON.parse(e.dataTransfer.getData('text/plain') || 'null')
+                } catch {
+                  payload = null
+                }
+                if (!payload) return
+                dragInfoRef.current = null
+                setDropHint(null)
+                if (payload.kind === 'request') onMoveRequest?.(payload.id, { date, minute })
+                if (payload.kind === 'pool') onDropPoolItem?.(payload.id, { date, minute })
+              }
+            : undefined
+        }
         title={`${DAY_SHORT[dow]} ${hhmm}–${minutesToHHMM(subEnd)} — ${
           isSelected
             ? `đang chọn ${minutesToHHMM(run.start)}–${minutesToHHMM(run.end)}, bấm để bỏ ô này`
@@ -445,14 +619,31 @@ export default function HourGrid({
               : 'bấm hoặc kéo để chọn giờ muốn đăng ký'
         }`}
         className={clsx(
-          'group flex w-full items-center justify-center gap-1 rounded-md border border-dashed text-[10px] font-medium transition-colors',
+          'group relative flex w-full items-center justify-center gap-1 rounded-md border border-dashed text-[10px] font-medium transition-colors',
           cellH,
-          isSelected
-            ? 'border-primary-500 bg-primary-100 text-primary-700'
-            : 'border-transparent text-slate-300 hover:border-primary-300 hover:bg-primary-50/60 hover:text-primary-600'
+          // Vạch mốc phút: đường kẻ trên đầu ô, không phải viền bao quanh
+          !isSelected &&
+            !inDrop &&
+            !atHour &&
+            (atHalf
+              ? 'border-t-slate-200 [border-top-style:solid]'
+              : 'border-t-slate-100 [border-top-style:dashed]'),
+          inDrop
+            ? dropHint.ok
+              ? 'border-primary-500 bg-primary-200/70 text-primary-800'
+              : 'border-red-400 bg-red-100/80 text-red-700'
+            : isSelected
+              ? 'border-primary-500 bg-primary-100 text-primary-700'
+              : 'border-transparent text-slate-300 hover:border-primary-300 hover:bg-primary-50/60 hover:text-primary-600'
         )}
       >
-        {isSelected ? (
+        {dropStart && showLabel && (
+          <span className="pointer-events-none truncate font-semibold">
+            {minutesToHHMM(dropHint.start)}–{minutesToHHMM(dropHint.end)}
+            {!dropHint.ok && ' · vướng'}
+          </span>
+        )}
+        {inDrop ? null : isSelected ? (
           <Check className={showLabel ? 'h-3.5 w-3.5' : 'h-2.5 w-2.5'} strokeWidth={3} />
         ) : (
           <Plus
@@ -468,7 +659,7 @@ export default function HourGrid({
             {minutesToHHMM(run.start)}–{minutesToHHMM(run.end)}
           </span>
         )}
-        {showLabel && step < 60 && !isSelected && (
+        {showLabel && step < 60 && !isSelected && !inDrop && (
           <span className="opacity-0 transition-opacity group-hover:opacity-100">{hhmm}</span>
         )}
       </button>
@@ -480,7 +671,12 @@ export default function HourGrid({
     : { gridTemplateColumns: '56px repeat(7, minmax(96px, 1fr))' }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white">
+    <div
+      className={clsx(
+        'rounded-2xl border border-slate-200 bg-white',
+        fillHeight && 'flex h-full min-h-0 flex-col'
+      )}
+    >
       {/* Thanh chọn thứ, chỉ trên điện thoại. Chấm nhỏ = ngày đó đã có ca hoặc
           buổi đã đăng ký, để biết đáng bấm sang xem hay không. */}
       {narrow && (
@@ -518,11 +714,14 @@ export default function HourGrid({
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      {/* Lưới cuộn BÊN TRONG khung, không đẩy cả trang dài ra: 17 hàng giờ mà
+          để trang tự cuộn thì cuộn tới 20:00 là mất luôn thanh chọn tuần và
+          nút xác nhận. Hàng tiêu đề ngày dính trên để biết đang ở cột nào. */}
+      <div ref={scrollRef} className={clsx('overflow-auto', fillHeight && 'min-h-0 flex-1')}>
       {/* Đang kéo thì chặn bôi đen chữ, không thì cả lưới xanh lè như copy văn bản */}
       <div className={clsx(!narrow && 'min-w-[760px]', dragging && 'select-none')}>
         {/* Hàng tiêu đề ngày */}
-        <div className="grid border-b border-slate-200" style={gridCols}>
+        <div className="sticky top-0 z-30 grid border-b border-slate-200 bg-white" style={gridCols}>
           <div className="sticky left-0 z-20 bg-slate-50 px-1 py-2" />
           {days.map((dow) => {
             const date = dateOf(dow)
@@ -554,14 +753,27 @@ export default function HourGrid({
               const date = dateOf(dow)
               const past = date ? isPastDate(date) : false
 
+              const showNow =
+                date === todayIso && nowMinutes >= hour * 60 && nowMinutes < (hour + 1) * 60
+
               return (
                 <div
                   key={dow}
                   className={clsx(
-                    'min-h-[44px] space-y-1 border-l border-slate-100 p-1',
+                    'relative min-h-[44px] space-y-1 border-l border-slate-100 p-1',
                     past && 'bg-slate-50/60'
                   )}
                 >
+                  {showNow && (
+                    <span
+                      aria-hidden="true"
+                      style={{ top: `${((nowMinutes - hour * 60) / 60) * 100}%` }}
+                      className="pointer-events-none absolute inset-x-0 z-20 flex items-center"
+                    >
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                      <span className="h-px flex-1 bg-red-500" />
+                    </span>
+                  )}
                   {Array.from({ length: subPerHour }, (_, i) => (
                     <SubCell
                       key={i}

@@ -3,7 +3,7 @@ const { normalizePhone, isValidPhone } = require('../utils/phone');
 const bookingService = require('./booking.service');
 
 const REGISTRANT_EMBED =
-  'registrant:booking_registrants!booking_pool_items_registrant_id_fkey(id, full_name, phone)';
+  'registrant:booking_registrants!booking_pool_items_registrant_id_fkey(id, full_name, phone, color)';
 
 /**
  * Màn xếp lịch của admin: gán người vào ca, mỗi lượt gán kèm một mức giá, gỡ ra
@@ -222,6 +222,7 @@ const listPool = async (boardId) => {
     registrant_id: r.registrant_id,
     full_name: r.registrant?.full_name || null,
     phone: r.registrant?.phone || null,
+    color: r.registrant?.color || null,
     price_tier_id: r.price_tier_id,
     price_name: r.tier?.name || null,
     price_amount: r.tier?.amount ?? null,
@@ -295,6 +296,191 @@ const addToPool = async (boardId, data, currentUser) => {
     .single();
   if (error) throw error;
   return row;
+};
+
+/**
+ * Gỡ một buổi đã đăng ký khỏi lưới, thả xuống khu "giờ chờ sắp".
+ *
+ * Không xóa thẳng: người ta vẫn muốn học, chỉ là giờ đó chưa xếp được. Giữ lại
+ * trong pool kèm thời lượng để admin kéo vào khung giờ khác, thay vì bắt học
+ * viên đăng ký lại từ đầu.
+ *
+ * Nguyện vọng gốc chuyển sang 'cancelled' chứ không xóa hàng — còn dấu vết là
+ * giờ đó từng có người muốn học, và chỉ mục chặn trùng mới nhả ra cho lần xếp sau.
+ */
+const detachRequestToPool = async (requestId, currentUser) => {
+  const { data: req, error } = await supabase
+    .from('booking_requests')
+    .select('id, board_id, registrant_id, start_time, end_time, note, status')
+    .eq('id', requestId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!req) throw { statusCode: 404, message: 'Không tìm thấy buổi đăng ký này' };
+  // Gỡ hai lần cùng một buổi thì chỉ còn lại một mục chờ, không đẻ thêm bản sao:
+  // lưới cũ trên màn người khác vẫn còn khối đó, họ kéo lại là ra mục thứ hai.
+  if (req.status === 'cancelled') {
+    const { data: existing } = await supabase
+      .from('booking_pool_items')
+      .select('id')
+      .eq('board_id', req.board_id)
+      .eq('registrant_id', req.registrant_id)
+      .eq('source', 'request')
+      .limit(1);
+    if (existing && existing.length) {
+      return { pool_item_id: existing[0].id, request_id: requestId, already: true };
+    }
+  }
+
+  const toMin = (t) => {
+    const [h, m] = String(t).split(':');
+    return (Number(h) || 0) * 60 + (Number(m) || 0);
+  };
+  const duration = Math.min(720, Math.max(5, toMin(req.end_time) - toMin(req.start_time)));
+
+  const { data: item, error: insErr } = await supabase
+    .from('booking_pool_items')
+    .insert({
+      board_id: req.board_id,
+      registrant_id: req.registrant_id,
+      duration_minutes: duration,
+      note: req.note,
+      source: 'request',
+      created_by: currentUser?.id || null,
+    })
+    .select('id')
+    .single();
+  if (insErr) throw insErr;
+
+  const { error: upErr } = await supabase
+    .from('booking_requests')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', requestId);
+  if (upErr) throw upErr;
+
+  bookingService.logActivity({
+    boardId: req.board_id,
+    actor: currentUser
+      ? { userId: currentUser.id, name: currentUser.fullName || currentUser.email }
+      : await bookingService.actorFromRegistrant(req.registrant_id),
+    action: 'request.detach',
+    targetId: requestId,
+    detail: { gio: `${String(req.start_time).slice(0, 5)}–${String(req.end_time).slice(0, 5)}` },
+  });
+  bookingService.notifyBoard(req.board_id, 'request.detach');
+  return { pool_item_id: item.id, request_id: requestId };
+};
+
+/**
+ * Ngược lại: kéo một người từ khu chờ vào đúng khung giờ trên lưới.
+ *
+ * Tạo lại nguyện vọng ở giờ mới rồi bỏ khỏi pool. Thời lượng lấy theo item nên
+ * kéo vào 19:00 thì ra đúng 19:00–20:30 nếu người đó cần 90 phút.
+ */
+const scheduleFromPool = async (itemId, { session_date: sessionDate, start_time: startTime, end_time: endTime }) => {
+  const { data: item, error } = await supabase
+    .from('booking_pool_items')
+    .select('id, board_id, registrant_id, duration_minutes, note')
+    .eq('id', itemId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!item) throw { statusCode: 404, message: 'Không tìm thấy mục trong khu chờ' };
+
+  // Chèn thẳng, không mượn createRequests của nhánh công khai: hàm đó nhận slug
+  // và chặn khi bảng đã đóng — admin xếp lịch thì bảng đóng hay mở không liên quan.
+  const toMin = (t) => {
+    const [h, m] = String(t || '').split(':');
+    return (Number(h) || 0) * 60 + (Number(m) || 0);
+  };
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (total) => {
+    const t = Math.max(0, Math.min(24 * 60 - 1, total));
+    return `${pad(Math.floor(t / 60))}:${pad(t % 60)}:00`;
+  };
+  const start = toMin(startTime);
+  // end_time có gửi lên thì tôn trọng: đó là lúc người xếp chọn "rút ngắn cho
+  // vừa chỗ trống", không được âm thầm kéo dài lại theo thời lượng gốc
+  const end = endTime
+    ? Math.min(24 * 60 - 1, toMin(endTime))
+    : Math.min(24 * 60 - 1, start + (item.duration_minutes || 60));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(sessionDate || ''))) {
+    throw { statusCode: 400, message: 'Ngày không hợp lệ' };
+  }
+  if (end <= start) throw { statusCode: 400, message: 'Giờ kết thúc phải sau giờ bắt đầu' };
+
+  await bookingService.assertNoSelfOverlap(
+    item.board_id,
+    item.registrant_id,
+    sessionDate,
+    fmt(start),
+    fmt(end)
+  );
+
+  const { data: created, error: insErr } = await supabase
+    .from('booking_requests')
+    .insert({
+      board_id: item.board_id,
+      registrant_id: item.registrant_id,
+      session_date: sessionDate,
+      start_time: fmt(start),
+      end_time: fmt(end),
+      note: item.note,
+    })
+    .select('id')
+    .single();
+  if (insErr) {
+    if (insErr.code === '23505') {
+      throw { statusCode: 409, message: 'Người này đã có buổi ở đúng khung giờ đó' };
+    }
+    throw insErr;
+  }
+
+  const { error: delErr } = await supabase.from('booking_pool_items').delete().eq('id', itemId);
+  if (delErr) throw delErr;
+
+  bookingService.logActivity({
+    boardId: item.board_id,
+    actor: await bookingService.actorFromRegistrant(item.registrant_id),
+    action: 'pool.schedule',
+    targetId: created.id,
+    detail: { ngay: sessionDate, gio: `${fmt(start).slice(0, 5)}–${fmt(end).slice(0, 5)}` },
+  });
+  bookingService.notifyBoard(item.board_id, 'pool.schedule');
+  return { id: created.id, pool_item_id: itemId };
+};
+
+/**
+ * Ba cửa dành cho phiên CÔNG KHAI của số được đánh dấu quản lý (047).
+ *
+ * Chỉ là lớp kiểm cờ rồi gọi lại đúng hàm admin dùng — không nhân bản logic,
+ * để sửa một chỗ là cả hai đường cùng đổi.
+ */
+const managerListPool = async (slug, registrantId) => {
+  if (!(await bookingService.isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Bạn không có quyền xem khu chờ' };
+  }
+  const board = await bookingService.getBoardBySlugId(slug);
+  return listPool(board.id);
+};
+
+const managerDetachRequest = async (requestId, registrantId) => {
+  if (!(await bookingService.isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Bạn không có quyền gỡ buổi học' };
+  }
+  return detachRequestToPool(requestId, null);
+};
+
+const managerRemoveFromPool = async (itemId, registrantId) => {
+  if (!(await bookingService.isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Bạn không có quyền sửa khu chờ' };
+  }
+  return removeFromPool(itemId);
+};
+
+const managerScheduleFromPool = async (itemId, data, registrantId) => {
+  if (!(await bookingService.isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Bạn không có quyền xếp lịch' };
+  }
+  return scheduleFromPool(itemId, data);
 };
 
 const removeFromPool = async (itemId) => {
@@ -500,6 +686,12 @@ module.exports = {
   listPool,
   addToPool,
   removeFromPool,
+  detachRequestToPool,
+  scheduleFromPool,
+  managerListPool,
+  managerRemoveFromPool,
+  managerDetachRequest,
+  managerScheduleFromPool,
   assignToSlot,
   updateEntryPrice,
   detachToPool,

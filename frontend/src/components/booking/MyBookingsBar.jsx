@@ -22,7 +22,7 @@ export default function MyBookingsBar({
 
   if (entries.length === 0) {
     return (
-      <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/95 backdrop-blur">
+      <div className="shrink-0 border-t border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
           <p className="text-sm text-slate-500">
             {multiWeek
@@ -78,7 +78,7 @@ export default function MyBookingsBar({
   )
 
   return (
-    <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white/95 backdrop-blur">
+    <div className="shrink-0 border-t border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-stone-800">

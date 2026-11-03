@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CalendarPlus, Check, Clock, Phone, StickyNote, ThumbsDown, Trash2, User, X } from 'lucide-react'
+import { BadgeCheck, CalendarPlus, Check, Clock, Hourglass, Phone, Star, StickyNote, ThumbsDown, Trash2, User, X } from 'lucide-react'
 import clsx from 'clsx'
 import Button from '../common/Button'
 import { DAY_SHORT, SLOT_COLORS, colorClasses, formatShortDate } from '../../lib/bookingUtils'
@@ -39,10 +39,12 @@ export default function RequestToolPanel({
   students = [],
   busy = false,
   onSave,
+  onToggleFlag,
   onSetColor,
   onChangeStudent,
   onReview,
   onOpenSlot,
+  onDetach,
   onCancel,
 }) {
   const ref = useRef(null)
@@ -215,6 +217,31 @@ export default function RequestToolPanel({
           </div>
         )}
 
+        {/* Hai dấu của người xếp lịch: bấm là đổi ngay, không cần bấm Lưu —
+            đây là thao tác đánh dấu nhanh trong lúc lướt qua hàng chục buổi */}
+        <div className="flex gap-1.5">
+          <Button
+            size="sm"
+            variant={request.is_marked ? 'primary' : 'outline'}
+            className="flex-1"
+            icon={Star}
+            disabled={busy}
+            onClick={() => onToggleFlag?.(request, { is_marked: !request.is_marked })}
+          >
+            {request.is_marked ? 'Bỏ đánh dấu' : 'Đánh dấu'}
+          </Button>
+          <Button
+            size="sm"
+            variant={request.done_at ? 'primary' : 'outline'}
+            className="flex-1"
+            icon={BadgeCheck}
+            disabled={busy}
+            onClick={() => onToggleFlag?.(request, { done: !request.done_at })}
+          >
+            {request.done_at ? 'Mở lại' : 'Hoàn thành'}
+          </Button>
+        </div>
+
         <div>
           <p className="mb-1 flex items-center gap-1 text-xs font-medium text-slate-500">
             <Clock className="h-3 w-3" /> Giờ học
@@ -283,6 +310,19 @@ export default function RequestToolPanel({
             >
               Mở ca từ giờ này
             </Button>
+            {onDetach && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full"
+                icon={Hourglass}
+                disabled={busy}
+                onClick={() => onDetach(request)}
+                title="Giữ lại học viên nhưng bỏ giờ, chờ xếp lại"
+              >
+                Gỡ ra khu chờ
+              </Button>
+            )}
             <div className="flex gap-1.5">
               <Button
                 size="sm"

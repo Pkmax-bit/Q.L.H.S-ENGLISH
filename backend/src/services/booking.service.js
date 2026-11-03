@@ -4,6 +4,7 @@ const jwtConfig = require('../config/jwt');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 const { normalizePhone, isValidPhone, maskName } = require('../utils/phone');
 const { assignColors, DEFAULT_COLOR, PALETTE, nextRegistrantColor } = require('../utils/bookingColors');
+const { emitNotification } = require('../socket');
 
 const REGISTRANT_EMBED = 'registrant:booking_registrants!booking_entries_registrant_id_fkey(id, full_name, phone)';
 const SLUG_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789'; // bỏ l, o, 0, 1 cho dễ đọc qua điện thoại
@@ -239,7 +240,7 @@ const identify = async ({ phone, full_name }) => {
 
   const { data: existing, error } = await supabase
     .from('booking_registrants')
-    .select('id, phone, full_name, created_at')
+    .select('id, phone, full_name, is_manager, created_at')
     .eq('phone', normalized)
     .maybeSingle();
   if (error) throw error;
@@ -254,7 +255,7 @@ const identify = async ({ phone, full_name }) => {
       .from('booking_registrants')
       .update(patch)
       .eq('id', existing.id)
-      .select('id, phone, full_name')
+      .select('id, phone, full_name, is_manager')
       .single();
     if (upErr) throw upErr;
 
@@ -282,7 +283,7 @@ const identify = async ({ phone, full_name }) => {
   const { data: created, error: insErr } = await supabase
     .from('booking_registrants')
     .insert({ phone: normalized, full_name: name, color, last_login_at: new Date().toISOString() })
-    .select('id, phone, full_name, color')
+    .select('id, phone, full_name, color, is_manager')
     .single();
   if (insErr) {
     // Hai tab cùng bấm đăng ký một lúc -> unique violation, đọc lại cho mượt
@@ -377,35 +378,45 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
     }
   }
 
-  // Nguyện vọng của chính mình trong bảng này, để lưới đánh dấu ô đã gửi
+  // Buổi đã đăng ký để vẽ lên lưới.
+  //
+  // Người thường: chỉ buổi của chính mình. Người quản lý (047): buổi của MỌI
+  // học viên trên bảng, kèm tên — đó là lý do có cờ, và cũng là lý do cờ phải
+  // đọc từ DB chứ không nhận từ client.
+  const manager = await isManagerSession(registrantId);
   const myRequests = [];
   if (registrantId) {
-    // Màu khối buổi học = màu của chính học viên này (046), không phải màu
-    // tô tay từng buổi nữa
-    const { data: me } = await supabase
-      .from('booking_registrants')
-      .select('color')
-      .eq('id', registrantId)
-      .maybeSingle();
-    const myColor = me?.color || null;
-    const { data: reqs, error: reqErr } = await supabase
+    let q = supabase
       .from('booking_requests')
-      .select('id, session_date, start_time, end_time, status, session_count, color, note')
+      .select(
+        'id, registrant_id, session_date, start_time, end_time, status, session_count, color, note, is_marked, is_bold, done_at, ' +
+          'registrant:booking_registrants!booking_requests_registrant_id_fkey(id, full_name, phone, color)'
+      )
       .eq('board_id', board.id)
-      .eq('registrant_id', registrantId)
       .in('status', ['pending', 'approved'])
       .order('session_date', { ascending: true });
+    if (!manager) q = q.eq('registrant_id', registrantId);
+
+    const { data: reqs, error: reqErr } = await q;
     if (reqErr) throw reqErr;
+
     for (const r of reqs || []) {
       myRequests.push({
         id: r.id,
+        registrant_id: r.registrant_id,
         date: r.session_date,
         start_time: String(r.start_time).slice(0, 5),
         end_time: String(r.end_time).slice(0, 5),
         status: r.status,
         session_count: r.session_count,
-        color: myColor || r.color || null,
+        color: r.registrant?.color || r.color || null,
         note: r.note || null,
+        is_marked: Boolean(r.is_marked),
+        is_bold: Boolean(r.is_bold),
+        done_at: r.done_at || null,
+        full_name: r.registrant?.full_name || null,
+        // Số điện thoại chỉ lộ cho người quản lý
+        phone: manager ? r.registrant?.phone || null : null,
       });
     }
   }
@@ -468,6 +479,9 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
     my_all_entries: myAllEntries,
     my_all_count: myAllEntries.length,
     my_requests: myRequests,
+    // Frontend bật bảng màu + select học viên theo cờ này; quyền thật vẫn do
+    // server kiểm lại ở từng API, đây chỉ để khỏi hiện nút bấm vào thì lỗi
+    is_manager: manager,
   };
 };
 
@@ -539,6 +553,74 @@ const slotRange = (cell = {}) => {
   return { start_time: fromMinutes(start), end_time: fromMinutes(end) };
 };
 
+/**
+ * Báo cho mọi người đang mở bảng này: có thứ gì đó vừa đổi, tải lại đi.
+ *
+ * Chỉ gửi tín hiệu kèm `action`, KHÔNG gửi dữ liệu thay đổi: mỗi phiên thấy
+ * một tập dữ liệu khác nhau (học viên chỉ thấy buổi của mình, người quản lý
+ * thấy tất cả), đẩy thẳng bản ghi đi thì sẽ lộ buổi của người khác sang máy
+ * người không có quyền. Nhận tín hiệu rồi client tự gọi API của mình.
+ */
+const notifyBoard = (boardId, action, extra = {}) => {
+  if (!boardId) return;
+  emitNotification(
+    'booking:board_changed',
+    { board_id: boardId, action, ...extra, ts: Date.now() },
+    `booking_board:${boardId}`
+  );
+};
+
+/**
+ * Ghi một dòng nhật ký. KHÔNG bao giờ làm hỏng thao tác chính.
+ *
+ * Bọc try/catch và không await ở chỗ gọi: nhật ký hỏng thì mất một dòng lịch
+ * sử, còn để nó ném lỗi ngược ra thì học viên bấm đăng ký lại báo thất bại
+ * trong khi buổi đã lưu xong.
+ */
+const logActivity = async ({ boardId, actor, action, targetId = null, detail = null }) => {
+  try {
+    await supabase.from('booking_activity_log').insert({
+      board_id: boardId || null,
+      actor_registrant_id: actor?.registrantId || null,
+      actor_user_id: actor?.userId || null,
+      actor_name: actor?.name || null,
+      action,
+      target_id: targetId,
+      detail,
+    });
+  } catch (err) {
+    console.error('[activity-log]', action, err.message);
+  }
+};
+
+/** Tên người làm để ghi vào nhật ký, lấy một lần rồi chụp lại */
+const actorFromRegistrant = async (registrantId) => {
+  if (!registrantId) return null;
+  const { data } = await supabase
+    .from('booking_registrants')
+    .select('full_name')
+    .eq('id', registrantId)
+    .maybeSingle();
+  return { registrantId, name: data?.full_name || null };
+};
+
+/**
+ * Phiên công khai này có phải người quản lý không.
+ *
+ * Luôn đọc lại từ DB theo registrant_id trong token: cờ là quyền xem dữ liệu
+ * của người khác, không bao giờ tin client gửi lên.
+ */
+const isManagerSession = async (registrantId) => {
+  if (!registrantId) return false;
+  const { data, error } = await supabase
+    .from('booking_registrants')
+    .select('is_manager')
+    .eq('id', registrantId)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data?.is_manager);
+};
+
 const assertSessionDate = (value) => {
   const date = String(value || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -568,6 +650,15 @@ const registerSlot = async (slotId, registrantId, sessionDate) => {
     throw RPC_ERRORS[data?.code] || { statusCode: 400, message: 'Không giữ được chỗ, thử lại' };
   }
 
+  // Lấy board để báo cho mọi người đang mở bảng; hỏng câu này cũng không sao,
+  // chỉ là màn người khác chậm tới lần làm mới sau
+  const { data: slotRow } = await supabase
+    .from('booking_slots')
+    .select('board_id')
+    .eq('id', slotId)
+    .maybeSingle();
+  notifyBoard(slotRow?.board_id, 'entry.register');
+
   return {
     entry_id: data.entry_id,
     status: data.status,
@@ -586,7 +677,53 @@ const cancelEntry = async (entryId, registrantId) => {
   if (!data?.ok) {
     throw RPC_ERRORS[data?.code] || { statusCode: 400, message: 'Không hủy được, thử lại' };
   }
+  const { data: entryRow } = await supabase
+    .from('booking_entries')
+    .select('slot:booking_slots!booking_entries_slot_id_fkey(board_id)')
+    .eq('id', entryId)
+    .maybeSingle();
+  notifyBoard(entryRow?.slot?.board_id, 'entry.cancel');
+
   return { entry_id: entryId, promoted_entry_id: data.promoted_entry_id || null };
+};
+
+/**
+ * Một người không thể có hai buổi chồng giờ nhau.
+ *
+ * Chỉ xét CÙNG MỘT học viên: hai người khác nhau học cùng khung giờ là chuyện
+ * bình thường (lớp nhóm), chặn hết thì không xếp nổi lịch. Nhưng một người ngồi
+ * hai buổi cùng lúc thì chắc chắn là nhầm.
+ *
+ * Kiểm ở server chứ không chỉ ở giao diện: kéo thả, API, hay màn hình khác
+ * đang mở dữ liệu cũ — đường nào cũng phải đi qua đây.
+ */
+const assertNoSelfOverlap = async (boardId, registrantId, date, startHHMM, endHHMM, exceptId = null) => {
+  const toMin = (t) => {
+    const [h, m] = String(t).split(':');
+    return (Number(h) || 0) * 60 + (Number(m) || 0);
+  };
+  const from = toMin(startHHMM);
+  const to = toMin(endHHMM);
+
+  let q = supabase
+    .from('booking_requests')
+    .select('id, start_time, end_time')
+    .eq('board_id', boardId)
+    .eq('registrant_id', registrantId)
+    .eq('session_date', String(date).slice(0, 10))
+    .in('status', ['pending', 'approved']);
+  if (exceptId) q = q.neq('id', exceptId);
+
+  const { data, error } = await q;
+  if (error) throw error;
+
+  const hit = (data || []).find((r) => toMin(r.start_time) < to && toMin(r.end_time) > from);
+  if (hit) {
+    throw {
+      statusCode: 409,
+      message: `Trùng giờ với buổi ${String(hit.start_time).slice(0, 5)}–${String(hit.end_time).slice(0, 5)} của chính học viên này`,
+    };
+  }
 };
 
 /**
@@ -597,7 +734,11 @@ const cancelEntry = async (entryId, registrantId) => {
  */
 const createRequests = async (slug, registrantId, cells = []) => {
   const board = await fetchBoardBySlug(slug);
-  if (!isAccepting(board)) {
+  // Người quản lý xếp lịch hộ: không chịu hai rào dành cho học viên — bảng đã
+  // đóng vẫn thêm được, và xếp bù vào ngày đã qua là việc bình thường (buổi đã
+  // dạy hôm kia mà quên ghi thì vẫn phải ghi lại được).
+  const manager = await isManagerSession(registrantId);
+  if (!manager && !isAccepting(board)) {
     throw { statusCode: 403, message: 'Bảng đăng ký đã đóng, không nhận thêm' };
   }
   if (!Array.isArray(cells) || cells.length === 0) {
@@ -619,8 +760,9 @@ const createRequests = async (slug, registrantId, cells = []) => {
     if (date < board.week_start || date > lastDay) {
       throw { statusCode: 400, message: `Ngày ${date} nằm ngoài phạm vi bảng đăng ký` };
     }
-    // Xin một giờ đã trôi qua là vô nghĩa, và sẽ làm nhiễu thống kê nhu cầu
-    if (date < today) {
+    // Học viên xin một giờ đã trôi qua là vô nghĩa và làm nhiễu thống kê nhu cầu.
+    // Người quản lý thì ngược lại, ghi bù quá khứ mới là việc hay phải làm.
+    if (!manager && date < today) {
       throw { statusCode: 400, message: `Ngày ${date} đã qua, không gửi nguyện vọng được` };
     }
 
@@ -628,6 +770,8 @@ const createRequests = async (slug, registrantId, cells = []) => {
     if (!Number.isInteger(sessions) || sessions < 1 || sessions > 200) {
       throw { statusCode: 400, message: 'Số buổi phải từ 1 đến 200' };
     }
+
+    await assertNoSelfOverlap(board.id, registrantId, date, start_time, end_time);
 
     rows.push({
       board_id: board.id,
@@ -663,6 +807,21 @@ const createRequests = async (slug, registrantId, cells = []) => {
     .select('id, session_date, start_time, end_time, status');
   if (error) throw error;
 
+  const actor = await actorFromRegistrant(registrantId);
+  for (const row of created || []) {
+    logActivity({
+      boardId: board.id,
+      actor,
+      action: 'request.create',
+      targetId: row.id,
+      detail: {
+        ngay: row.session_date,
+        gio: `${String(row.start_time).slice(0, 5)}–${String(row.end_time).slice(0, 5)}`,
+      },
+    });
+  }
+
+  notifyBoard(board.id, 'request.create');
   return { created: created?.length || 0, skipped: rows.length - fresh.length, data: created };
 };
 
@@ -670,12 +829,12 @@ const createRequests = async (slug, registrantId, cells = []) => {
 const cancelRequest = async (requestId, registrantId) => {
   const { data: row, error } = await supabase
     .from('booking_requests')
-    .select('id, registrant_id, status')
+    .select('id, board_id, registrant_id, status, session_date, start_time')
     .eq('id', requestId)
     .maybeSingle();
   if (error) throw error;
   if (!row) throw { statusCode: 404, message: 'Không tìm thấy nguyện vọng này' };
-  if (row.registrant_id !== registrantId) {
+  if (row.registrant_id !== registrantId && !(await isManagerSession(registrantId))) {
     throw { statusCode: 403, message: 'Bạn chỉ có thể rút nguyện vọng của mình' };
   }
   if (row.status === 'cancelled') return { id: requestId };
@@ -685,6 +844,15 @@ const cancelRequest = async (requestId, registrantId) => {
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('id', requestId);
   if (upErr) throw upErr;
+
+  logActivity({
+    boardId: row.board_id,
+    actor: await actorFromRegistrant(registrantId),
+    action: 'request.cancel',
+    targetId: requestId,
+    detail: { ngay: row.session_date, gio: String(row.start_time).slice(0, 5) },
+  });
+  notifyBoard(row.board_id, 'request.cancel');
   return { id: requestId };
 };
 
@@ -698,15 +866,20 @@ const cancelRequest = async (requestId, registrantId) => {
  * Giờ mới đi qua đúng hàm slotRange như lúc tạo, nên 09:15–09:50 hay
  * "bắt đầu + thời lượng" đều nhận, và end <= start bị chặn ngay.
  */
-const updateRequest = async (requestId, patch = {}, { registrantId = null, canColor = false } = {}) => {
+const updateRequest = async (
+  requestId,
+  patch = {},
+  { registrantId = null, canColor = false, actorUserId = null, actorName = null } = {}
+) => {
   const { data: row, error } = await supabase
     .from('booking_requests')
-    .select('id, registrant_id, status, start_time, end_time')
+    .select('id, board_id, registrant_id, status, session_date, start_time, end_time')
     .eq('id', requestId)
     .maybeSingle();
   if (error) throw error;
   if (!row) throw { statusCode: 404, message: 'Không tìm thấy buổi đăng ký này' };
-  if (registrantId && row.registrant_id !== registrantId) {
+  const manager = registrantId ? await isManagerSession(registrantId) : false;
+  if (registrantId && !manager && row.registrant_id !== registrantId) {
     throw { statusCode: 403, message: 'Bạn chỉ sửa được buổi của mình' };
   }
 
@@ -721,11 +894,32 @@ const updateRequest = async (requestId, patch = {}, { registrantId = null, canCo
     update.end_time = range.end_time;
   }
 
+  if (patch.session_date !== undefined) {
+    // Kéo khối sang ngày khác trên lưới. Vẫn qua assertSessionDate để không
+    // nhận được chuỗi rác, nhưng KHÔNG chặn ngày đã qua: admin xếp bù buổi cũ
+    // là việc bình thường.
+    update.session_date = assertSessionDate(patch.session_date);
+  }
+
   if (patch.note !== undefined) {
     const clean = patch.note === null || String(patch.note).trim() === ''
       ? null
       : String(patch.note).trim().slice(0, 500);
     update.note = clean;
+  }
+
+  if (patch.is_marked !== undefined) {
+    update.is_marked = Boolean(patch.is_marked);
+  }
+
+  if (patch.is_bold !== undefined) {
+    update.is_bold = Boolean(patch.is_bold);
+  }
+
+  if (patch.done !== undefined) {
+    // Gửi done: true/false, server tự chấm mốc thời gian — client không được
+    // tự đặt giờ hoàn thành, nếu không mỗi máy lệch giờ một kiểu
+    update.done_at = patch.done ? new Date().toISOString() : null;
   }
 
   if (patch.session_count !== undefined) {
@@ -737,7 +931,9 @@ const updateRequest = async (requestId, patch = {}, { registrantId = null, canCo
   }
 
   if (patch.registrant_id !== undefined) {
-    if (registrantId) throw { statusCode: 403, message: 'Chỉ trung tâm đổi được học viên của buổi' };
+    if (registrantId && !manager) {
+      throw { statusCode: 403, message: 'Chỉ trung tâm đổi được học viên của buổi' };
+    }
     const { data: person, error: pErr } = await supabase
       .from('booking_registrants')
       .select('id')
@@ -749,7 +945,9 @@ const updateRequest = async (requestId, patch = {}, { registrantId = null, canCo
   }
 
   if (patch.color !== undefined) {
-    if (!canColor) throw { statusCode: 403, message: 'Chỉ quản trị viên đổi được màu' };
+    if (!canColor && !manager) {
+      throw { statusCode: 403, message: 'Chỉ quản trị viên đổi được màu' };
+    }
     const next = patch.color === null || patch.color === '' ? null : String(patch.color);
     if (next !== null && !PALETTE.includes(next) && next !== DEFAULT_COLOR) {
       throw { statusCode: 400, message: `Màu không hợp lệ: ${next}` };
@@ -759,6 +957,19 @@ const updateRequest = async (requestId, patch = {}, { registrantId = null, canCo
 
   if (Object.keys(update).length === 1) {
     throw { statusCode: 400, message: 'Không có gì để sửa' };
+  }
+
+  // Đổi giờ / ngày / người đều có thể đẩy buổi này chồng lên buổi khác của
+  // chính người đó, nên kiểm lại bằng giá trị SAU khi đổi
+  if (update.session_date || update.start_time || update.registrant_id) {
+    await assertNoSelfOverlap(
+      row.board_id,
+      update.registrant_id || row.registrant_id,
+      update.session_date || row.session_date,
+      update.start_time || row.start_time,
+      update.end_time || row.end_time,
+      requestId
+    );
   }
 
   const { error: upErr } = await supabase
@@ -772,6 +983,33 @@ const updateRequest = async (requestId, patch = {}, { registrantId = null, canCo
     }
     throw upErr;
   }
+
+  // Ghi đúng phần đã đổi, kèm giá trị cũ — xem lại mới biết ai đổi giờ từ đâu sang đâu
+  const changes = {};
+  if (update.session_date) changes.ngay = { tu: row.session_date, thanh: update.session_date };
+  if (update.start_time) {
+    changes.gio = {
+      tu: `${String(row.start_time).slice(0, 5)}–${String(row.end_time).slice(0, 5)}`,
+      thanh: `${update.start_time.slice(0, 5)}–${update.end_time.slice(0, 5)}`,
+    };
+  }
+  if (update.note !== undefined) changes.ghi_chu = { thanh: update.note };
+  if (update.registrant_id) changes.hoc_vien = { tu: row.registrant_id, thanh: update.registrant_id };
+  if (update.color !== undefined) changes.mau = { thanh: update.color };
+  if (update.is_marked !== undefined) changes.danh_dau = { thanh: update.is_marked ? 'có' : 'bỏ' };
+  if (update.is_bold !== undefined) changes.to_dam = { thanh: update.is_bold ? 'có' : 'bỏ' };
+  if (update.done_at !== undefined) {
+    changes.hoan_thanh = { thanh: update.done_at ? 'đã đóng dấu' : 'mở lại' };
+  }
+
+  logActivity({
+    boardId: row.board_id,
+    actor: registrantId ? await actorFromRegistrant(registrantId) : { userId: actorUserId, name: actorName },
+    action: 'request.update',
+    targetId: requestId,
+    detail: changes,
+  });
+  notifyBoard(row.board_id, 'request.update');
   return { id: requestId };
 };
 
@@ -789,6 +1027,15 @@ const setRegistrantColor = async (registrantId, color) => {
     .maybeSingle();
   if (error) throw error;
   if (!data) throw { statusCode: 404, message: 'Không tìm thấy học viên này' };
+
+  // Màu thuộc về người, không thuộc bảng nào — báo cho mọi bảng người đó có buổi
+  const { data: boards } = await supabase
+    .from('booking_requests')
+    .select('board_id')
+    .eq('registrant_id', registrantId);
+  for (const b of new Set((boards || []).map((x) => x.board_id))) {
+    notifyBoard(b, 'registrant.color');
+  }
   return data;
 };
 
@@ -802,7 +1049,7 @@ const setRegistrantColor = async (registrantId, color) => {
 const adminCancelRequest = async (requestId) => {
   const { data: row, error } = await supabase
     .from('booking_requests')
-    .select('id, status')
+    .select('id, board_id, status')
     .eq('id', requestId)
     .maybeSingle();
   if (error) throw error;
@@ -814,7 +1061,180 @@ const adminCancelRequest = async (requestId) => {
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('id', requestId);
   if (upErr) throw upErr;
+  notifyBoard(row.board_id, 'request.cancel');
   return { id: requestId };
+};
+
+/**
+ * Danh sách học viên CỦA BẢNG NÀY cho người quản lý chọn trong bảng công cụ.
+ *
+ * Chỉ những ai đã đăng ký hoặc giữ chỗ trên chính bảng này, không phải toàn bộ
+ * người dùng hệ thống: đây là phiên đăng nhập bằng số điện thoại, lộ ít chừng nào
+ * hay chừng ấy.
+ */
+const listBoardStudents = async (slug, registrantId) => {
+  if (!(await isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Bạn không có quyền xem danh sách học viên' };
+  }
+  const board = await fetchBoardBySlug(slug);
+
+  const [{ data: reqs, error: rErr }, { data: slotRows, error: sErr }] = await Promise.all([
+    supabase.from('booking_requests').select('registrant_id').eq('board_id', board.id),
+    supabase.from('booking_slots').select('id').eq('board_id', board.id),
+  ]);
+  if (rErr) throw rErr;
+  if (sErr) throw sErr;
+
+  const ids = new Set((reqs || []).map((r) => r.registrant_id));
+  const slotIds = (slotRows || []).map((s) => s.id);
+  if (slotIds.length > 0) {
+    const { data: entries, error: eErr } = await supabase
+      .from('booking_entries')
+      .select('registrant_id')
+      .in('slot_id', slotIds);
+    if (eErr) throw eErr;
+    for (const e of entries || []) ids.add(e.registrant_id);
+  }
+  if (ids.size === 0) return [];
+
+  const { data: people, error } = await supabase
+    .from('booking_registrants')
+    .select('id, full_name, phone, color')
+    .in('id', [...ids])
+    .order('full_name', { ascending: true });
+  if (error) throw error;
+  return people || [];
+};
+
+/** Người quản lý đổi màu cố định của một học viên. */
+const managerSetRegistrantColor = async (targetId, color, registrantId) => {
+  if (!(await isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Bạn không có quyền đổi màu' };
+  }
+  return setRegistrantColor(targetId, color);
+};
+
+/**
+ * Nhật ký của một bảng. Chỉ người quản lý (047) hoặc tài khoản nội bộ đọc được:
+ * nó chứa tên của mọi học viên.
+ */
+const listActivity = async (boardId, { limit = 60 } = {}) => {
+  const { data, error } = await supabase
+    .from('booking_activity_log')
+    .select('id, action, actor_name, detail, target_id, created_at')
+    .eq('board_id', boardId)
+    .order('created_at', { ascending: false })
+    .limit(Math.min(200, Number(limit) || 60));
+  if (error) throw error;
+  return data || [];
+};
+
+const listActivityBySlug = async (slug, registrantId, query = {}) => {
+  if (!(await isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Bạn không có quyền xem nhật ký' };
+  }
+  const board = await fetchBoardBySlug(slug);
+  return listActivity(board.id, query);
+};
+
+// ------------------------------------------------------------- chat
+
+/**
+ * Luồng chat. Học viên chỉ đọc luồng của chính mình; người quản lý đọc luồng
+ * của bất kỳ ai trên bảng (truyền registrant_id) — kiểm cờ ở đây, không tin client.
+ */
+const listMessages = async (slug, registrantId, targetId = null) => {
+  const board = await fetchBoardBySlug(slug);
+  const manager = await isManagerSession(registrantId);
+  const thread = targetId && manager ? targetId : registrantId;
+
+  const { data, error } = await supabase
+    .from('booking_messages')
+    .select('id, sender, body, created_at, read_at')
+    .eq('board_id', board.id)
+    .eq('registrant_id', thread)
+    .order('created_at', { ascending: true })
+    .limit(300);
+  if (error) throw error;
+
+  // Mở luồng ra là coi như đã đọc phần của phía bên kia
+  const mine = manager && targetId ? 'student' : 'center';
+  await supabase
+    .from('booking_messages')
+    .update({ read_at: new Date().toISOString() })
+    .eq('board_id', board.id)
+    .eq('registrant_id', thread)
+    .eq('sender', mine)
+    .is('read_at', null);
+
+  return { thread_id: thread, messages: data || [] };
+};
+
+const sendMessage = async (slug, registrantId, { body, registrant_id: targetId } = {}) => {
+  const text = String(body || '').trim();
+  if (!text) throw { statusCode: 400, message: 'Chưa nhập nội dung' };
+  if (text.length > 2000) throw { statusCode: 400, message: 'Tin nhắn tối đa 2000 ký tự' };
+
+  const board = await fetchBoardBySlug(slug);
+  const manager = await isManagerSession(registrantId);
+  // Quản lý nhắn cho một học viên cụ thể thì tin đó là của TRUNG TÂM
+  const thread = targetId && manager ? targetId : registrantId;
+  const sender = manager && targetId && targetId !== registrantId ? 'center' : manager ? 'center' : 'student';
+
+  const { data, error } = await supabase
+    .from('booking_messages')
+    .insert({ board_id: board.id, registrant_id: thread, sender, body: text })
+    .select('id, sender, body, created_at')
+    .single();
+  if (error) throw error;
+
+  logActivity({
+    boardId: board.id,
+    actor: await actorFromRegistrant(registrantId),
+    action: 'message.send',
+    targetId: data.id,
+    detail: { ben: sender === 'center' ? 'trung tâm' : 'học viên' },
+  });
+
+  // Đẩy ngay cho hai phía đang mở hộp chat: phòng của chính luồng đó, và phòng
+  // quản lý của bảng (để danh sách luồng + chấm đỏ nhảy số mà không phải chờ hỏi lại)
+  emitNotification('booking:message', { board_id: board.id, thread_id: thread, message: data }, `booking_thread:${thread}`);
+  emitNotification('booking:message', { board_id: board.id, thread_id: thread, message: data }, `booking_manager:${board.id}`);
+
+  return data;
+};
+
+/** Danh sách luồng cho người quản lý: ai nhắn gì gần nhất, còn mấy tin chưa đọc. */
+const listThreads = async (slug, registrantId) => {
+  if (!(await isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Bạn không có quyền xem tin nhắn của người khác' };
+  }
+  const board = await fetchBoardBySlug(slug);
+
+  const { data, error } = await supabase
+    .from('booking_messages')
+    .select('registrant_id, sender, body, created_at, read_at, registrant:booking_registrants!booking_messages_registrant_id_fkey(id, full_name, phone, color)')
+    .eq('board_id', board.id)
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (error) throw error;
+
+  const byThread = new Map();
+  for (const m of data || []) {
+    if (!byThread.has(m.registrant_id)) {
+      byThread.set(m.registrant_id, {
+        registrant_id: m.registrant_id,
+        full_name: m.registrant?.full_name || null,
+        phone: m.registrant?.phone || null,
+        color: m.registrant?.color || null,
+        last_body: m.body,
+        last_at: m.created_at,
+        unread: 0,
+      });
+    }
+    if (m.sender === 'student' && !m.read_at) byThread.get(m.registrant_id).unread += 1;
+  }
+  return [...byThread.values()];
 };
 
 const getMyRegistrant = async (registrantId) => {
@@ -1229,6 +1649,7 @@ const createSlotsBulk = async (boardId, data, currentUser = null) => {
 
   const { data: created, error } = await supabase.from('booking_slots').insert(rows).select();
   if (error) throw error;
+  notifyBoard(boardId, 'slot.create');
   return created;
 };
 
@@ -1272,10 +1693,17 @@ const updateSlot = async (id, data) => {
     .single();
   if (error) throw error;
   if (!row) throw { statusCode: 404, message: 'Không tìm thấy ca học' };
+  notifyBoard(row.board_id, 'slot.update');
   return row;
 };
 
 const deleteSlot = async (id) => {
+  const { data: slotRow } = await supabase
+    .from('booking_slots')
+    .select('board_id')
+    .eq('id', id)
+    .maybeSingle();
+
   const { count, error: cErr } = await supabase
     .from('booking_entries')
     .select('id', { count: 'exact', head: true })
@@ -1291,6 +1719,7 @@ const deleteSlot = async (id) => {
 
   const { error } = await supabase.from('booking_slots').delete().eq('id', id);
   if (error) throw error;
+  notifyBoard(slotRow?.board_id, 'slot.delete');
   return { id };
 };
 
@@ -1402,7 +1831,7 @@ const listRequests = async (boardId, queryParams = {}) => {
 
   let query = supabase
     .from('booking_requests')
-    .select('id, session_date, start_time, end_time, status, note, session_count, color, created_at, review_note, created_slot_id, registrant:booking_registrants!booking_requests_registrant_id_fkey(id, full_name, phone, color)')
+    .select('id, session_date, start_time, end_time, status, note, session_count, color, is_marked, is_bold, done_at, created_at, review_note, created_slot_id, registrant:booking_registrants!booking_requests_registrant_id_fkey(id, full_name, phone, color)')
     .eq('board_id', boardId);
 
   if (queryParams.status) query = query.eq('status', queryParams.status);
@@ -1424,6 +1853,9 @@ const listRequests = async (boardId, queryParams = {}) => {
     session_count: r.session_count,
     // Màu của học viên là màu hiển thị; color riêng của buổi chỉ còn là dự phòng
     color: r.registrant?.color || r.color || null,
+    is_marked: Boolean(r.is_marked),
+    is_bold: Boolean(r.is_bold),
+    done_at: r.done_at || null,
     review_note: r.review_note,
     created_slot_id: r.created_slot_id,
     created_at: r.created_at,
@@ -1491,6 +1923,14 @@ const reviewRequests = async (ids, status, currentUser, reviewNote = null) => {
     .eq('status', 'pending')
     .select('id');
   if (error) throw error;
+
+  // Duyệt / từ chối đổi màu trạng thái trên lưới của mọi người đang mở
+  const { data: one } = await supabase
+    .from('booking_requests')
+    .select('board_id')
+    .eq('id', ids[0])
+    .maybeSingle();
+  notifyBoard(one?.board_id, 'request.review');
 
   return { updated: data?.length || 0, requested: ids.length };
 };
@@ -1617,6 +2057,13 @@ const adminCancelEntry = async (entryId) => {
   if (!data?.ok) {
     throw RPC_ERRORS[data?.code] || { statusCode: 400, message: 'Không hủy được, thử lại' };
   }
+  const { data: entryRow } = await supabase
+    .from('booking_entries')
+    .select('slot:booking_slots!booking_entries_slot_id_fkey(board_id)')
+    .eq('id', entryId)
+    .maybeSingle();
+  notifyBoard(entryRow?.slot?.board_id, 'entry.cancel');
+
   return { entry_id: entryId, promoted_entry_id: data.promoted_entry_id || null };
 };
 
@@ -1647,6 +2094,19 @@ module.exports = {
   setRequestsColor,
   updateRequest,
   setRegistrantColor,
+  logActivity,
+  notifyBoard,
+  assertNoSelfOverlap,
+  actorFromRegistrant,
+  isManagerSession,
+  getBoardBySlugId: fetchBoardBySlug,
+  listBoardStudents,
+  listActivity,
+  listActivityBySlug,
+  listMessages,
+  sendMessage,
+  listThreads,
+  managerSetRegistrantColor,
   adminCancelRequest,
   createSlotFromRequests,
   adminAddEntry,

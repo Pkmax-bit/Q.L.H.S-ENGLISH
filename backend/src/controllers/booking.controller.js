@@ -172,6 +172,49 @@ const updateRequest = handle(async (req, res) => {
   return response.success(res, result, 'Đã lưu thay đổi');
 });
 
+const listActivity = handle(async (req, res) => {
+  const result = await bookingService.listActivity(req.params.id, req.query);
+  return response.success(res, result, 'Lấy nhật ký thành công');
+});
+
+const listMyBoardActivity = handle(async (req, res) => {
+  const result = await bookingService.listActivityBySlug(req.params.slug, req.registrant.id, req.query);
+  return response.success(res, result, 'Lấy nhật ký thành công');
+});
+
+const listMessages = handle(async (req, res) => {
+  const result = await bookingService.listMessages(
+    req.params.slug,
+    req.registrant.id,
+    req.query.registrant_id || null
+  );
+  return response.success(res, result, 'Lấy tin nhắn thành công');
+});
+
+const sendMessage = handle(async (req, res) => {
+  const result = await bookingService.sendMessage(req.params.slug, req.registrant.id, req.body || {});
+  return response.success(res, result, 'Đã gửi');
+});
+
+const listThreads = handle(async (req, res) => {
+  const result = await bookingService.listThreads(req.params.slug, req.registrant.id);
+  return response.success(res, result, 'Lấy danh sách hội thoại thành công');
+});
+
+const listBoardStudents = handle(async (req, res) => {
+  const result = await bookingService.listBoardStudents(req.params.slug, req.registrant.id);
+  return response.success(res, result, 'Lấy danh sách học viên thành công');
+});
+
+const managerSetRegistrantColor = handle(async (req, res) => {
+  const result = await bookingService.managerSetRegistrantColor(
+    req.params.registrantId,
+    (req.body || {}).color,
+    req.registrant.id
+  );
+  return response.success(res, result, `Đã đổi màu của ${result.full_name}`);
+});
+
 const setRegistrantColor = handle(async (req, res) => {
   const result = await bookingService.setRegistrantColor(req.params.registrantId, (req.body || {}).color);
   return response.success(res, result, `Đã đổi màu của ${result.full_name}`);
@@ -237,6 +280,13 @@ module.exports = {
   updateMyRequest,
   updateRequest,
   setRegistrantColor,
+  listBoardStudents,
+  listActivity,
+  listMyBoardActivity,
+  listMessages,
+  sendMessage,
+  listThreads,
+  managerSetRegistrantColor,
   adminCancelRequest,
   createSlotFromRequests,
   adminAddEntry,

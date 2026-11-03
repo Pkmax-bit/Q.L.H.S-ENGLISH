@@ -13,7 +13,7 @@ import { useIsNarrow } from '../../hooks/useIsNarrow'
  * đầu, chuột phải / nhấn giữ) nên hướng dẫn đổi theo đúng máy đang dùng, không
  * bắt người ta tự lọc xem dòng nào dành cho mình.
  */
-export default function BookingHelpSheet({ open, onClose }) {
+export default function BookingHelpSheet({ open, onClose, isManager = false }) {
   const narrow = useIsNarrow()
   if (!open) return null
 
@@ -46,7 +46,9 @@ export default function BookingHelpSheet({ open, onClose }) {
     {
       icon: Trash2,
       label: 'Bấm vào buổi đã đăng ký',
-      body: 'Rút buổi đó. Ca có sẵn mà bạn đã giữ chỗ thì bấm là hủy chỗ.',
+      body: isManager
+        ? 'Mở bảng công cụ của buổi đó. Muốn bỏ thì bấm nút rút trong bảng — một cú bấm nhầm không xóa được buổi của học viên.'
+        : 'Rút buổi đó. Ca có sẵn mà bạn đã giữ chỗ thì bấm là hủy chỗ.',
     },
     {
       icon: CalendarPlus,
