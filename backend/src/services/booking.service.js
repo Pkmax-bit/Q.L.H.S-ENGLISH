@@ -414,13 +414,16 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
         is_marked: Boolean(r.is_marked),
         is_bold: Boolean(r.is_bold),
         done_at: r.done_at || null,
-        // Tiền của buổi này nếu đã chốt, và giá mặc định của học viên để màn
-        // hình điền sẵn vào ô "tiền thật" lúc đóng dấu hoàn thành
-        amount: r.amount === null || r.amount === undefined ? null : Number(r.amount),
+        // Tiền CHỈ gửi cho người quản lý. Học viên không thấy cả giá của
+        // chính mình: trang này công khai, chỉ cần một số điện thoại là vào
+        // được, nên học phí lọt ra đây là lọt ra ngoài.
+        amount: manager && r.amount !== null && r.amount !== undefined ? Number(r.amount) : null,
         price_per_session:
-          r.registrant?.price_per_session === null || r.registrant?.price_per_session === undefined
-            ? null
-            : Number(r.registrant.price_per_session),
+          manager &&
+          r.registrant?.price_per_session !== null &&
+          r.registrant?.price_per_session !== undefined
+            ? Number(r.registrant.price_per_session)
+            : null,
         full_name: r.registrant?.full_name || null,
         // Số điện thoại chỉ lộ cho người quản lý
         phone: manager ? r.registrant?.phone || null : null,

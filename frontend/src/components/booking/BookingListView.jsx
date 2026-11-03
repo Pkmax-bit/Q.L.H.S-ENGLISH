@@ -36,10 +36,11 @@ export default function BookingListView({
         days.push(d.toISOString().slice(0, 10))
       }
     }
+    // Server trả buổi của CẢ BẢNG (4 tuần) để lưới đổi tuần không phải gọi
+    // lại; danh sách thì chỉ in đúng tuần đang xem, nên bỏ ngày ngoài khung.
     const byDate = new Map(days.map((d) => [d, []]))
     for (const r of requests) {
-      if (!byDate.has(r.date)) byDate.set(r.date, [])
-      byDate.get(r.date).push(r)
+      if (byDate.has(r.date)) byDate.get(r.date).push(r)
     }
     return [...byDate.entries()]
       .filter(([, list]) => list.length > 0)
@@ -49,18 +50,6 @@ export default function BookingListView({
         list: [...list].sort((a, b) => a.start_time.localeCompare(b.start_time)),
       }))
   }, [requests, weekStart])
-
-  const tong = useMemo(
-    () =>
-      requests.reduce(
-        (acc, r) => ({
-          done: acc.done + (r.done_at ? 1 : 0),
-          amount: acc.amount + (r.done_at ? Number(r.amount || 0) : 0),
-        }),
-        { done: 0, amount: 0 }
-      ),
-    [requests]
-  )
 
   if (groups.length === 0) {
     return (
@@ -144,15 +133,6 @@ export default function BookingListView({
         </section>
       ))}
 
-      {isManager && (
-        <div className="sticky bottom-0 flex items-center justify-between border-t border-slate-200 bg-slate-50/95 px-4 py-2.5 backdrop-blur">
-          <span className="text-sm text-slate-600">
-            Tuần này: <b className="text-slate-800">{tong.done}</b>/{requests.length} buổi đã hoàn
-            thành
-          </span>
-          <span className="text-sm font-bold text-emerald-700">{formatMoney(tong.amount)}</span>
-        </div>
-      )}
     </div>
   )
 }

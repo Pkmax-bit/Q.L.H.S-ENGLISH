@@ -22,7 +22,7 @@ import DropConflictDialog from '../components/booking/DropConflictDialog'
 import { useContextMenu } from '../hooks/useContextMenu'
 import { useBookingSocket } from '../hooks/useBookingSocket'
 import bookingService, { bookingSession } from '../services/booking.service'
-import { DAY_SHORT, STEP_OPTIONS, formatDate, formatDateTime, mergeCells } from '../lib/bookingUtils'
+import { DAY_SHORT, STEP_OPTIONS, formatDate, formatDateTime, formatMoney, mergeCells } from '../lib/bookingUtils'
 
 // Socket đã đẩy thay đổi tới ngay; vòng này chỉ còn là lưới an toàn khi
 // websocket rớt hoặc bị proxy chặn, nên giãn từ 25 giây lên 2 phút.
@@ -91,6 +91,37 @@ export default function BookingBoardPage() {
 
   // Hộp học viên tự gọi lúc mở chứ không giữ sẵn trong trang: tổng tiền đổi
   // mỗi lần đóng dấu, giữ bản cũ trong state thì mở ra là thấy số lỗi thời
+  /**
+   * Tiền đã chốt theo ba mốc: tuần đang xem, tháng của tuần đó, và cả bảng.
+   *
+   * Tính ngay trên dữ liệu đã có — server trả buổi của CẢ BẢNG để lưới đổi
+   * tuần không phải gọi lại, nên ba con số này không tốn thêm vòng mạng nào.
+   * Chỉ cộng buổi CÓ done_at: buổi mới đăng ký là chưa dạy, cộng vào thì số
+   * lúc nào cũng cao hơn tiền thật.
+   */
+  const money = useMemo(() => {
+    const end = week
+      ? new Date(new Date(`${week}T00:00:00`).getTime() + 6 * 86400000).toISOString().slice(0, 10)
+      : null
+    const thang = week ? week.slice(0, 7) : null
+    const sum = { week: 0, month: 0, all: 0, doneWeek: 0, countWeek: 0 }
+    for (const r of myRequests) {
+      const trongTuan = week && r.date >= week && r.date <= end
+      if (trongTuan) sum.countWeek += 1
+      if (!r.done_at) continue
+      const tien = Number(r.amount || 0)
+      sum.all += tien
+      // Tuần có thể vắt qua hai tháng, nên lọc theo THÁNG CỦA NGÀY HỌC chứ
+      // không gộp cả tuần vào tháng của ngày thứ hai đầu tuần
+      if (r.date.slice(0, 7) === thang) sum.month += tien
+      if (trongTuan) {
+        sum.week += tien
+        sum.doneWeek += 1
+      }
+    }
+    return sum
+  }, [myRequests, week])
+
   const loadStudentMoney = useCallback(
     () => bookingService.listBoardStudents(slug).then((res) => res.data?.data ?? res.data ?? []),
     [slug]
@@ -818,11 +849,34 @@ export default function BookingBoardPage() {
         <div className="mb-3 flex items-center justify-between">
           {/* Chỉ dẫn thao tác chuyển hết vào nút "?" — để ngoài này thì mỗi lần
               vào trang phải đọc lại một đoạn mà thật ra chỉ cần đọc một lần */}
-          <p className="text-xs text-slate-400">
-            {multiWeek && board?.selected_week
-              ? `Tuần ${formatDate(board.selected_week)} – ${formatDate(board.selected_week_end)}`
-              : ''}
-          </p>
+          {/* Tiền để cạnh nút chứ không nhét dưới đáy danh sách: nó phải đọc
+              được ở CẢ HAI dạng xem, mà lưới giờ thì không có chỗ nào ở đáy.
+              Chỉ người quản lý thấy — server cũng không gửi tiền cho ai khác. */}
+          {isManager ? (
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
+              <span className="flex items-baseline gap-1">
+                <span className="text-slate-400">Tuần</span>
+                <b className="text-sm text-emerald-700">{formatMoney(money.week)}</b>
+              </span>
+              <span className="flex items-baseline gap-1">
+                <span className="text-slate-400">Tháng</span>
+                <b className="text-slate-700">{formatMoney(money.month)}</b>
+              </span>
+              <span className="flex items-baseline gap-1">
+                <span className="text-slate-400">Tổng cộng</span>
+                <b className="text-slate-700">{formatMoney(money.all)}</b>
+              </span>
+              <span className="text-slate-400">
+                · {money.doneWeek}/{money.countWeek} buổi tuần này đã xong
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400">
+              {multiWeek && board?.selected_week
+                ? `Tuần ${formatDate(board.selected_week)} – ${formatDate(board.selected_week_end)}`
+                : ''}
+            </p>
+          )}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
