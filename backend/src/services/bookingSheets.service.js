@@ -357,11 +357,20 @@ const coCauHinh = () => Boolean(layId() && layKhoa());
 const dongBoNgay = async (boardId) => {
   const fileId = layId();
   const khoa = layKhoa();
+  // Nói rõ THIẾU CÁI NÀO. Gộp chung một câu thì người cấu hình đã điền một
+  // biến vẫn thấy y nguyên thông báo cũ, không biết mình đã đi được nửa đường
+  // hay dán nhầm chỗ.
   if (!fileId || !khoa) {
-    throw {
-      statusCode: 503,
-      message: 'Chưa cắm chìa khóa Google: cần GOOGLE_SERVICE_ACCOUNT_JSON (hoặc _FILE) và GOOGLE_SHEETS_SPREADSHEET_ID',
-    };
+    const thieu = [];
+    if (!khoa) {
+      thieu.push(
+        process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+          ? 'GOOGLE_SERVICE_ACCOUNT_JSON có nhưng KHÔNG đọc được (JSON hỏng?)'
+          : 'GOOGLE_SERVICE_ACCOUNT_JSON (hoặc _FILE) chưa đặt'
+      );
+    }
+    if (!fileId) thieu.push('GOOGLE_SHEETS_SPREADSHEET_ID chưa đặt');
+    throw { statusCode: 503, message: `Chưa chạy được: ${thieu.join('; ')}` };
   }
   const token = await layToken(khoa);
   const nam = await cacNamCuaBang(boardId);

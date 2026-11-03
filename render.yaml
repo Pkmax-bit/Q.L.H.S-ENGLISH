@@ -36,6 +36,14 @@ services:
         value: uploads
       - key: QUESTION_BANK_BUCKET
         value: question-bank
+      # Đồng bộ sổ buổi học sang Google Sheets. Thiếu thì trang vẫn chạy, chỉ
+      # không ghi sang Sheet. Dán nguyên nội dung file service account JSON
+      # vào một dòng; Render không có hệ thống file cố định nên không dùng
+      # được GOOGLE_SERVICE_ACCOUNT_FILE ở đây.
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: GOOGLE_SHEETS_SPREADSHEET_ID
+        sync: false
       # Same-origin SPA: set both to your Render public URL (no trailing slash)
       - key: VITE_API_URL
         sync: false
