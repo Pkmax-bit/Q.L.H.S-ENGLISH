@@ -96,20 +96,41 @@ const layKhoa = () => {
   }
   const file = process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
   if (!file) return null;
-  const duong = path.isAbsolute(file) ? file : path.join(process.cwd(), file);
-  try {
-    return JSON.parse(fs.readFileSync(duong, 'utf8'));
-  } catch {
-    return null;
+  if (path.isAbsolute(file)) {
+    try {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      return null;
+    }
   }
+  // Đường dẫn tương đối tính từ THƯ MỤC backend, không phải từ cwd: chạy
+  // `node backend/src/...` ở gốc repo thì cwd là gốc repo, tìm hụt file ngay.
+  // Vẫn thử cả cwd để không phá cách gọi cũ nào đang dựa vào nó.
+  const goc = path.join(__dirname, '..', '..');
+  for (const duong of [path.join(goc, file), path.join(process.cwd(), file)]) {
+    try {
+      return JSON.parse(fs.readFileSync(duong, 'utf8'));
+    } catch {
+      /* thử chỗ tiếp theo */
+    }
+  }
+  return null;
 };
 
-const b64 = (obj) =>
-  Buffer.from(typeof obj === 'string' ? obj : JSON.stringify(obj))
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+/**
+ * base64url cho JWT.
+ *
+ * Phải xét Buffer RIÊNG: chữ ký RS256 là một Buffer, mà Buffer không phải
+ * chuỗi nên nhánh JSON.stringify sẽ biến nó thành '{"type":"Buffer","data":
+ * [...]}' rồi mã hóa cái chuỗi đó — Google trả đúng một câu "Invalid JWT
+ * Signature" không nói gì thêm.
+ */
+const b64 = (v) => {
+  const buf = Buffer.isBuffer(v)
+    ? v
+    : Buffer.from(typeof v === 'string' ? v : JSON.stringify(v));
+  return buf.toString('base64url');
+};
 
 /** Đổi service account lấy access token; giữ lại 55 phút thay vì xin mỗi lần. */
 const layToken = async (khoa) => {
@@ -265,9 +286,13 @@ const ghiTabNam = async (token, fileId, nam) => {
     method: 'POST',
     body: '{}',
   });
+  // RAW chứ không USER_ENTERED: để Google tự đoán kiểu thì nó ăn mất số 0 đầu
+  // số điện thoại (0764829049 -> 764829049) và biến "07:30" thành giờ "7:30".
+  // RAW giữ chuỗi là chuỗi, còn Số phút với Tiền vốn đã gửi đi dưới dạng SỐ
+  // nên vẫn vào ô số, =SUM() vẫn cộng được.
   await goi(
     token,
-    `/${fileId}/values/${encodeURIComponent(`${nam}!A1`)}?valueInputOption=USER_ENTERED`,
+    `/${fileId}/values/${encodeURIComponent(`${nam}!A1`)}?valueInputOption=RAW`,
     { method: 'PUT', body: JSON.stringify({ values: bang }) }
   );
 
