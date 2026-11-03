@@ -68,8 +68,8 @@ export default function BookingListView({
             <span className="text-sm font-semibold text-slate-700">
               {DAY_SHORT[new Date(`${date}T00:00:00`).getDay()]}
             </span>
-            <span className="text-xs text-slate-400">{formatShortDate(date)}</span>
-            <span className="ml-auto text-xs text-slate-400">{list.length} buổi</span>
+            <span className="text-xs font-medium text-slate-500">{formatShortDate(date)}</span>
+            <span className="ml-auto text-xs font-medium text-slate-500">{list.length} buổi</span>
           </h3>
           <ul className="divide-y divide-slate-100">
             {list.map((r) => {
@@ -106,7 +106,7 @@ export default function BookingListView({
                         </span>
                       </span>
                       {r.note && (
-                        <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
+                        <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
                           <StickyNote className="h-3 w-3 shrink-0" />
                           <span className="truncate">{r.note}</span>
                         </span>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import clsx from 'clsx'
-import { BadgeCheck, Bold, CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Eraser, HelpCircle, History, LayoutGrid, List, Lock, LogOut, Move, RefreshCw, RotateCcw, Star, TriangleAlert, Users, Wand2 } from 'lucide-react'
+import { BadgeCheck, Bold, CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Eraser, HelpCircle, History, LayoutGrid, List, Lock, LogOut, MoreHorizontal, Move, RefreshCw, RotateCcw, Star, TriangleAlert, Users, Wand2 } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Button from '../components/common/Button'
 import Modal from '../components/common/Modal'
@@ -85,6 +85,7 @@ export default function BookingBoardPage() {
   const [movingMonth, setMovingMonth] = useState(false)
   // '' = xem chồng tất cả; id = chỉ xem giờ rảnh của một người
   const [freeWho, setFreeWho] = useState('')
+  const [moreOpen, setMoreOpen] = useState(false)
 
   // Socket chung: lưới nghe 'booking:board_changed', hộp chat nghe 'booking:message'
   const { socket } = useBookingSocket({
@@ -547,6 +548,48 @@ export default function BookingBoardPage() {
       setBooking(false)
     }
   }
+
+  const nutPhu = [
+    { key: 'help', label: 'Hướng dẫn', icon: HelpCircle, title: 'Hướng dẫn đăng ký', onClick: () => setHelpOpen(true) },
+    ...(isManager
+      ? [
+          {
+            key: 'arrange',
+            label: arranging ? 'Đang sắp xếp' : 'Sắp xếp',
+            icon: Move,
+            variant: arranging ? 'primary' : 'outline',
+            title: pool.length > 0 ? `Còn ${pool.length} buổi chờ xếp` : 'Bật để kéo khối sang giờ khác và gỡ vào khu chờ',
+            badge: pool.length || null,
+            // Thoát khi khu chờ còn người thì hỏi lại: tắt chế độ là khay biến
+            // mất khỏi màn, dễ tưởng đã xếp xong hết
+            onClick: () => (arranging && pool.length > 0 ? setExitPrompt(true) : setArranging((v) => !v)),
+          },
+          {
+            key: 'undo',
+            label: 'Hoàn tác',
+            icon: RotateCcw,
+            disabled: !lastAction || savingRequest,
+            title: lastAction ? `Hoàn tác: ${lastAction.label}` : 'Chưa có gì để hoàn tác',
+            // Bọc trong hàm mũi tên: nutPhu dựng ra trước khi undoLast được
+            // khai báo, trỏ thẳng vào tên nó là chạm vùng chết của const
+            onClick: () => undoLast(),
+          },
+          { key: 'students', label: 'Học viên', icon: Users, title: 'Học viên, học phí một buổi và tiền đã thu', onClick: () => setMoneyOpen(true) },
+          { key: 'log', label: 'Nhật ký', icon: History, title: 'Nhật ký ai làm gì', onClick: () => setLogOpen(true) },
+        ]
+      : []),
+    {
+      key: 'refresh',
+      label: 'Làm mới',
+      icon: RefreshCw,
+      loading: refreshing,
+      title: 'Tải lại bảng',
+      onClick: () => {
+        load({ silent: true })
+        if (boardMode === 'free') loadAvailability()
+      },
+    },
+  ]
 
   const handleConfirm = async () => {
     if (boardMode === 'free') return submitAvailability()
@@ -1016,7 +1059,7 @@ export default function BookingBoardPage() {
               )}
               <div className="text-right">
                 <p className="text-sm font-medium text-stone-800">{registrant.full_name}</p>
-                <p className="text-xs text-slate-400">{registrant.phone}</p>
+                <p className="text-xs font-medium text-slate-500">{registrant.phone}</p>
               </div>
               <Button variant="ghost" size="sm" onClick={handleSignOut} icon={LogOut} title="Đổi số điện thoại">
                 <span className="hidden sm:inline">Đổi số</span>
@@ -1067,21 +1110,21 @@ export default function BookingBoardPage() {
           {isManager ? (
             <div className="flex w-full min-w-0 items-baseline gap-x-3 overflow-hidden whitespace-nowrap text-xs">
               <span className="flex items-baseline gap-1">
-                <span className="text-slate-400">Tuần</span>
+                <span className="text-slate-500">Tuần</span>
                 <b className="text-sm text-emerald-700">{formatMoney(money.week)}</b>
               </span>
               <span className="hidden items-baseline gap-1 sm:flex">
-                <span className="text-slate-400">Tháng</span>
-                <b className="text-slate-700">{formatMoney(money.month)}</b>
+                <span className="text-slate-500">Tháng</span>
+                <b className="text-slate-800">{formatMoney(money.month)}</b>
               </span>
               <span className="hidden items-baseline gap-1 sm:flex">
-                <span className="text-slate-400">Tổng cộng</span>
-                <b className="text-slate-700">{formatMoney(money.all)}</b>
+                <span className="text-slate-500">Tổng cộng</span>
+                <b className="text-slate-800">{formatMoney(money.all)}</b>
               </span>
-              <span className="hidden text-slate-400 sm:inline">
+              <span className="hidden text-slate-500 sm:inline">
                 · {money.doneWeek}/{money.countWeek} buổi tuần này đã xong
               </span>
-              <span className="text-slate-400 sm:hidden">
+              <span className="text-slate-500 sm:hidden">
                 · {money.doneWeek}/{money.countWeek} xong
               </span>
             </div>
@@ -1146,15 +1189,8 @@ export default function BookingBoardPage() {
               ))}
             </span>
 
-            <Button
-              variant="ghost"
-              size="xs"
-              icon={HelpCircle}
-              onClick={() => setHelpOpen(true)}
-              title="Hướng dẫn đăng ký"
-            >
-              <span className="hidden sm:inline">Hướng dẫn</span>
-            </Button>
+            {/* "Sắp tự động" ở lại hàng ngoài kể cả trên điện thoại: bật chế
+                độ Giờ rảnh là để làm đúng việc này, giấu vào menu thì phải mò. */}
             {boardMode === 'free' && isManager && (
               <Button
                 size="xs"
@@ -1167,85 +1203,102 @@ export default function BookingBoardPage() {
                 <span className="hidden sm:inline">Sắp tự động</span>
               </Button>
             )}
-            {isManager && (
-              <>
+
+            {/* Màn rộng: bày hết ra hàng ngang */}
+            <span className="hidden items-center gap-1 sm:flex">
+              {nutPhu.map((n) => (
                 <Button
+                  key={n.key}
                   size="xs"
-                  variant={arranging ? 'primary' : 'outline'}
-                  icon={Move}
-                  // Thoát khi khu chờ còn người thì hỏi lại: tắt chế độ là khay
-                  // biến mất khỏi màn, dễ tưởng đã xếp xong hết
-                  onClick={() =>
-                    arranging && pool.length > 0 ? setExitPrompt(true) : setArranging((v) => !v)
-                  }
-                  title={
-                    pool.length > 0
-                      ? `Còn ${pool.length} buổi chờ xếp`
-                      : 'Bật để kéo khối sang giờ khác và gỡ vào khu chờ'
-                  }
+                  variant={n.variant || 'ghost'}
+                  icon={n.icon}
+                  title={n.title}
+                  disabled={n.disabled}
+                  loading={n.loading}
+                  onClick={n.onClick}
                 >
-                  <span className="hidden sm:inline">{arranging ? 'Đang sắp xếp' : 'Sắp xếp'}</span>
-                  {pool.length > 0 && (
+                  {n.label}
+                  {n.badge ? (
                     <span
                       className={clsx(
-                        'ml-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[11px] font-bold',
-                        arranging ? 'bg-white text-primary-700' : 'bg-amber-500 text-white'
+                        'ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold',
+                        n.variant === 'primary' ? 'bg-white text-primary-700' : 'bg-amber-500 text-white'
                       )}
                     >
-                      {pool.length}
+                      {n.badge}
                     </span>
-                  )}
+                  ) : null}
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  icon={RotateCcw}
-                  disabled={!lastAction || savingRequest}
-                  onClick={undoLast}
-                  title={lastAction ? `Hoàn tác: ${lastAction.label}` : 'Chưa có gì để hoàn tác'}
-                >
-                  <span className="hidden sm:inline">Hoàn tác</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  icon={Users}
-                  onClick={() => setMoneyOpen(true)}
-                  title="Học viên, học phí một buổi và tiền đã thu"
-                >
-                  <span className="hidden sm:inline">Học viên</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  icon={History}
-                  onClick={() => setLogOpen(true)}
-                  title="Nhật ký ai làm gì"
-                >
-                  <span className="hidden sm:inline">Nhật ký</span>
-                </Button>
-              </>
-            )}
-            {view === 'hours' && (
-              <Select
-                value={String(step)}
-                onChange={handleStepChange}
-                options={STEP_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
-                className="w-24 py-1 text-xs"
-              />
-            )}
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => {
-                load({ silent: true })
-                if (boardMode === 'free') loadAvailability()
-              }}
-              loading={refreshing}
-              icon={RefreshCw}
-            >
-              <span className="hidden sm:inline">Làm mới</span>
-            </Button>
+              ))}
+              {view === 'hours' && (
+                <Select
+                  value={String(step)}
+                  onChange={handleStepChange}
+                  options={STEP_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
+                  className="w-24 py-1 text-xs"
+                />
+              )}
+            </span>
+
+            {/* Điện thoại: gom vào một nút. Bảy nút chỉ-có-icon xếp hàng thì
+                không nút nào đọc ra nghĩa, mà vuốt ngang mới thấy hết. Trong
+                menu thì có đủ chữ. */}
+            <div className="relative sm:hidden">
+              <button
+                type="button"
+                onClick={() => setMoreOpen((v) => !v)}
+                title="Thêm công cụ"
+                className={clsx(
+                  'relative flex items-center gap-1 rounded-xl px-2 py-2 text-xs font-semibold',
+                  moreOpen ? 'bg-primary-600 text-white' : 'text-slate-700 hover:bg-primary-50'
+                )}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+                {pool.length > 0 && !moreOpen && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
+                    {pool.length}
+                  </span>
+                )}
+              </button>
+              {moreOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setMoreOpen(false)} aria-hidden="true" />
+                  <div className="absolute right-0 z-50 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                    {nutPhu.map((n) => (
+                      <button
+                        key={n.key}
+                        type="button"
+                        disabled={n.disabled}
+                        onClick={() => {
+                          setMoreOpen(false)
+                          n.onClick()
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-700 hover:bg-primary-50 disabled:opacity-40"
+                      >
+                        <n.icon className="h-4 w-4 shrink-0 text-slate-500" />
+                        <span className="flex-1">{n.label}</span>
+                        {n.badge ? (
+                          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-bold text-white">
+                            {n.badge}
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
+                    {view === 'hours' && (
+                      <label className="mt-1 flex items-center gap-2 border-t border-slate-100 px-2.5 pb-1 pt-2 text-sm text-slate-700">
+                        <span className="flex-1">Bước giờ</span>
+                        <Select
+                          value={String(step)}
+                          onChange={handleStepChange}
+                          options={STEP_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
+                          className="w-24 py-1 text-xs"
+                        />
+                      </label>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1291,7 +1344,7 @@ export default function BookingBoardPage() {
                   <CalendarClock className="h-3.5 w-3.5" />
                   Khoanh giờ CÓ THỂ học
                 </span>
-                <span className="text-primary-700/80">
+                <span className="font-medium text-primary-800">
                   Kéo trên lưới để khoanh. Đây là giờ bạn rảnh, không phải buổi học, không tính tiền.
                 </span>
                 {/* Xem riêng từng người. Chồng hết lên nhau trả lời "giờ nào
