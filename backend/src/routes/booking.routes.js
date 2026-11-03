@@ -68,6 +68,12 @@ router.post('/public/messages/:messageId/close-poll', publicLimiter, bookingAuth
 router.delete('/public/messages/:messageId/poll', publicLimiter, bookingAuth, controller.deletePoll);
 router.delete('/public/messages/:messageId', publicLimiter, bookingAuth, controller.deleteMessage);
 router.post('/public/boards/:slug/sync-sheet', publicLimiter, bookingAuth, controller.syncSheet);
+
+// Khung giờ CÓ THỂ học (ràng buộc để xếp lịch), tách hẳn khỏi buổi học
+router.get('/public/boards/:slug/availability', publicLimiter, bookingAuth, controller.listAvailability);
+router.post('/public/boards/:slug/availability', publicLimiter, bookingAuth, controller.createAvailability);
+router.delete('/public/availability/:id', publicLimiter, bookingAuth, controller.deleteAvailability);
+router.post('/public/boards/:slug/auto-arrange', publicLimiter, bookingAuth, controller.autoArrange);
 // Sắp xếp ngay trên trang công khai, chỉ số có cờ quản lý
 router.get('/public/boards/:slug/pool', publicLimiter, bookingAuth, scheduling.managerListPool);
 router.post('/public/requests/:requestId/detach', publicLimiter, bookingAuth, scheduling.managerDetachRequest);

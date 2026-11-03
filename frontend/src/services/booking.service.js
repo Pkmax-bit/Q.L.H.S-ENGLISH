@@ -96,6 +96,14 @@ const bookingService = {
   deletePoll: (messageId) => publicApi.delete(`/booking/public/messages/${messageId}/poll`),
   deleteBoardMessage: (messageId) => publicApi.delete(`/booking/public/messages/${messageId}`),
   syncSheet: (slug) => publicApi.post(`/booking/public/boards/${slug}/sync-sheet`),
+  listAvailability: (slug) => publicApi.get(`/booking/public/boards/${slug}/availability`),
+  createAvailability: (slug, cells, desiredMinutes) =>
+    publicApi.post(`/booking/public/boards/${slug}/availability`, {
+      cells,
+      desired_minutes: desiredMinutes,
+    }),
+  deleteAvailability: (id) => publicApi.delete(`/booking/public/availability/${id}`),
+  autoArrange: (slug, opts) => publicApi.post(`/booking/public/boards/${slug}/auto-arrange`, opts),
   managerListPool: (slug) => publicApi.get(`/booking/public/boards/${slug}/pool`),
   managerDetachRequest: (requestId) => publicApi.post(`/booking/public/requests/${requestId}/detach`),
   managerRemoveFromPool: (itemId) => publicApi.delete(`/booking/public/pool/${itemId}`),

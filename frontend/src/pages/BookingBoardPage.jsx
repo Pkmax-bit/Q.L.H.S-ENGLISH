@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import clsx from 'clsx'
-import { BadgeCheck, Bold, CalendarDays, Eraser, HelpCircle, History, LayoutGrid, List, Lock, LogOut, Move, RefreshCw, RotateCcw, Star, TriangleAlert, Users } from 'lucide-react'
+import { BadgeCheck, Bold, CalendarClock, CalendarDays, Eraser, HelpCircle, History, LayoutGrid, List, Lock, LogOut, Move, RefreshCw, RotateCcw, Star, TriangleAlert, Users, Wand2 } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Button from '../components/common/Button'
 import Modal from '../components/common/Modal'
@@ -22,7 +22,7 @@ import DropConflictDialog from '../components/booking/DropConflictDialog'
 import { useContextMenu } from '../hooks/useContextMenu'
 import { useBookingSocket } from '../hooks/useBookingSocket'
 import bookingService, { bookingSession } from '../services/booking.service'
-import { DAY_SHORT, STEP_OPTIONS, formatDate, formatDateTime, formatMoney, mergeCells } from '../lib/bookingUtils'
+import { DAY_SHORT, STEP_OPTIONS, colorClasses, formatDate, formatDateTime, formatMoney, mergeCells } from '../lib/bookingUtils'
 
 // Socket đã đẩy thay đổi tới ngay; vòng này chỉ còn là lưới an toàn khi
 // websocket rớt hoặc bị proxy chặn, nên giãn từ 25 giây lên 2 phút.
@@ -74,6 +74,12 @@ export default function BookingBoardPage() {
   // Ai đang mở bảng. Người quản lý nhận danh sách tên, học viên chỉ nhận
   // "trung tâm có trực không" + đếm đầu người — xem lý do ở tầng socket.
   const [presence, setPresence] = useState({ people: [], center_online: false, count: 0 })
+  // 'lesson' = lịch học thật · 'free' = khoanh giờ CÓ THỂ học để giáo viên xếp
+  const [boardMode, setBoardMode] = useState('lesson')
+  const [availability, setAvailability] = useState([])
+  const [freeMinutes, setFreeMinutes] = useState(60)
+  const [plan, setPlan] = useState(null) // bản đề xuất của sắp lịch tự động
+  const [planning, setPlanning] = useState(false)
 
   // Socket chung: lưới nghe 'booking:board_changed', hộp chat nghe 'booking:message'
   const { socket } = useBookingSocket({
@@ -124,6 +130,15 @@ export default function BookingBoardPage() {
     }
     return sum
   }, [myRequests, week])
+
+  const loadAvailability = useCallback(
+    () =>
+      bookingService
+        .listAvailability(slug)
+        .then((res) => setAvailability(res.data?.data ?? res.data ?? []))
+        .catch(() => setAvailability([])),
+    [slug]
+  )
 
   const loadStudentMoney = useCallback(
     () => bookingService.listBoardStudents(slug).then((res) => res.data?.data ?? res.data ?? []),
@@ -262,10 +277,13 @@ export default function BookingBoardPage() {
     const onChanged = () => {
       load({ silent: true })
       if (isManager) reloadPool()
+      // notifyBoard bắn sự kiện này cả khi có người khoanh thêm giờ rảnh; chỉ
+      // nạp lại buổi học thì sọc trên lưới đứng im, tưởng là không lưu được
+      if (boardMode === 'free') loadAvailability()
     }
     socket.on('booking:board_changed', onChanged)
     return () => socket.off('booking:board_changed', onChanged)
-  }, [socket, load, isManager, reloadPool])
+  }, [socket, load, isManager, reloadPool, boardMode, loadAvailability])
 
   useEffect(() => {
     if (!socket) return undefined
@@ -276,6 +294,11 @@ export default function BookingBoardPage() {
     socket.on('booking:presence', onPresence)
     return () => socket.off('booking:presence', onPresence)
   }, [socket])
+
+  useEffect(() => {
+    if (boardMode !== 'free' || !registrant) return
+    loadAvailability()
+  }, [boardMode, registrant, loadAvailability])
 
   useEffect(() => {
     if (!isManager) {
@@ -454,9 +477,62 @@ export default function BookingBoardPage() {
   }
 
   /** Bấm nút xác nhận: ca có sẵn thì giữ chỗ, ô trống thì gửi nguyện vọng luôn */
+  /**
+   * Lưu vùng "có thể học". Gửi NGUYÊN các ô 15 phút chứ không gộp sẵn ở client:
+   * server còn phải gộp tiếp với vùng đã lưu từ trước, khoanh thêm một mẩu
+   * dính vào vùng cũ thì phải ra một vùng dài chứ không phải hai vùng cạnh nhau.
+   */
+  const submitAvailability = async () => {
+    if (selectedCells.length === 0) return
+    setBooking(true)
+    try {
+      const res = await bookingService.createAvailability(
+        slug,
+        selectedCells.map((c) => ({
+          session_date: c.date,
+          start_time: c.start_time,
+          end_time: c.end_time,
+        })),
+        freeMinutes
+      )
+      showFlash('success', res.data?.message || 'Đã lưu giờ rảnh')
+      setSelectedCells([])
+      await loadAvailability()
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không lưu được giờ rảnh')
+    } finally {
+      setBooking(false)
+    }
+  }
+
   const handleConfirm = async () => {
+    if (boardMode === 'free') return submitAvailability()
     if (selectedIds.length > 0) await handleConfirmBooking()
     if (mergedCells.length > 0) await submitRequests()
+  }
+
+  /** Xem trước trước, ghi sau — xem lý do ở autoArrange bên server. */
+  const runAutoArrange = async (apply = false) => {
+    setPlanning(true)
+    try {
+      const res = await bookingService.autoArrange(slug, {
+        default_minutes: freeMinutes,
+        apply,
+      })
+      const data = res.data?.data ?? res.data
+      if (apply) {
+        setPlan(null)
+        setBoardMode('lesson')
+        showFlash('success', res.data?.message || 'Đã xếp lịch')
+        await load({ silent: true })
+      } else {
+        setPlan(data)
+      }
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không sắp được lịch')
+    } finally {
+      setPlanning(false)
+    }
   }
 
   /**
@@ -957,6 +1033,38 @@ export default function BookingBoardPage() {
             >
               <span className="hidden sm:inline">Hướng dẫn</span>
             </Button>
+            {/* Hai thứ KHÁC HẲN nhau nên để hai chế độ, không trộn chung lưới:
+                buổi học là lịch đã chốt, giờ rảnh chỉ là "em có thể học lúc
+                này". Vẽ chung thì không ai phân biệt được cái nào đã chắc. */}
+            <Button
+              variant={boardMode === 'free' ? 'primary' : 'ghost'}
+              size="sm"
+              icon={CalendarClock}
+              onClick={() => {
+                setBoardMode((m) => (m === 'free' ? 'lesson' : 'free'))
+                setSelectedCells([])
+                setSelectedIds([])
+              }}
+              title={
+                boardMode === 'free'
+                  ? 'Quay về lịch học đã xếp'
+                  : 'Khoanh những giờ có thể học để trung tâm xếp lịch'
+              }
+            >
+              <span className="hidden sm:inline">Giờ rảnh</span>
+            </Button>
+            {boardMode === 'free' && isManager && (
+              <Button
+                size="sm"
+                variant="outline"
+                icon={Wand2}
+                loading={planning}
+                onClick={() => runAutoArrange(false)}
+                title="Tự xếp buổi vào những giờ học viên rảnh"
+              >
+                <span className="hidden sm:inline">Sắp tự động</span>
+              </Button>
+            )}
             {isManager && (
               <>
                 <Button
@@ -1036,7 +1144,16 @@ export default function BookingBoardPage() {
             >
               <span className="hidden sm:inline">{view === 'hours' ? 'Danh sách' : 'Lưới giờ'}</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => load({ silent: true })} loading={refreshing} icon={RefreshCw}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                load({ silent: true })
+                if (boardMode === 'free') loadAvailability()
+              }}
+              loading={refreshing}
+              icon={RefreshCw}
+            >
               <span className="hidden sm:inline">Làm mới</span>
             </Button>
           </div>
@@ -1075,6 +1192,65 @@ export default function BookingBoardPage() {
                     Bấm vào buổi để đóng dấu · bấm lần nữa để gỡ · bấm lại nút để thôi
                   </span>
                 )}
+              </div>
+            )}
+
+            {boardMode === 'free' && (
+              <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-primary-200 bg-primary-50/70 px-3 py-1.5 text-xs text-primary-900">
+                <span className="flex items-center gap-1.5 font-semibold">
+                  <CalendarClock className="h-3.5 w-3.5" />
+                  Khoanh giờ CÓ THỂ học
+                </span>
+                <span className="text-primary-700/80">
+                  Kéo trên lưới để khoanh. Đây là giờ bạn rảnh, không phải buổi học, không tính tiền.
+                </span>
+                <label className="ml-auto flex items-center gap-1.5">
+                  Mỗi buổi
+                  <input
+                    type="number"
+                    min="15"
+                    max="300"
+                    step="15"
+                    value={freeMinutes}
+                    onChange={(e) => setFreeMinutes(Number(e.target.value) || 60)}
+                    className="w-16 rounded-lg border border-primary-200 px-1.5 py-0.5 text-xs"
+                  />
+                  phút
+                </label>
+              </div>
+            )}
+
+            {/* Ai rảnh giờ nào — chú thích màu cho các sọc trên lưới. Không có
+                nó thì mấy sọc màu chỉ nói "có người rảnh", không nói là ai. */}
+            {boardMode === 'free' && availability.length > 0 && (
+              <div className="mb-1.5 flex flex-wrap gap-1.5">
+                {availability.map((k) => (
+                  <span
+                    key={k.id}
+                    className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[11px]"
+                  >
+                    <span className={clsx('h-2 w-2 shrink-0 rounded-full', colorClasses(k.color).dot)} />
+                    <b className="text-slate-700">{k.full_name || 'Bạn'}</b>
+                    <span className="text-slate-500">
+                      {DAY_SHORT[new Date(`${k.date}T00:00:00`).getDay()]} {k.start_time}–{k.end_time}
+                    </span>
+                    <button
+                      type="button"
+                      title="Gỡ khung giờ này"
+                      onClick={async () => {
+                        try {
+                          await bookingService.deleteAvailability(k.id)
+                          await loadAvailability()
+                        } catch (err) {
+                          showFlash('error', err.response?.data?.message || 'Không gỡ được')
+                        }
+                      }}
+                      className="ml-0.5 text-slate-300 hover:text-red-500"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
               </div>
             )}
 
@@ -1127,6 +1303,7 @@ export default function BookingBoardPage() {
               allowPast={isManager}
               onMoveRequest={moveRequest}
               onDropPoolItem={scheduleFromPool}
+              availability={boardMode === 'free' ? availability : []}
             />
             <SelectionBar
               count={selectedIds.length + mergedCells.length}
@@ -1140,16 +1317,20 @@ export default function BookingBoardPage() {
                 ),
               ]}
               actionLabel={
-                mergedCells.length === 0
-                  ? `Giữ chỗ ${selectedIds.length} ca`
-                  : selectedIds.length === 0
-                    ? `Đăng ký ${mergedCells.length} buổi học`
-                    : `Giữ ${selectedIds.length} ca + đăng ký ${mergedCells.length} buổi`
+                boardMode === 'free'
+                  ? `Lưu ${mergedCells.length} khung giờ rảnh`
+                  : mergedCells.length === 0
+                    ? `Giữ chỗ ${selectedIds.length} ca`
+                    : selectedIds.length === 0
+                      ? `Đăng ký ${mergedCells.length} buổi học`
+                      : `Giữ ${selectedIds.length} ca + đăng ký ${mergedCells.length} buổi`
               }
               shortLabel={
-                mergedCells.length === 0
-                  ? `Giữ ${selectedIds.length}`
-                  : `Đăng ký ${mergedCells.length}`
+                boardMode === 'free'
+                  ? `Lưu ${mergedCells.length}`
+                  : mergedCells.length === 0
+                    ? `Giữ ${selectedIds.length}`
+                    : `Đăng ký ${mergedCells.length}`
               }
               loading={booking}
               onConfirm={handleConfirm}
@@ -1158,8 +1339,10 @@ export default function BookingBoardPage() {
                 setSelectedCells([])
               }}
               hint={
-                mergedCells.length > 0
-                  ? 'Là nguyện vọng, chưa phải giữ chỗ.'
+                boardMode === 'free'
+                  ? 'Chỉ là giờ bạn CÓ THỂ học, chưa phải buổi học.'
+                  : mergedCells.length > 0
+                    ? 'Là nguyện vọng, chưa phải giữ chỗ.'
                   : board?.max_slots_per_person > 0 &&
                       myEntries.length + selectedIds.length > board.max_slots_per_person
                     ? `Tối đa ${board.max_slots_per_person} ca/tuần, bạn đã giữ ${myEntries.length}.`
@@ -1272,6 +1455,72 @@ export default function BookingBoardPage() {
           handleCancelRequest(request)
         }}
       />
+
+      {/* Bản đề xuất: xem rồi mới chốt. Xếp tự động mà ghi thẳng thì một lần
+          bấm nhầm là phải đi gỡ hàng chục buổi bằng tay. */}
+      <Modal
+        isOpen={Boolean(plan)}
+        onClose={() => setPlan(null)}
+        title="Đề xuất xếp lịch"
+        size="lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setPlan(null)}>
+              Thôi
+            </Button>
+            <Button
+              icon={Wand2}
+              loading={planning}
+              disabled={!plan?.placed}
+              onClick={() => runAutoArrange(true)}
+            >
+              Chốt {plan?.placed || 0} buổi
+            </Button>
+          </>
+        }
+      >
+        {plan && (
+          <div className="max-h-[60vh] space-y-3 overflow-y-auto">
+            {plan.days.map((d) => (
+              <div key={d.date}>
+                <p className="mb-1 text-sm font-semibold text-slate-700">
+                  {DAY_SHORT[new Date(`${d.date}T00:00:00`).getDay()]} {formatDate(d.date)}
+                </p>
+                <ul className="space-y-1">
+                  {d.xep.map((x, i) => (
+                    <li
+                      key={`${x.registrant_id}-${i}`}
+                      className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-sm"
+                    >
+                      <span className={clsx('h-2.5 w-2.5 shrink-0 rounded-full', colorClasses(x.color).dot)} />
+                      <b className="min-w-0 flex-1 truncate">{x.full_name}</b>
+                      <span className="tabular-nums text-emerald-800">
+                        {x.start_time}–{x.end_time}
+                      </span>
+                      <span className="text-xs text-emerald-600">{x.minutes}p</span>
+                    </li>
+                  ))}
+                  {d.hong.map((x, i) => (
+                    <li
+                      key={`h-${x.registrant_id}-${i}`}
+                      className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-sm text-amber-900"
+                    >
+                      <b className="min-w-0 flex-1 truncate">{x.full_name}</b>
+                      <span className="text-xs">
+                        {x.start_time}–{x.end_time} · {x.ly_do}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+            <p className="text-xs text-slate-500">
+              Xếp người có khung <b>kết thúc sớm nhất</b> trước — ai phải về sớm thì ít đường lui
+              nhất. Buổi đã xếp tay được giữ nguyên, thuật toán tránh ra.
+            </p>
+          </div>
+        )}
+      </Modal>
 
       <StudentMoneySheet
         open={moneyOpen}

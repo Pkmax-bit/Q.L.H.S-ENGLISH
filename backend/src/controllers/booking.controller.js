@@ -258,6 +258,35 @@ const closePoll = handle(async (req, res) => {
   return response.success(res, result, 'Đã khóa bình chọn');
 });
 
+const listAvailability = handle(async (req, res) => {
+  const result = await bookingService.listAvailabilityBySlug(req.params.slug, req.registrant.id);
+  return response.success(res, result);
+});
+
+const createAvailability = handle(async (req, res) => {
+  const { cells, desired_minutes: phut } = req.body || {};
+  const result = await bookingService.createAvailability(
+    req.params.slug,
+    req.registrant.id,
+    cells,
+    phut
+  );
+  return response.created(res, result, `Đã lưu ${result.created} khung giờ rảnh`);
+});
+
+const deleteAvailability = handle(async (req, res) => {
+  const result = await bookingService.deleteAvailability(req.params.id, req.registrant.id);
+  return response.success(res, result, 'Đã gỡ khung giờ');
+});
+
+const autoArrange = handle(async (req, res) => {
+  const result = await bookingService.autoArrange(req.params.slug, req.registrant.id, req.body || {});
+  const tom = result.applied
+    ? `Đã xếp ${result.placed} buổi${result.skipped ? `, bỏ qua ${result.skipped} buổi trùng lịch` : ''}`
+    : `Đề xuất ${result.placed} buổi${result.failed ? `, ${result.failed} khung không xếp được` : ''}`;
+  return response.success(res, result, tom);
+});
+
 const syncSheet = handle(async (req, res) => {
   const result = await bookingService.syncSheetNow(req.params.slug, req.registrant.id);
   const tom = result.tabs.map((t) => `${t.nam} (${t.rows} buổi)`).join(', ');
@@ -363,6 +392,10 @@ module.exports = {
   deletePoll,
   deleteMessage,
   syncSheet,
+  listAvailability,
+  createAvailability,
+  deleteAvailability,
+  autoArrange,
   managerSetRegistrantColor,
   managerSetRegistrantPrice,
   adminCancelRequest,

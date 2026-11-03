@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useIsNarrow } from '../../hooks/useIsNarrow'
 import { BadgeCheck, Check, Hand, Plus, Star, Users } from 'lucide-react'
 import clsx from 'clsx'
@@ -60,6 +60,11 @@ export default function HourGrid({
   onMoveRequest,
   onDropPoolItem,
   fillHeight = false,
+  // Khung giờ CÓ THỂ học của học viên. Vẽ thành những sọc đứng trong ô —
+  // nhiều người rảnh cùng giờ thì nhiều sọc cạnh nhau, nhìn một cái là thấy
+  // chỗ nào đông chỗ nào vắng. Chồng lên nhau bằng độ trong suốt thì hai người
+  // cùng màu hồng lại ra một mảng hồng đậm hơn, không đếm được là mấy người.
+  availability = [],
 }) {
   const accepting = board?.is_accepting
   const isAdmin = mode === 'admin'
@@ -71,6 +76,17 @@ export default function HourGrid({
   // Chữ trong khối to lên 40% nên ô phải cao theo, không thì chữ bị cắt
   // ngọn. Bước 5 phút vẫn để thấp: ô đó không in chữ, chỉ để kéo chọn.
   const cellH = { 60: 'h-11', 30: 'h-10', 15: 'h-9', 5: 'h-5' }[step]
+
+  // Gom theo ngày một lần thay vì quét cả mảng ở từng ô: lưới 17 giờ x 7 ngày
+  // ở bước 15 phút là gần 500 ô, quét tuyến tính mỗi ô thì kéo chọn bị giật.
+  const ranhTheoNgay = useMemo(() => {
+    const m = new Map()
+    for (const k of availability) {
+      if (!m.has(k.date)) m.set(k.date, [])
+      m.get(k.date).push(k)
+    }
+    return m
+  }, [availability])
   // Chỉ đủ chỗ in giờ khi ô cao từ 15 phút trở lên
   const showLabel = step >= 15
 
@@ -294,6 +310,11 @@ export default function HourGrid({
   const SubCell = ({ dow, minute, date, daySlots }) => {
     const subEnd = Math.min(minute + step, MAX_MINUTE_OF_DAY + 1)
     const hhmm = minutesToHHMM(minute)
+    // Ai rảnh đúng ô này. Khung phủ ô khi nó bắt đầu trước lúc ô kết thúc và
+    // kết thúc sau lúc ô bắt đầu — chạm mép thì không tính là phủ.
+    const rangTrongO = (ranhTheoNgay.get(date) || []).filter(
+      (k) => toMinutes(k.start_time) < subEnd && toMinutes(k.end_time) > minute
+    )
 
     const starting = daySlots.filter((s) => {
       const st = toMinutes(s.start_time)
@@ -661,6 +682,18 @@ export default function HourGrid({
               : 'border-transparent text-slate-300 hover:border-primary-300 hover:bg-primary-50/60 hover:text-primary-600'
         )}
       >
+        {/* Sọc giờ rảnh nằm DƯỚI mọi thứ khác trong ô, không bắt chuột —
+            nó là nền thông tin, không phải thứ để bấm vào */}
+        {rangTrongO.length > 0 && (
+          <span className="pointer-events-none absolute inset-0 flex gap-px overflow-hidden rounded-md">
+            {rangTrongO.map((k) => (
+              <span
+                key={k.id}
+                className={clsx('flex-1', colorClasses(k.color).dot, 'opacity-30')}
+              />
+            ))}
+          </span>
+        )}
         {dropStart && showLabel && (
           <span className="pointer-events-none truncate font-semibold">
             {minutesToHHMM(dropHint.start)}–{minutesToHHMM(dropHint.end)}

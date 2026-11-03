@@ -5,6 +5,7 @@ const { parsePagination, buildPaginationResponse } = require('../utils/paginatio
 const { normalizePhone, isValidPhone, maskName } = require('../utils/phone');
 const { assignColors, DEFAULT_COLOR, PALETTE, nextRegistrantColor } = require('../utils/bookingColors');
 const sheets = require('./bookingSheets.service');
+const rank = require('./bookingAvailability.service');
 const { emitNotification } = require('../socket');
 
 const REGISTRANT_EMBED = 'registrant:booking_registrants!booking_entries_registrant_id_fkey(id, full_name, phone)';
@@ -1282,6 +1283,226 @@ const listActivityBySlug = async (slug, registrantId, query = {}) => {
   }
   const board = await fetchBoardBySlug(slug);
   return listActivity(board.id, query);
+};
+
+// --------------------------------------------------- khung giờ có thể học
+
+/**
+ * Khoanh vùng "em rảnh giờ này". Gửi lên dưới dạng các ô 15 phút như lúc đăng
+ * ký buổi học, server gộp lại thành vùng liền.
+ *
+ * KHÁC createRequests ở hai điểm cốt lõi, và đó là lý do nó là bảng riêng:
+ * không kiểm chồng nhau (vùng rảnh của nhiều người chồng lên nhau mới là thứ
+ * cần nhìn), và không giới hạn độ dài (rảnh cả buổi chiều là bình thường).
+ */
+const createAvailability = async (slug, registrantId, cells = [], desiredMinutes = null) => {
+  const board = await fetchBoardBySlug(slug);
+  const manager = await isManagerSession(registrantId);
+  if (!manager && !isAccepting(board)) {
+    throw { statusCode: 403, message: 'Bảng đã đóng, không nhận thêm giờ rảnh' };
+  }
+  if (!Array.isArray(cells) || cells.length === 0) {
+    throw { statusCode: 400, message: 'Chưa khoanh khung giờ nào' };
+  }
+  if (cells.length > 200) {
+    throw { statusCode: 400, message: 'Mỗi lần chỉ gửi tối đa 200 ô' };
+  }
+
+  const weeks = weeksOf(board);
+  const lastDay = weeks[weeks.length - 1].week_end;
+
+  // Người quản lý khoanh hộ học viên nào thì gửi kèm registrant_id
+  let chuNhan = registrantId;
+  if (cells[0]?.registrant_id && manager) chuNhan = cells[0].registrant_id;
+
+  const tho = [];
+  for (const cell of cells) {
+    const date = assertSessionDate(cell.session_date ?? cell.date);
+    const { start_time, end_time } = slotRange(cell);
+    if (date < board.week_start || date > lastDay) {
+      throw { statusCode: 400, message: `Ngày ${date} nằm ngoài phạm vi bảng` };
+    }
+    tho.push({ session_date: date, start_time, end_time });
+  }
+
+  // Gộp cùng lượt gửi, RỒI gộp tiếp với vùng đã có: khoanh thêm một mẩu dính
+  // vào vùng cũ phải ra một vùng dài, không phải hai vùng cạnh nhau
+  const { data: daCo, error: errCo } = await supabase
+    .from('booking_availability')
+    .select('id, session_date, start_time, end_time, desired_minutes')
+    .eq('board_id', board.id)
+    .eq('registrant_id', chuNhan);
+  if (errCo) throw errCo;
+
+  const ngayDung = new Set(tho.map((x) => x.session_date));
+  const cu = (daCo || []).filter((x) => ngayDung.has(String(x.session_date).slice(0, 10)));
+  const gop = rank.gopKhung([
+    ...cu.map((x) => ({
+      session_date: String(x.session_date).slice(0, 10),
+      start_time: String(x.start_time).slice(0, 5),
+      end_time: String(x.end_time).slice(0, 5),
+      desired_minutes: x.desired_minutes,
+    })),
+    ...tho,
+  ]);
+
+  // Vùng cũ của những ngày vừa đụng tới bị thay bằng vùng đã gộp
+  if (cu.length) {
+    await supabase
+      .from('booking_availability')
+      .delete()
+      .in('id', cu.map((x) => x.id));
+  }
+
+  const phutMuon = desiredMinutes === null || desiredMinutes === undefined || desiredMinutes === ''
+    ? null
+    : Number(desiredMinutes);
+  if (phutMuon !== null && (!Number.isInteger(phutMuon) || phutMuon < 5 || phutMuon > 600)) {
+    throw { statusCode: 400, message: 'Số phút muốn học phải từ 5 đến 600' };
+  }
+
+  const { data, error } = await supabase
+    .from('booking_availability')
+    .insert(
+      gop.map((x) => ({
+        board_id: board.id,
+        registrant_id: chuNhan,
+        session_date: x.session_date,
+        start_time: x.start_time,
+        end_time: x.end_time,
+        desired_minutes: phutMuon ?? x.desired_minutes ?? null,
+      }))
+    )
+    .select('id');
+  if (error) throw error;
+
+  logActivity({
+    boardId: board.id,
+    actor: await actorFromRegistrant(registrantId),
+    action: 'availability.create',
+    detail: { so_vung: data.length, ngay: [...ngayDung].join(', ') },
+  });
+  notifyBoard(board.id, 'availability.create');
+  return { created: data.length };
+};
+
+/** Gỡ một vùng rảnh. Chủ vùng hoặc trung tâm. */
+const deleteAvailability = async (id, registrantId) => {
+  const { data: row, error } = await supabase
+    .from('booking_availability')
+    .select('id, board_id, registrant_id')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) throw { statusCode: 404, message: 'Không tìm thấy khung giờ này' };
+
+  const manager = await isManagerSession(registrantId);
+  if (!manager && row.registrant_id !== registrantId) {
+    throw { statusCode: 403, message: 'Bạn chỉ gỡ được khung giờ của mình' };
+  }
+  const { error: delErr } = await supabase.from('booking_availability').delete().eq('id', id);
+  if (delErr) throw delErr;
+  notifyBoard(row.board_id, 'availability.delete');
+  return { id };
+};
+
+const listAvailabilityBySlug = async (slug, registrantId) => {
+  const board = await fetchBoardBySlug(slug);
+  const manager = await isManagerSession(registrantId);
+  return rank.listAvailability(board.id, registrantId, manager);
+};
+
+/**
+ * Sắp lịch tự động từ các vùng rảnh.
+ *
+ * Mặc định chỉ ĐỀ XUẤT (`apply` sai): giáo viên xem bản nháp rồi mới chốt.
+ * Xếp tự động mà ghi thẳng vào lịch thì một lần bấm nhầm là phải đi gỡ hàng
+ * chục buổi bằng tay.
+ */
+const autoArrange = async (slug, registrantId, { date = null, default_minutes: mac = null, apply = false } = {}) => {
+  if (!(await isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Chỉ trung tâm sắp được lịch' };
+  }
+  const board = await fetchBoardBySlug(slug);
+  const phutMac = Number(mac) || rank.PHUT_MAC_DINH;
+
+  let q = supabase
+    .from('booking_availability')
+    .select(
+      'id, registrant_id, session_date, start_time, end_time, desired_minutes, ' +
+        'registrant:booking_registrants!booking_availability_registrant_id_fkey(full_name, color)'
+    )
+    .eq('board_id', board.id);
+  if (date) q = q.eq('session_date', assertSessionDate(date));
+  const { data: khung, error } = await q;
+  if (error) throw error;
+  if (!khung?.length) throw { statusCode: 400, message: 'Chưa có ai khoanh giờ rảnh' };
+
+  // Buổi đã xếp tay phải tránh, không được đè lên
+  const ngay = [...new Set(khung.map((k) => String(k.session_date).slice(0, 10)))].sort();
+  const { data: daXep, error: errXep } = await supabase
+    .from('booking_requests')
+    .select('session_date, start_time, end_time')
+    .eq('board_id', board.id)
+    .in('status', ['pending', 'approved'])
+    .in('session_date', ngay);
+  if (errXep) throw errXep;
+
+  const ketQua = [];
+  for (const d of ngay) {
+    const cuaNgay = khung
+      .filter((k) => String(k.session_date).slice(0, 10) === d)
+      .map((k) => ({
+        registrant_id: k.registrant_id,
+        full_name: k.registrant?.full_name || null,
+        color: k.registrant?.color || null,
+        session_date: d,
+        start_time: String(k.start_time).slice(0, 5),
+        end_time: String(k.end_time).slice(0, 5),
+        desired_minutes: k.desired_minutes,
+      }));
+    const ban = (daXep || [])
+      .filter((b) => String(b.session_date).slice(0, 10) === d)
+      .map((b) => ({ start_time: String(b.start_time).slice(0, 5), end_time: String(b.end_time).slice(0, 5) }));
+    ketQua.push({ date: d, ...rank.xepMotNgay(cuaNgay, ban, phutMac) });
+  }
+
+  const tatCaXep = ketQua.flatMap((x) => x.xep);
+  if (!apply) {
+    return { applied: false, days: ketQua, placed: tatCaXep.length, failed: ketQua.flatMap((x) => x.hong).length };
+  }
+
+  // Chốt: tạo buổi thật. Bỏ qua buổi nào đụng lịch sẵn có của chính người đó
+  // thay vì hỏng cả lượt — xếp được chín trên mười vẫn hơn là không được gì.
+  const them = [];
+  const boQua = [];
+  for (const x of tatCaXep) {
+    try {
+      await assertNoSelfOverlap(board.id, x.registrant_id, x.session_date, x.start_time, x.end_time);
+      them.push({
+        board_id: board.id,
+        registrant_id: x.registrant_id,
+        session_date: x.session_date,
+        start_time: x.start_time,
+        end_time: x.end_time,
+      });
+    } catch {
+      boQua.push(x);
+    }
+  }
+  if (them.length) {
+    const { error: insErr } = await supabase.from('booking_requests').insert(them);
+    if (insErr) throw insErr;
+  }
+
+  logActivity({
+    boardId: board.id,
+    actor: await actorFromRegistrant(registrantId),
+    action: 'schedule.auto',
+    detail: { da_xep: them.length, bo_qua: boQua.length, do_dai_mac_dinh: phutMac },
+  });
+  notifyBoard(board.id, 'schedule.auto');
+  return { applied: true, days: ketQua, placed: them.length, skipped: boQua.length };
 };
 
 // ------------------------------------------------------------- chat
@@ -2717,6 +2938,10 @@ module.exports = {
   deletePoll,
   deleteMessage,
   syncSheetNow,
+  createAvailability,
+  deleteAvailability,
+  listAvailabilityBySlug,
+  autoArrange,
   sheetsConfigured: sheets.coCauHinh,
   listThreads,
   managerSetRegistrantColor,
