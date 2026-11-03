@@ -15,7 +15,7 @@ export default function WeekPicker({ weeks = [], selected, onSelect, disabled = 
   const next = index >= 0 && index < weeks.length - 1 ? weeks[index + 1] : null
 
   return (
-    <div className="mb-4 flex items-center gap-2">
+    <div className="mb-2 flex items-center gap-2">
       <button
         type="button"
         disabled={!prev || disabled}
@@ -37,7 +37,7 @@ export default function WeekPicker({ weeks = [], selected, onSelect, disabled = 
               disabled={disabled}
               onClick={() => onSelect(week.week_start)}
               className={clsx(
-                'relative shrink-0 rounded-xl border px-3 py-2 text-left transition-colors',
+                'relative shrink-0 rounded-xl border px-3 py-1.5 text-left transition-colors',
                 active
                   ? 'border-primary-500 bg-primary-600 text-white shadow-sm'
                   : past

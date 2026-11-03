@@ -819,13 +819,13 @@ export default function BookingBoardPage() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-50">
       <header className="shrink-0 border-b border-slate-200 bg-white">
-        <div className="w-full px-3 py-3 sm:px-5">
+        <div className="w-full px-3 py-2 sm:px-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <h1 className="font-display text-lg font-semibold text-stone-900 sm:text-xl">
                 {board?.title}
               </h1>
-              <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500">
+              <p className="mt-0.5 flex items-center gap-1.5 text-sm text-slate-500">
                 <CalendarDays className="h-4 w-4" />
                 {multiWeek
                   ? `${board.week_count} tuần: ${formatDate(board.week_start)} – ${formatDate(board.week_end)}`
@@ -881,7 +881,7 @@ export default function BookingBoardPage() {
         </div>
       </header>
 
-      <main className="flex w-full min-h-0 flex-1 flex-col px-3 py-3 sm:px-5">
+      <main className="flex w-full min-h-0 flex-1 flex-col px-3 py-2 sm:px-5">
         {!board?.is_accepting && (
           <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <Lock className="mt-0.5 h-4 w-4 shrink-0" />
@@ -913,28 +913,31 @@ export default function BookingBoardPage() {
 
         <WeekPicker weeks={weeks} selected={week} onSelect={handleSelectWeek} disabled={refreshing} />
 
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           {/* Chỉ dẫn thao tác chuyển hết vào nút "?" — để ngoài này thì mỗi lần
               vào trang phải đọc lại một đoạn mà thật ra chỉ cần đọc một lần */}
           {/* Tiền để cạnh nút chứ không nhét dưới đáy danh sách: nó phải đọc
               được ở CẢ HAI dạng xem, mà lưới giờ thì không có chỗ nào ở đáy.
               Chỉ người quản lý thấy — server cũng không gửi tiền cho ai khác. */}
           {isManager ? (
-            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs">
+            <div className="flex w-full min-w-0 items-baseline gap-x-3 overflow-hidden whitespace-nowrap text-xs">
               <span className="flex items-baseline gap-1">
                 <span className="text-slate-400">Tuần</span>
                 <b className="text-sm text-emerald-700">{formatMoney(money.week)}</b>
               </span>
-              <span className="flex items-baseline gap-1">
+              <span className="hidden items-baseline gap-1 sm:flex">
                 <span className="text-slate-400">Tháng</span>
                 <b className="text-slate-700">{formatMoney(money.month)}</b>
               </span>
-              <span className="flex items-baseline gap-1">
+              <span className="hidden items-baseline gap-1 sm:flex">
                 <span className="text-slate-400">Tổng cộng</span>
                 <b className="text-slate-700">{formatMoney(money.all)}</b>
               </span>
-              <span className="text-slate-400">
+              <span className="hidden text-slate-400 sm:inline">
                 · {money.doneWeek}/{money.countWeek} buổi tuần này đã xong
+              </span>
+              <span className="text-slate-400 sm:hidden">
+                · {money.doneWeek}/{money.countWeek} xong
               </span>
             </div>
           ) : (
@@ -944,7 +947,7 @@ export default function BookingBoardPage() {
                 : ''}
             </p>
           )}
-          <div className="flex items-center gap-1">
+          <div className="flex w-full items-center gap-1 overflow-x-auto">
             <Button
               variant="ghost"
               size="sm"
@@ -1047,7 +1050,7 @@ export default function BookingBoardPage() {
           // chiều cao nội dung, lưới đẩy cả trang dài ra thay vì tự cuộn
           <div className="flex min-h-0 flex-1 flex-col">
             {isManager && (
-              <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5">
+              <div className="mb-1.5 flex items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white px-2 py-1 sm:flex-wrap">
                 <span className="mr-1 text-xs font-medium text-slate-500">Con dấu</span>
                 {[
                   { key: 'bold', label: 'Tô đậm', icon: Bold },
@@ -1075,11 +1078,6 @@ export default function BookingBoardPage() {
               </div>
             )}
 
-            {slots.length === 0 && (
-              <p className="mb-2 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-500">
-                Tuần này chưa có ca nào — chọn giờ bạn muốn học.
-              </p>
-            )}
             {isManager && arranging && (
               <SchedulingTray
                 items={pool}

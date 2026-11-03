@@ -68,7 +68,9 @@ export default function HourGrid({
   const subPerHour = 60 / step
   // Chiều cao ô theo từng bước. Trước đây dùng ngưỡng step>=30 nên ô 15 phút bị
   // tụt xuống cùng chiều cao với ô 5 phút — bé tới mức khó bấm trúng.
-  const cellH = { 60: 'h-9', 30: 'h-8', 15: 'h-7', 5: 'h-4' }[step]
+  // Chữ trong khối to lên 40% nên ô phải cao theo, không thì chữ bị cắt
+  // ngọn. Bước 5 phút vẫn để thấp: ô đó không in chữ, chỉ để kéo chọn.
+  const cellH = { 60: 'h-11', 30: 'h-10', 15: 'h-9', 5: 'h-5' }[step]
   // Chỉ đủ chỗ in giờ khi ô cao từ 15 phút trở lên
   const showLabel = step >= 15
 
@@ -353,10 +355,12 @@ export default function HourGrid({
       // cao ô. Thử bằng margin âm thì hỏng: margin âm nuốt luôn khe space-y-1
       // nên cả cột ngắn lại 13px so với các cột khác, khối tụt lên và vẫn hở
       // đúng chỗ sang hàng giờ mới.
-      // 4px = khe space-y-1 giữa hai ô cùng một hàng giờ.
-      // 9px = 4px padding dưới + 1px viền hàng + 4px padding trên của hàng sau.
+      // 4px  = khe space-y-1 giữa hai ô cùng một hàng giờ.
+      // 10px = 4px padding dưới + 2px viền hàng + 4px padding trên của hàng sau.
+      //        Viền hàng giờ là border-b-2; để 9px như hồi viền 1px thì mỗi lần
+      //        khối bắc qua ranh giới giờ lại hở một sợi trắng.
       const lastOfHour = (minute % 60) + step >= 60
-      const bridge = isEnd ? 0 : lastOfHour ? 9 : 4
+      const bridge = isEnd ? 0 : lastOfHour ? 10 : 4
       return (
         <button
           type="button"
@@ -436,7 +440,9 @@ export default function HourGrid({
           className={clsx(
             'relative z-10 flex w-full items-center justify-center gap-1 border-x font-semibold',
             cellH,
-            showLabel ? 'text-[10px]' : 'text-[9px]',
+            // To hơn 40% so với 10/9px — tên học viên là thứ phải đọc được
+            // từ xa, 10px trên nền màu nhạt thì phải ghé sát màn hình
+            showLabel ? 'text-[14px]' : 'text-[13px]',
             tone
               ? clsx(tone.border, tone.bg, tone.text, 'hover:brightness-95')
               : 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100',
@@ -487,7 +493,7 @@ export default function HourGrid({
           {myReq.done_at && isStampRow && stampFits && (
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 -rotate-[14deg] select-none whitespace-nowrap rounded-[4px] border-2 border-red-500/80 bg-white/35 px-1.5 py-[1px] text-[9px] font-black uppercase leading-tight tracking-[0.12em] text-red-600/90 shadow-[0_0_0_1px_rgba(220,38,38,0.25)_inset]"
+              className="pointer-events-none absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 -rotate-[14deg] select-none whitespace-nowrap rounded-[4px] border-2 border-red-500/80 bg-white/35 px-2 py-[2px] text-[12px] font-black uppercase leading-tight tracking-[0.12em] text-red-600/90 shadow-[0_0_0_1px_rgba(220,38,38,0.25)_inset]"
             >
               Hoàn thành
             </span>
@@ -637,7 +643,7 @@ export default function HourGrid({
               : 'bấm hoặc kéo để chọn giờ muốn đăng ký'
         }`}
         className={clsx(
-          'group relative flex w-full items-center justify-center gap-1 rounded-md border border-dashed text-[10px] font-medium transition-colors',
+          'group relative flex w-full items-center justify-center gap-1 rounded-md border border-dashed text-[14px] font-medium transition-colors',
           cellH,
           // Vạch mốc phút: đường kẻ trên đầu ô, không phải viền bao quanh
           !isSelected &&
@@ -691,7 +697,7 @@ export default function HourGrid({
   return (
     <div
       className={clsx(
-        'rounded-2xl border border-slate-200 bg-white',
+        'rounded-2xl border-2 border-slate-300 bg-white',
         fillHeight && 'flex h-full min-h-0 flex-col'
       )}
     >
@@ -739,7 +745,7 @@ export default function HourGrid({
       {/* Đang kéo thì chặn bôi đen chữ, không thì cả lưới xanh lè như copy văn bản */}
       <div className={clsx(!narrow && 'min-w-[760px]', dragging && 'select-none')}>
         {/* Hàng tiêu đề ngày */}
-        <div className="sticky top-0 z-30 grid border-b border-slate-200 bg-white" style={gridCols}>
+        <div className="sticky top-0 z-30 grid border-b-2 border-slate-300 bg-white" style={gridCols}>
           <div className="sticky left-0 z-20 bg-slate-50 px-1 py-2" />
           {days.map((dow) => {
             const date = dateOf(dow)
@@ -748,12 +754,12 @@ export default function HourGrid({
               <div
                 key={dow}
                 className={clsx(
-                  'border-l border-slate-100 px-1 py-2 text-center',
+                  'border-l-2 border-slate-200 px-1 py-2 text-center',
                   past ? 'bg-slate-50 text-slate-400' : 'bg-primary-50/70 text-primary-800'
                 )}
               >
-                <p className="text-xs font-semibold">{DAY_SHORT[dow]}</p>
-                {date && <p className="text-[11px] opacity-70">{formatShortDate(date)}</p>}
+                <p className="text-[17px] font-bold">{DAY_SHORT[dow]}</p>
+                {date && <p className="text-[15px] opacity-70">{formatShortDate(date)}</p>}
               </div>
             )
           })}
@@ -761,8 +767,8 @@ export default function HourGrid({
 
         {/* Các hàng giờ */}
         {HOURS.map((hour) => (
-          <div key={hour} className="grid border-b border-slate-100 last:border-b-0" style={gridCols}>
-            <div className="sticky left-0 z-10 flex items-start justify-end bg-slate-50 px-1.5 py-1 text-[11px] font-medium text-slate-400">
+          <div key={hour} className="grid border-b-2 border-slate-200 last:border-b-0" style={gridCols}>
+            <div className="sticky left-0 z-10 flex items-start justify-end bg-slate-50 px-1.5 py-1 text-[15px] font-semibold text-slate-500">
               {pad2(hour)}:00
             </div>
 
@@ -778,7 +784,7 @@ export default function HourGrid({
                 <div
                   key={dow}
                   className={clsx(
-                    'relative min-h-[44px] space-y-1 border-l border-slate-100 p-1',
+                    'relative min-h-[44px] space-y-1 border-l-2 border-slate-200 p-1',
                     past && 'bg-slate-50/60'
                   )}
                 >
