@@ -15,6 +15,10 @@ const server = http.createServer(app);
 const io = initSocket(server);
 app.set('io', io);
 
+// Quét lại toàn bộ sổ buổi học sang Google Sheet lúc 00:00 giờ VN mỗi đêm.
+// Thiếu cấu hình Google thì hàm này chỉ ghi một dòng log rồi thôi.
+require('./src/services/bookingSheets.service').batDauHenHangDem();
+
 // Graceful shutdown
 const shutdown = async (signal) => {
   console.log(`\n${signal} received. Shutting down gracefully...`);

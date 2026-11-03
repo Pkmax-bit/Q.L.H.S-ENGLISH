@@ -37,6 +37,10 @@ const TOI_DA_DONG = 5000;
 
 const DAY_VN = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
+// Việt Nam là UTC+7 cố định, không có giờ mùa hè, nên cộng thẳng được. Render
+// chạy theo giờ UTC, lấy giờ máy là hẹn trúng 7 giờ sáng chứ không phải nửa đêm.
+const LECH_VN_MS = 7 * 60 * 60 * 1000;
+
 // Màu nền dòng, lấy đúng tông -100 của bảng màu trên lưới để nhìn Sheet và
 // nhìn lưới ra cùng một người
 const MAU_NEN = {
@@ -370,6 +374,70 @@ const dongBoNgay = async (boardId) => {
   return { tabs: ketQua };
 };
 
+/** Mọi năm đang có buổi đã hoàn thành — dùng cho lần quét hằng đêm. */
+const cacNamCoBuoi = async () => {
+  const { data } = await supabase
+    .from('booking_requests')
+    .select('session_date')
+    .in('status', ['pending', 'approved'])
+    .not('done_at', 'is', null);
+  return [...new Set((data || []).map((r) => String(r.session_date).slice(0, 4)))].sort();
+};
+
+/**
+ * Ghi lại MỌI tab năm, không theo bảng nào cả.
+ *
+ * Vòng hẹn giờ 8 giây chỉ chạy khi có người thao tác. Một buổi bị sửa lúc
+ * server đang khởi động lại, hay một lần ghi hỏng vì mạng, thì Sheet lệch cho
+ * tới khi ai đó đụng vào lịch lần nữa. Quét lại cả sổ mỗi đêm là cái lưới cuối
+ * cùng: sáng ra Sheet luôn đúng, bất kể hôm qua có gì trượt.
+ */
+const dongBoTatCa = async () => {
+  const fileId = layId();
+  const khoa = layKhoa();
+  if (!fileId || !khoa) return { tabs: [] };
+  const token = await layToken(khoa);
+  const ketQua = [];
+  for (const n of await cacNamCoBuoi()) {
+    ketQua.push(await ghiTabNam(token, fileId, n));
+  }
+  return { tabs: ketQua };
+};
+
+/**
+ * Hẹn chạy lúc 00:00 giờ Việt Nam mỗi ngày.
+ *
+ * Tự tính mốc rồi setTimeout, không kéo thêm node-cron: đúng một mốc cố định
+ * mỗi ngày thì không cần cả cú pháp cron.
+ *
+ * Hẹn LẠI sau mỗi lần chạy thay vì setInterval 24 giờ: setInterval trôi dần
+ * theo thời gian ngủ của tiến trình, vài tuần là lệch khỏi nửa đêm.
+ */
+const batDauHenHangDem = () => {
+  if (!coCauHinh()) {
+    console.log('[sheets] chưa cấu hình Google, bỏ qua lịch quét hằng đêm');
+    return;
+  }
+  const hen = () => {
+    const bayGioVN = new Date(Date.now() + LECH_VN_MS);
+    const nuaDemVN = Date.UTC(
+      bayGioVN.getUTCFullYear(),
+      bayGioVN.getUTCMonth(),
+      bayGioVN.getUTCDate() + 1
+    );
+    const cho = nuaDemVN - LECH_VN_MS - Date.now();
+    setTimeout(() => {
+      dongBoTatCa()
+        .then((r) => console.log(`[sheets] quét đêm: ${r.tabs.map((t) => `${t.nam}:${t.rows} dòng`).join(', ') || 'chưa có buổi nào'}`))
+        .catch((e) => console.warn('[sheets] quét đêm hỏng:', e.message || e))
+        .finally(hen);
+    }, cho).unref?.();
+    const gio = Math.round(cho / 60000);
+    console.log(`[sheets] lần quét tới sau ${Math.floor(gio / 60)}h${String(gio % 60).padStart(2, '0')} (00:00 giờ VN)`);
+  };
+  hen();
+};
+
 /**
  * Hẹn một lần đồng bộ. Gọi bao nhiêu lần trong 8 giây cũng chỉ ghi một lần.
  * Không bao giờ ném lỗi ra ngoài — đây là việc phụ, hỏng thì ghi log.
@@ -395,4 +463,4 @@ const henDongBo = (boardId) => {
   );
 };
 
-module.exports = { henDongBo, dongBoNgay, coCauHinh, bangChoNam };
+module.exports = { henDongBo, dongBoNgay, dongBoTatCa, batDauHenHangDem, coCauHinh, bangChoNam };
