@@ -1296,7 +1296,7 @@ const listMessages = async (slug, registrantId, targetId = null) => {
 
   const { data, error } = await supabase
     .from('booking_messages')
-    .select('id, sender, body, created_at, read_at, reply_to, image_url')
+    .select('id, sender, body, created_at, read_at, reply_to, image_url, deleted_at')
     .eq('board_id', board.id)
     .eq('registrant_id', thread)
     .order('created_at', { ascending: true })
@@ -1412,7 +1412,11 @@ const listMessages = async (slug, registrantId, targetId = null) => {
         ? {
             id: quoted.id,
             sender: quoted.sender,
-            body: quoted.body ? quoted.body.slice(0, 160) : '[Hình ảnh]',
+            body: quoted.deleted_at
+              ? 'Tin nhắn đã được thu hồi'
+              : quoted.body
+                ? quoted.body.slice(0, 160)
+                : '[Hình ảnh]',
           }
         : m.reply_to
           ? { id: m.reply_to, sender: null, body: null } // tin gốc đã bị xóa
@@ -1692,6 +1696,63 @@ const closePoll = async (messageId, registrantId) => {
 };
 
 /**
+ * Thu hồi một tin nhắn.
+ *
+ * Xóa NỘI DUNG (chữ, ảnh, cả file trong kho) nhưng giữ lại dòng, đánh dấu
+ * deleted_at — xem lý do ở migration 056.
+ *
+ * Ai thu hồi được: người gửi, và trung tâm. `sender` đã ghi phía nào gửi nên
+ * không cần cột tác giả riêng. Người quản lý gỡ được tin của học viên vì
+ * luồng nằm trên bảng của họ — ảnh bậy bạ thì phải có người gỡ xuống được.
+ */
+const deleteMessage = async (messageId, registrantId) => {
+  const { data: msg, error } = await supabase
+    .from('booking_messages')
+    .select('id, board_id, registrant_id, sender, image_path, deleted_at')
+    .eq('id', messageId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!msg) throw { statusCode: 404, message: 'Không tìm thấy tin nhắn này' };
+  if (msg.deleted_at) throw { statusCode: 409, message: 'Tin này đã được thu hồi' };
+
+  const manager = await isManagerSession(registrantId);
+  const laNguoiGui = manager
+    ? msg.sender === 'center'
+    : msg.sender === 'student' && msg.registrant_id === registrantId;
+  if (!laNguoiGui && !manager) {
+    throw { statusCode: 403, message: 'Chỉ người gửi mới thu hồi được tin' };
+  }
+
+  // Gỡ file trước khi xóa đường dẫn, không thì mất dấu file nằm lại trong kho
+  if (msg.image_path) {
+    await supabase.storage.from(BOOKING_CHAT_BUCKET()).remove([msg.image_path]);
+  }
+
+  const { error: upErr } = await supabase
+    .from('booking_messages')
+    .update({ body: null, image_url: null, image_path: null, deleted_at: new Date().toISOString() })
+    .eq('id', messageId);
+  if (upErr) throw upErr;
+
+  // Cảm xúc và bình chọn gắn vào tin đã thu hồi thì không còn nghĩa gì
+  await supabase.from('booking_message_reactions').delete().eq('message_id', messageId);
+  await supabase.from('booking_message_polls').delete().eq('message_id', messageId);
+
+  logActivity({
+    boardId: msg.board_id,
+    actor: await actorFromRegistrant(registrantId),
+    action: 'message.delete',
+    targetId: messageId,
+    detail: { ben: msg.sender === 'center' ? 'trung tâm' : 'học viên' },
+  });
+
+  const payload = { board_id: msg.board_id, thread_id: msg.registrant_id, deleted: true };
+  emitNotification('booking:message', payload, `booking_thread:${msg.registrant_id}`);
+  emitNotification('booking:message', payload, `booking_manager:${msg.board_id}`);
+  return { message_id: messageId };
+};
+
+/**
  * Xóa bình chọn. Bình chọn LÀ một tin nhắn nên xóa luôn cả tin: để lại cái
  * vỏ "[Bình chọn] ..." không bấm được gì thì còn khó hiểu hơn là mất hẳn.
  * Phiếu bầu đi theo bằng ON DELETE CASCADE.
@@ -1742,7 +1803,7 @@ const listThreads = async (slug, registrantId) => {
 
   const { data, error } = await supabase
     .from('booking_messages')
-    .select('registrant_id, sender, body, created_at, read_at, registrant:booking_registrants!booking_messages_registrant_id_fkey(id, full_name, phone, color)')
+    .select('registrant_id, sender, body, created_at, read_at, deleted_at, registrant:booking_registrants!booking_messages_registrant_id_fkey(id, full_name, phone, color)')
     .eq('board_id', board.id)
     .order('created_at', { ascending: false })
     .limit(500);
@@ -1756,7 +1817,7 @@ const listThreads = async (slug, registrantId) => {
         full_name: m.registrant?.full_name || null,
         phone: m.registrant?.phone || null,
         color: m.registrant?.color || null,
-        last_body: m.body,
+        last_body: m.deleted_at ? 'Tin nhắn đã được thu hồi' : m.body || '[Hình ảnh]',
         last_at: m.created_at,
         unread: 0,
       });
@@ -2640,6 +2701,7 @@ module.exports = {
   votePoll,
   closePoll,
   deletePoll,
+  deleteMessage,
   listThreads,
   managerSetRegistrantColor,
   managerSetRegistrantPrice,

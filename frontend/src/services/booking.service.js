@@ -94,6 +94,7 @@ const bookingService = {
     publicApi.post(`/booking/public/messages/${messageId}/vote`, { option_id: optionId }),
   closePoll: (messageId) => publicApi.post(`/booking/public/messages/${messageId}/close-poll`),
   deletePoll: (messageId) => publicApi.delete(`/booking/public/messages/${messageId}/poll`),
+  deleteBoardMessage: (messageId) => publicApi.delete(`/booking/public/messages/${messageId}`),
   managerListPool: (slug) => publicApi.get(`/booking/public/boards/${slug}/pool`),
   managerDetachRequest: (requestId) => publicApi.post(`/booking/public/requests/${requestId}/detach`),
   managerRemoveFromPool: (itemId) => publicApi.delete(`/booking/public/pool/${itemId}`),

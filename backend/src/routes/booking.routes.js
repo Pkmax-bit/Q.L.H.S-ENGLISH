@@ -66,6 +66,7 @@ router.post('/public/boards/:slug/polls', publicLimiter, bookingAuth, controller
 router.post('/public/messages/:messageId/vote', publicLimiter, bookingAuth, controller.votePoll);
 router.post('/public/messages/:messageId/close-poll', publicLimiter, bookingAuth, controller.closePoll);
 router.delete('/public/messages/:messageId/poll', publicLimiter, bookingAuth, controller.deletePoll);
+router.delete('/public/messages/:messageId', publicLimiter, bookingAuth, controller.deleteMessage);
 // Sắp xếp ngay trên trang công khai, chỉ số có cờ quản lý
 router.get('/public/boards/:slug/pool', publicLimiter, bookingAuth, scheduling.managerListPool);
 router.post('/public/requests/:requestId/detach', publicLimiter, bookingAuth, scheduling.managerDetachRequest);

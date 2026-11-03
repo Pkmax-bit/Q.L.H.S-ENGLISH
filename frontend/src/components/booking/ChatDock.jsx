@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, BarChart3, Check, CheckCheck, CornerUpLeft, ImagePlus, Lock, MessageCircle, Plus, Send, SmilePlus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Ban, BarChart3, Check, CheckCheck, CornerUpLeft, ImagePlus, Lock, MessageCircle, Plus, Send, SmilePlus, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { colorClasses } from '../../lib/bookingUtils'
 import { useIsNarrow } from '../../hooks/useIsNarrow'
@@ -268,6 +268,30 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
     }
   }
 
+  /**
+   * Thu hồi tin. Server xóa nội dung nhưng GIỮ dòng lại, nên ở đây cũng chỉ
+   * đổi tin thành "đã thu hồi" chứ không gỡ khỏi danh sách — gỡ hẳn thì ô
+   * trích dẫn ở tin trả lời nó cũng mất theo, người đọc còn lại một câu trả
+   * lời không biết trả lời cái gì.
+   */
+  const removeMessage = async (messageId) => {
+    setAskDelete(null)
+    const truoc = messages
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId
+          ? { ...m, body: null, image_url: null, poll: null, reactions: [], deleted_at: new Date().toISOString() }
+          : m
+      )
+    )
+    try {
+      await api.deleteMessage(messageId)
+    } catch (err) {
+      setMessages(truoc)
+      setError(err.response?.data?.message || 'Không thu hồi được tin')
+    }
+  }
+
   const removePoll = async (messageId) => {
     setAskDelete(null)
     try {
@@ -433,6 +457,17 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
                             </span>
                             <span className="block truncate">{m.reply.body || 'Tin đã bị xóa'}</span>
                           </div>
+                        )}
+                        {m.deleted_at && (
+                          <p
+                            className={clsx(
+                              'flex items-center gap-1.5 italic',
+                              mine ? 'text-white/70' : 'text-slate-400'
+                            )}
+                          >
+                            <Ban className="h-3.5 w-3.5 shrink-0" />
+                            Tin nhắn đã được thu hồi
+                          </p>
                         )}
                         {m.image_url && (
                           <a href={m.image_url} target="_blank" rel="noreferrer" className="block">
@@ -657,27 +692,52 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
                       )}
                     </div>
 
-                    {/* Hai nút nhỏ cạnh bong bóng. Để mờ sẵn chứ không ẩn hẳn:
+                    {/* Mấy nút nhỏ cạnh bong bóng. Để mờ sẵn chứ không ẩn hẳn:
                         màn cảm ứng không có trạng thái rê chuột, ẩn đi là không
-                        ai biết có trả lời và cảm xúc. */}
-                    <div className="flex shrink-0 flex-col gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
-                      <button
-                        type="button"
-                        title="Thả cảm xúc"
-                        onClick={() => setPickerFor((cur) => (cur === m.id ? null : m.id))}
-                        className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-primary-600"
-                      >
-                        <SmilePlus className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        title="Trả lời tin này"
-                        onClick={() => setReplyTo(m)}
-                        className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-primary-600"
-                      >
-                        <CornerUpLeft className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                        ai biết có trả lời và cảm xúc.
+                        Tin đã thu hồi thì không còn gì để thả, để trả lời hay
+                        để thu hồi tiếp — bỏ cả cụm cho khỏi bấm nhầm. */}
+                    {!m.deleted_at && (
+                      <div className="flex shrink-0 flex-col gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                        <button
+                          type="button"
+                          title="Thả cảm xúc"
+                          onClick={() => setPickerFor((cur) => (cur === m.id ? null : m.id))}
+                          className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-primary-600"
+                        >
+                          <SmilePlus className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          title="Trả lời tin này"
+                          onClick={() => setReplyTo(m)}
+                          className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-primary-600"
+                        >
+                          <CornerUpLeft className="h-3.5 w-3.5" />
+                        </button>
+                        {/* Thu hồi: hai nhịp bấm, nhịp hai nút đỏ lên. Tin đã
+                            gửi đi rồi nên không có đường lùi, mà dựng hộp thoại
+                            giữa luồng chat thì cắt ngang mạch đọc. */}
+                        {(mine || isManager) && (
+                          <button
+                            type="button"
+                            title={askDelete === m.id ? 'Bấm lần nữa để thu hồi' : 'Thu hồi tin này'}
+                            onClick={() =>
+                              askDelete === m.id ? removeMessage(m.id) : setAskDelete(m.id)
+                            }
+                            onBlur={() => setAskDelete((cur) => (cur === m.id ? null : cur))}
+                            className={clsx(
+                              'rounded p-0.5 hover:bg-slate-100',
+                              askDelete === m.id
+                                ? 'bg-red-50 text-red-600'
+                                : 'text-slate-400 hover:text-red-600'
+                            )}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )

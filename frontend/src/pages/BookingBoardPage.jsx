@@ -161,6 +161,7 @@ export default function BookingBoardPage() {
       vote: (messageId, optionId) => bookingService.votePoll(messageId, optionId),
       closePoll: (messageId) => bookingService.closePoll(messageId),
       deletePoll: (messageId) => bookingService.deletePoll(messageId),
+      deleteMessage: (messageId) => bookingService.deleteBoardMessage(messageId),
     }),
     [slug]
   )

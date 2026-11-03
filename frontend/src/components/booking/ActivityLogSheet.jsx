@@ -14,6 +14,9 @@ const ACTION_LABEL = {
   'registrant.color': 'đổi màu học viên',
   'registrant.price': 'đặt học phí',
   'message.send': 'gửi tin nhắn',
+  'message.delete': 'thu hồi tin nhắn',
+  'poll.create': 'tạo bình chọn',
+  'poll.delete': 'xóa bình chọn',
 }
 
 const FIELD_LABEL = {

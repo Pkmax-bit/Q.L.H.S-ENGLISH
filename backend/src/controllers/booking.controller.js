@@ -258,6 +258,11 @@ const closePoll = handle(async (req, res) => {
   return response.success(res, result, 'Đã khóa bình chọn');
 });
 
+const deleteMessage = handle(async (req, res) => {
+  const result = await bookingService.deleteMessage(req.params.messageId, req.registrant.id);
+  return response.success(res, result, 'Đã thu hồi tin nhắn');
+});
+
 const deletePoll = handle(async (req, res) => {
   const result = await bookingService.deletePoll(req.params.messageId, req.registrant.id);
   return response.success(res, result, 'Đã xóa bình chọn');
@@ -350,6 +355,7 @@ module.exports = {
   votePoll,
   closePoll,
   deletePoll,
+  deleteMessage,
   managerSetRegistrantColor,
   managerSetRegistrantPrice,
   adminCancelRequest,
