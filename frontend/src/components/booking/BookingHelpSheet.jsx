@@ -1,4 +1,4 @@
-import { CalendarPlus, Hand, MousePointerClick, Pencil, Trash2, X } from 'lucide-react'
+import { BadgeCheck, CalendarPlus, Hand, List, MousePointerClick, Pencil, Trash2, Users, X } from 'lucide-react'
 import clsx from 'clsx'
 import { useIsNarrow } from '../../hooks/useIsNarrow'
 
@@ -55,6 +55,25 @@ export default function BookingHelpSheet({ open, onClose, isManager = false }) {
       label: 'Ca trung tâm đã mở',
       body: 'Bấm để chọn, rồi bấm Giữ chỗ ở thanh dưới. Hết chỗ thì ô bị mờ.',
     },
+    {
+      icon: List,
+      label: 'Nút Danh sách',
+      body: 'Đổi giữa lưới giờ và danh sách. Danh sách chỉ in buổi có thật, xếp theo ngày — dễ đọc hơn khi chỉ muốn biết tuần này có những buổi nào.',
+    },
+    ...(isManager
+      ? [
+          {
+            icon: Users,
+            label: 'Nút Học viên',
+            body: 'Đặt giá một buổi cho từng người và xem đã thu bao nhiêu. Giá ở đây là giá mặc định, điền sẵn lúc đóng dấu hoàn thành.',
+          },
+          {
+            icon: BadgeCheck,
+            label: 'Đóng dấu hoàn thành',
+            body: 'Hỏi tiền buổi đó trước khi đóng. Để trống thì lấy giá đã đặt của học viên. Tiền đã chốt nằm trên từng buổi nên sau này đổi giá không làm sai sổ cũ.',
+          },
+        ]
+      : []),
   ]
 
   return (

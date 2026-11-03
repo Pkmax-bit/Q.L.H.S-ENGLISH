@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import clsx from 'clsx'
-import { BadgeCheck, Bold, CalendarDays, Eraser, HelpCircle, History, LayoutGrid, List, Lock, LogOut, Move, RefreshCw, RotateCcw, Star, TriangleAlert } from 'lucide-react'
+import { BadgeCheck, Bold, CalendarDays, Eraser, HelpCircle, History, LayoutGrid, List, Lock, LogOut, Move, RefreshCw, RotateCcw, Star, TriangleAlert, Users } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Button from '../components/common/Button'
 import Modal from '../components/common/Modal'
 import Select from '../components/common/Select'
 import PhoneGate from '../components/booking/PhoneGate'
 import WeekPicker from '../components/booking/WeekPicker'
-import WeekSlotGrid from '../components/booking/WeekSlotGrid'
+import BookingListView from '../components/booking/BookingListView'
 import HourGrid from '../components/booking/HourGrid'
 import SelectionBar from '../components/booking/SelectionBar'
 import MyBookingsBar from '../components/booking/MyBookingsBar'
@@ -17,6 +17,7 @@ import BookingHelpSheet from '../components/booking/BookingHelpSheet'
 import ActivityLogSheet from '../components/booking/ActivityLogSheet'
 import ChatDock from '../components/booking/ChatDock'
 import SchedulingTray from '../components/booking/SchedulingTray'
+import StudentMoneySheet from '../components/booking/StudentMoneySheet'
 import DropConflictDialog from '../components/booking/DropConflictDialog'
 import { useContextMenu } from '../hooks/useContextMenu'
 import { useBookingSocket } from '../hooks/useBookingSocket'
@@ -67,6 +68,9 @@ export default function BookingBoardPage() {
   // Con dấu đang cầm trên tay: bấm vào buổi nào là đóng dấu vào buổi đó
   const [stampTool, setStampTool] = useState(null)
   const [unreadMessages, setUnreadMessages] = useState(0)
+  const [moneyOpen, setMoneyOpen] = useState(false)
+  // Buổi đang chờ nhập tiền trước khi đóng dấu hoàn thành
+  const [donePrompt, setDonePrompt] = useState(null) // { request, amount }
 
   // Socket chung: lưới nghe 'booking:board_changed', hộp chat nghe 'booking:message'
   const { socket } = useBookingSocket({
@@ -84,6 +88,28 @@ export default function BookingBoardPage() {
     () => bookingService.listBoardActivity(slug).then((res) => res.data?.data ?? res.data ?? []),
     [slug]
   )
+
+  // Hộp học viên tự gọi lúc mở chứ không giữ sẵn trong trang: tổng tiền đổi
+  // mỗi lần đóng dấu, giữ bản cũ trong state thì mở ra là thấy số lỗi thời
+  const loadStudentMoney = useCallback(
+    () => bookingService.listBoardStudents(slug).then((res) => res.data?.data ?? res.data ?? []),
+    [slug]
+  )
+
+  const setStudentPrice = async (registrantId, price) => {
+    setSavingRequest(true)
+    try {
+      const res = await bookingService.managerSetRegistrantPrice(registrantId, price)
+      showFlash('success', res.data?.message || 'Đã đặt học phí')
+      await load({ silent: true })
+      return true
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không đặt được học phí')
+      return false
+    } finally {
+      setSavingRequest(false)
+    }
+  }
 
   // Gom API chat lại một chỗ để ChatDock không phải biết slug
   const chatApi = useMemo(
@@ -633,16 +659,32 @@ export default function BookingBoardPage() {
    * có của buổi đó, nên quét qua một loạt rồi quét lại là gỡ ra — không cần
    * đổi sang công cụ khác để xóa.
    */
+  /**
+   * Đóng dấu hoàn thành là lúc CHỐT TIỀN, nên hỏi số tiền thật trước.
+   *
+   * Ô tiền để trống thì lấy giá mặc định của học viên — phần lớn buổi đúng
+   * giá, gõ lại mỗi lần chỉ tổ gõ sai. Gỡ dấu thì không hỏi gì: tiền đã chốt
+   * vẫn nằm trên buổi đó, đóng dấu lại là có ngay.
+   */
+  const askDone = (request) => setDonePrompt({ request, amount: '' })
+
   const applyStamp = (request, tool) => {
+    if (tool === 'done' && !request.done_at) return askDone(request)
     const patch =
       tool === 'bold'
         ? { is_bold: !request.is_bold }
         : tool === 'mark'
           ? { is_marked: !request.is_marked }
           : tool === 'done'
-            ? { done: !request.done_at }
+            ? { done: false }
             : { is_bold: false, is_marked: false, done: false }
     return toggleFlag(request, patch)
+  }
+
+  const confirmDone = async () => {
+    const { request, amount } = donePrompt
+    setDonePrompt(null)
+    await toggleFlag(request, { done: true, amount: amount.trim() })
   }
 
   const undoLast = async () => {
@@ -833,6 +875,15 @@ export default function BookingBoardPage() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  icon={Users}
+                  onClick={() => setMoneyOpen(true)}
+                  title="Học viên, học phí một buổi và tiền đã thu"
+                >
+                  <span className="hidden sm:inline">Học viên</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   icon={History}
                   onClick={() => setLogOpen(true)}
                   title="Nhật ký ai làm gì"
@@ -849,25 +900,17 @@ export default function BookingBoardPage() {
                 className="w-28 py-1.5 text-xs"
               />
             )}
-            {/* Lưới 17 giờ x 7 ngày phải cuộn ngang trên điện thoại; dạng danh sách
-                theo ngày dễ đọc hơn nhiều nên để người dùng tự chọn */}
+            {/* MỘT nút đổi qua lại, không phải hai nút cạnh nhau: hai nút chiếm
+                chỗ gấp đôi mà lúc nào cũng có một cái vô dụng — nó đang là dạng
+                đang xem. Nhãn là NƠI SẼ TỚI, nên bấm xong nhãn đổi theo. */}
             <Button
-              variant={view === 'hours' ? 'outline' : 'ghost'}
+              variant="ghost"
               size="sm"
-              icon={LayoutGrid}
-              onClick={() => setView('hours')}
-              title="Xem thời khóa biểu theo giờ"
+              icon={view === 'hours' ? List : LayoutGrid}
+              onClick={() => setView((v) => (v === 'hours' ? 'list' : 'hours'))}
+              title={view === 'hours' ? 'Xem dạng danh sách' : 'Xem dạng lưới giờ'}
             >
-              <span className="hidden sm:inline">Theo giờ</span>
-            </Button>
-            <Button
-              variant={view === 'days' ? 'outline' : 'ghost'}
-              size="sm"
-              icon={List}
-              onClick={() => setView('days')}
-              title="Xem danh sách theo ngày"
-            >
-              <span className="hidden sm:inline">Theo ngày</span>
+              <span className="hidden sm:inline">{view === 'hours' ? 'Danh sách' : 'Lưới giờ'}</span>
             </Button>
             <Button variant="ghost" size="sm" onClick={() => load({ silent: true })} loading={refreshing} icon={RefreshCw}>
               <span className="hidden sm:inline">Làm mới</span>
@@ -1005,19 +1048,16 @@ export default function BookingBoardPage() {
               }
             />
           </div>
-        ) : slots.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center">
-            <p className="text-sm text-slate-500">
-              Chưa có ca nào. Chuyển sang <b>Theo giờ</b> để chọn giờ.
-            </p>
-          </div>
         ) : (
-          <WeekSlotGrid
-            board={board}
-            slots={slots}
-            busySlotId={busySlotId}
-            onRegister={handleRegister}
-            onCancel={handleCancel}
+          <BookingListView
+            requests={myRequests.map((r) => ({
+              ...r,
+              full_name: r.full_name || registrant?.full_name || null,
+            }))}
+            weekStart={week}
+            isManager={isManager}
+            onOpen={(request, e) => menu.open(e, { request })}
+            emptyHint="Tuần này chưa có buổi nào — chuyển sang Lưới giờ để chọn giờ."
           />
         )}
       </main>
@@ -1086,7 +1126,13 @@ export default function BookingBoardPage() {
         canColor={isManager}
         students={students}
         onSave={saveRequest}
-        onToggleFlag={toggleFlag}
+        // Đóng dấu hoàn thành đi đường vòng qua ô nhập tiền, y như con dấu
+        // trên lưới — hai lối vào cùng một việc thì phải chốt tiền như nhau
+        onToggleFlag={(request, patch) => {
+          if (patch.done !== true) return toggleFlag(request, patch)
+          menu.close()
+          return askDone(request)
+        }}
         onSetColor={(request, color) => {
           setSavingRequest(true)
           bookingService
@@ -1107,6 +1153,65 @@ export default function BookingBoardPage() {
           handleCancelRequest(request)
         }}
       />
+
+      <StudentMoneySheet
+        open={moneyOpen}
+        onClose={() => setMoneyOpen(false)}
+        busy={savingRequest}
+        load={loadStudentMoney}
+        onSetPrice={setStudentPrice}
+      />
+
+      {/* Chốt tiền lúc đóng dấu hoàn thành */}
+      <Modal
+        isOpen={Boolean(donePrompt)}
+        onClose={() => setDonePrompt(null)}
+        title="Đóng dấu hoàn thành"
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDonePrompt(null)}>
+              Thôi
+            </Button>
+            <Button icon={BadgeCheck} loading={savingRequest} onClick={confirmDone}>
+              Hoàn thành
+            </Button>
+          </>
+        }
+      >
+        {donePrompt && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              <b>{donePrompt.request.full_name || 'Buổi này'}</b> ·{' '}
+              {formatDate(donePrompt.request.date)} · {donePrompt.request.start_time}–
+              {donePrompt.request.end_time}
+            </p>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Tiền buổi này</span>
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                inputMode="numeric"
+                autoFocus
+                value={donePrompt.amount}
+                onChange={(e) => setDonePrompt((d) => ({ ...d, amount: e.target.value }))}
+                onKeyDown={(e) => e.key === 'Enter' && confirmDone()}
+                placeholder={
+                  donePrompt.request.price_per_session === null ||
+                  donePrompt.request.price_per_session === undefined
+                    ? 'học viên chưa có giá'
+                    : `${Number(donePrompt.request.price_per_session).toLocaleString('vi-VN')} (giá đã đặt)`
+                }
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+              />
+            </label>
+            <p className="text-xs text-slate-500">
+              Để trống thì lấy <b>giá đã đặt</b> của học viên. Đặt giá ở nút <b>Học viên</b>.
+            </p>
+          </div>
+        )}
+      </Modal>
 
       <MyBookingsBar
         entries={myAllEntries}

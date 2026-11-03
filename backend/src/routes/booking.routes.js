@@ -73,6 +73,12 @@ router.patch(
   bookingAuth,
   controller.managerSetRegistrantColor
 );
+router.patch(
+  '/public/registrants/:registrantId/price',
+  publicLimiter,
+  bookingAuth,
+  controller.managerSetRegistrantPrice
+);
 
 // ============================ QUẢN TRỊ (admin + giáo viên) ============================
 

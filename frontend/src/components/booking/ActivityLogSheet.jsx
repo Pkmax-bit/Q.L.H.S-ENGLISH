@@ -12,6 +12,7 @@ const ACTION_LABEL = {
   'request.detach': 'gỡ vào khu chờ',
   'pool.schedule': 'xếp từ khu chờ vào lưới',
   'registrant.color': 'đổi màu học viên',
+  'registrant.price': 'đặt học phí',
   'message.send': 'gửi tin nhắn',
 }
 
@@ -21,6 +22,11 @@ const FIELD_LABEL = {
   ghi_chu: 'ghi chú',
   hoc_vien: 'học viên',
   mau: 'màu',
+  hoc_phi: 'học phí',
+  so_tien: 'số tiền',
+  hoan_thanh: 'hoàn thành',
+  danh_dau: 'đánh dấu',
+  to_dam: 'tô đậm',
 }
 
 /** "giờ: 07:30–08:30 → 09:00–10:00" — đọc một dòng là biết đổi gì thành gì */

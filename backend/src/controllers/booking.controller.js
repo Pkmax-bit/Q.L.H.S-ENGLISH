@@ -239,6 +239,21 @@ const setRegistrantColor = handle(async (req, res) => {
   return response.success(res, result, `Đã đổi màu của ${result.full_name}`);
 });
 
+const managerSetRegistrantPrice = handle(async (req, res) => {
+  const result = await bookingService.managerSetRegistrantPrice(
+    req.params.registrantId,
+    (req.body || {}).price_per_session,
+    req.registrant.id
+  );
+  return response.success(
+    res,
+    result,
+    result.price_per_session === null
+      ? `Đã bỏ học phí của ${result.full_name}`
+      : `Học phí của ${result.full_name}: ${Number(result.price_per_session).toLocaleString('vi-VN')} đ/buổi`
+  );
+});
+
 const adminCancelRequest = handle(async (req, res) => {
   const result = await bookingService.adminCancelRequest(req.params.requestId);
   return response.success(res, result, 'Đã hủy buổi đăng ký');
@@ -308,6 +323,7 @@ module.exports = {
   listThreads,
   toggleReaction,
   managerSetRegistrantColor,
+  managerSetRegistrantPrice,
   adminCancelRequest,
   createSlotFromRequests,
   adminAddEntry,

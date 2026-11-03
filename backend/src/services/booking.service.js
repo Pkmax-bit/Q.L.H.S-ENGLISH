@@ -389,8 +389,8 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
     let q = supabase
       .from('booking_requests')
       .select(
-        'id, registrant_id, session_date, start_time, end_time, status, session_count, color, note, is_marked, is_bold, done_at, ' +
-          'registrant:booking_registrants!booking_requests_registrant_id_fkey(id, full_name, phone, color)'
+        'id, registrant_id, session_date, start_time, end_time, status, session_count, color, note, is_marked, is_bold, done_at, amount, ' +
+          'registrant:booking_registrants!booking_requests_registrant_id_fkey(id, full_name, phone, color, price_per_session)'
       )
       .eq('board_id', board.id)
       .in('status', ['pending', 'approved'])
@@ -414,6 +414,13 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
         is_marked: Boolean(r.is_marked),
         is_bold: Boolean(r.is_bold),
         done_at: r.done_at || null,
+        // Tiền của buổi này nếu đã chốt, và giá mặc định của học viên để màn
+        // hình điền sẵn vào ô "tiền thật" lúc đóng dấu hoàn thành
+        amount: r.amount === null || r.amount === undefined ? null : Number(r.amount),
+        price_per_session:
+          r.registrant?.price_per_session === null || r.registrant?.price_per_session === undefined
+            ? null
+            : Number(r.registrant.price_per_session),
         full_name: r.registrant?.full_name || null,
         // Số điện thoại chỉ lộ cho người quản lý
         phone: manager ? r.registrant?.phone || null : null,
@@ -937,6 +944,31 @@ const updateRequest = async (
     update.done_at = patch.done ? new Date().toISOString() : null;
   }
 
+  // Tiền của buổi. Gửi amount rỗng/null nghĩa là "lấy giá mặc định của học
+  // viên", KHÔNG phải "xóa tiền": người đóng dấu thường bỏ trống ô này, và
+  // bỏ trống phải ra con số chứ không ra số 0.
+  const chotTien = patch.done === true || patch.amount !== undefined;
+  if (chotTien) {
+    let tien = null;
+    if (patch.amount !== undefined && patch.amount !== null && String(patch.amount).trim() !== '') {
+      const n = Number(patch.amount);
+      if (!Number.isFinite(n) || n < 0) throw { statusCode: 400, message: 'Số tiền không hợp lệ' };
+      tien = Math.round(n);
+    } else {
+      const { data: nguoi } = await supabase
+        .from('booking_registrants')
+        .select('price_per_session')
+        .eq('id', update.registrant_id || row.registrant_id)
+        .maybeSingle();
+      const mac = nguoi?.price_per_session;
+      tien = mac === null || mac === undefined ? null : Math.round(Number(mac));
+    }
+    update.amount = tien;
+  }
+  // Mở lại một buổi đã chốt thì GIỮ số tiền: đóng dấu nhầm rồi đóng lại là
+  // chuyện thường, bắt gõ lại tiền mỗi lần chỉ tổ gõ sai. Tổng chỉ cộng buổi
+  // đang có done_at nên số tiền nằm im ở đó không ảnh hưởng sổ sách.
+
   if (patch.session_count !== undefined) {
     const n = Number(patch.session_count);
     if (!Number.isInteger(n) || n < 1 || n > 200) {
@@ -1016,6 +1048,7 @@ const updateRequest = async (
   if (update.done_at !== undefined) {
     changes.hoan_thanh = { thanh: update.done_at ? 'đã đóng dấu' : 'mở lại' };
   }
+  if (update.amount !== undefined) changes.so_tien = { thanh: update.amount };
 
   logActivity({
     boardId: row.board_id,
@@ -1114,11 +1147,90 @@ const listBoardStudents = async (slug, registrantId) => {
 
   const { data: people, error } = await supabase
     .from('booking_registrants')
-    .select('id, full_name, phone, color')
+    .select('id, full_name, phone, color, price_per_session, is_manager')
     .in('id', [...ids])
     .order('full_name', { ascending: true });
   if (error) throw error;
-  return people || [];
+
+  // Cộng tiền ngay trong một lượt đọc: hộp quản lý học viên luôn hiện kèm
+  // "đã học mấy buổi, thu bao nhiêu", tách ra thành API riêng thì mở hộp phải
+  // chờ hai vòng mạng mà chẳng bao giờ dùng riêng từng cái.
+  //
+  // Chỉ buổi CÓ done_at mới vào tổng. Buổi chưa đóng dấu là chưa dạy xong,
+  // cộng vào thì con số lúc nào cũng cao hơn tiền thật thu được.
+  const { data: money, error: mErr } = await supabase
+    .from('booking_requests')
+    .select('registrant_id, amount, done_at')
+    .eq('board_id', board.id)
+    .in('status', ['pending', 'approved']);
+  if (mErr) throw mErr;
+
+  const thongKe = new Map();
+  for (const r of money || []) {
+    if (!thongKe.has(r.registrant_id)) {
+      thongKe.set(r.registrant_id, { sessions: 0, done: 0, total: 0 });
+    }
+    const t = thongKe.get(r.registrant_id);
+    t.sessions += 1;
+    if (r.done_at) {
+      t.done += 1;
+      t.total += Number(r.amount || 0);
+    }
+  }
+
+  return (people || []).map((p) => {
+    const t = thongKe.get(p.id) || { sessions: 0, done: 0, total: 0 };
+    return {
+      ...p,
+      price_per_session:
+        p.price_per_session === null || p.price_per_session === undefined
+          ? null
+          : Number(p.price_per_session),
+      is_manager: Boolean(p.is_manager),
+      session_total: t.sessions,
+      done_total: t.done,
+      amount_total: t.total,
+    };
+  });
+};
+
+/** Giá mặc định một buổi của một học viên. Chỉ người quản lý đặt được. */
+const managerSetRegistrantPrice = async (targetId, price, registrantId) => {
+  if (!(await isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Bạn không có quyền đặt học phí' };
+  }
+  let next = null;
+  if (price !== null && price !== undefined && String(price).trim() !== '') {
+    const n = Number(price);
+    if (!Number.isFinite(n) || n < 0) throw { statusCode: 400, message: 'Học phí không hợp lệ' };
+    next = Math.round(n);
+  }
+
+  const { data, error } = await supabase
+    .from('booking_registrants')
+    .update({ price_per_session: next })
+    .eq('id', targetId)
+    .select('id, full_name, price_per_session')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw { statusCode: 404, message: 'Không tìm thấy học viên này' };
+
+  // Đổi giá KHÔNG sửa lại tiền các buổi đã chốt — xem lý do ở migration 054
+  const { data: boards } = await supabase
+    .from('booking_requests')
+    .select('board_id')
+    .eq('registrant_id', targetId);
+  for (const b of new Set((boards || []).map((x) => x.board_id))) {
+    logActivity({
+      boardId: b,
+      actor: await actorFromRegistrant(registrantId),
+      action: 'registrant.price',
+      targetId,
+      detail: { hoc_vien: data.full_name, hoc_phi: { thanh: next } },
+    });
+    notifyBoard(b, 'registrant.price');
+  }
+  return { ...data, price_per_session: next };
 };
 
 /** Người quản lý đổi màu cố định của một học viên. */
@@ -2254,6 +2366,7 @@ module.exports = {
   toggleReaction,
   listThreads,
   managerSetRegistrantColor,
+  managerSetRegistrantPrice,
   adminCancelRequest,
   createSlotFromRequests,
   adminAddEntry,

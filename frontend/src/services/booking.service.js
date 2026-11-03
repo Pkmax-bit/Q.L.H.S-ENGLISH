@@ -57,6 +57,10 @@ const bookingService = {
   listBoardStudents: (slug) => publicApi.get(`/booking/public/boards/${slug}/students`),
   managerSetRegistrantColor: (registrantId, color) =>
     publicApi.patch(`/booking/public/registrants/${registrantId}/color`, { color }),
+  managerSetRegistrantPrice: (registrantId, pricePerSession) =>
+    publicApi.patch(`/booking/public/registrants/${registrantId}/price`, {
+      price_per_session: pricePerSession,
+    }),
   listBoardActivity: (slug) => publicApi.get(`/booking/public/boards/${slug}/activity`),
   listBoardMessages: (slug, registrantId) =>
     publicApi.get(`/booking/public/boards/${slug}/messages`, {
