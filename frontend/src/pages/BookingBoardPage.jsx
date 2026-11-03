@@ -81,6 +81,8 @@ export default function BookingBoardPage() {
   const [plan, setPlan] = useState(null) // bản đề xuất của sắp lịch tự động
   const [planning, setPlanning] = useState(false)
   const [movingMonth, setMovingMonth] = useState(false)
+  // '' = xem chồng tất cả; id = chỉ xem giờ rảnh của một người
+  const [freeWho, setFreeWho] = useState('')
 
   // Socket chung: lưới nghe 'booking:board_changed', hộp chat nghe 'booking:message'
   const { socket } = useBookingSocket({
@@ -139,6 +141,23 @@ export default function BookingBoardPage() {
         .then((res) => setAvailability(res.data?.data ?? res.data ?? []))
         .catch(() => setAvailability([])),
     [slug]
+  )
+
+  // Ai có khoanh giờ trên bảng này — lấy từ chính dữ liệu đang hiện chứ
+  // không từ danh sách học viên: người chưa khoanh thì lọc ra cũng trống.
+  const freePeople = useMemo(() => {
+    const m = new Map()
+    for (const k of availability) {
+      if (k.registrant_id && !m.has(k.registrant_id)) {
+        m.set(k.registrant_id, k.full_name || 'Không tên')
+      }
+    }
+    return [...m.entries()].map(([id, name]) => ({ id, name }))
+  }, [availability])
+
+  const shownAvailability = useMemo(
+    () => (freeWho ? availability.filter((k) => k.registrant_id === freeWho) : availability),
+    [availability, freeWho]
   )
 
   const loadStudentMoney = useCallback(
@@ -1252,6 +1271,26 @@ export default function BookingBoardPage() {
                 <span className="text-primary-700/80">
                   Kéo trên lưới để khoanh. Đây là giờ bạn rảnh, không phải buổi học, không tính tiền.
                 </span>
+                {/* Xem riêng từng người. Chồng hết lên nhau trả lời "giờ nào
+                    đông", nhưng muốn biết "em Vy rảnh những lúc nào" thì phải
+                    tách ra mới đọc được. */}
+                {isManager && freePeople.length > 1 && (
+                  <label className="flex items-center gap-1.5">
+                    Xem
+                    <select
+                      value={freeWho}
+                      onChange={(e) => setFreeWho(e.target.value)}
+                      className="rounded-lg border border-primary-200 bg-white px-1.5 py-0.5 text-xs"
+                    >
+                      <option value="">tất cả ({freePeople.length} người)</option>
+                      {freePeople.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="ml-auto flex items-center gap-1.5">
                   Mỗi buổi
                   <input
@@ -1270,9 +1309,9 @@ export default function BookingBoardPage() {
 
             {/* Ai rảnh giờ nào — chú thích màu cho các sọc trên lưới. Không có
                 nó thì mấy sọc màu chỉ nói "có người rảnh", không nói là ai. */}
-            {boardMode === 'free' && availability.length > 0 && (
+            {boardMode === 'free' && shownAvailability.length > 0 && (
               <div className="mb-1.5 flex flex-wrap gap-1.5">
-                {availability.map((k) => (
+                {shownAvailability.map((k) => (
                   <span
                     key={k.id}
                     className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-[11px]"
@@ -1336,7 +1375,11 @@ export default function BookingBoardPage() {
               // kiện nên mọi khối đều mang tên người đang xem.
               myRequests={myRequests.map((r) => ({
                 ...r,
-                full_name: r.full_name || registrant?.full_name || null,
+                // CHỈ điền tên mình vào buổi CỦA MÌNH. Buổi của người khác đã
+                // bị server bóc tên (is_mine sai); điền bừa vào là mỗi khối
+                // xám lại mang tên người đang xem.
+                full_name:
+                  r.is_mine === false ? null : r.full_name || registrant?.full_name || null,
               }))}
               onToggleSelect={handleToggleSelect}
               onSlotClick={handleSlotClick}
@@ -1351,7 +1394,7 @@ export default function BookingBoardPage() {
               allowPast={isManager}
               onMoveRequest={moveRequest}
               onDropPoolItem={scheduleFromPool}
-              availability={boardMode === 'free' ? availability : []}
+              availability={boardMode === 'free' ? shownAvailability : []}
             />
             <SelectionBar
               count={selectedIds.length + mergedCells.length}
@@ -1402,7 +1445,8 @@ export default function BookingBoardPage() {
           <BookingListView
             requests={myRequests.map((r) => ({
               ...r,
-              full_name: r.full_name || registrant?.full_name || null,
+              full_name:
+                r.is_mine === false ? null : r.full_name || registrant?.full_name || null,
             }))}
             weekStart={week}
             isManager={isManager}

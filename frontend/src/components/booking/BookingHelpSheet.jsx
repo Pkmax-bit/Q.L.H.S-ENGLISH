@@ -1,4 +1,4 @@
-import { BadgeCheck, CalendarPlus, Hand, List, MousePointerClick, Pencil, Trash2, Users, X } from 'lucide-react'
+import { BadgeCheck, CalendarClock, CalendarPlus, Hand, List, Lock, MousePointerClick, Pencil, Trash2, Users, X } from 'lucide-react'
 import clsx from 'clsx'
 import { useIsNarrow } from '../../hooks/useIsNarrow'
 
@@ -55,6 +55,22 @@ export default function BookingHelpSheet({ open, onClose, isManager = false }) {
       label: 'Ca trung tâm đã mở',
       body: 'Bấm để chọn, rồi bấm Giữ chỗ ở thanh dưới. Hết chỗ thì ô bị mờ.',
     },
+    {
+      icon: CalendarClock,
+      label: 'Nút Giờ rảnh',
+      body: isManager
+        ? 'Xem giờ rảnh của mọi học viên chồng lên nhau — mỗi người một sọc màu. Ô "Xem" lọc riêng từng người. Bấm lại nút để quay về lịch học.'
+        : 'Khoanh những giờ bạn CÓ THỂ học để trung tâm xếp lớp. Đây không phải buổi học, không tính tiền. Bấm lại nút để xem lịch đã chốt.',
+    },
+    ...(isManager
+      ? []
+      : [
+          {
+            icon: Lock,
+            label: 'Buổi màu xám',
+            body: 'Giờ đó đã có người học. Bạn chỉ thấy ngày giờ, không thấy là ai — và không bấm vào được.',
+          },
+        ]),
     {
       icon: List,
       label: 'Nút Danh sách',

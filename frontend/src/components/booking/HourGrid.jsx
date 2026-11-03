@@ -344,6 +344,10 @@ export default function HourGrid({
 
     if (mine) {
       const myReq = mine.req
+      // Buổi của người khác: server đã bóc hết danh tính, ở đây CHỈ ĐỂ NHÌN.
+      // Server vẫn chặn mọi lệnh sửa buổi của người khác, nhưng để bấm được
+      // thì người dùng cứ tưởng mình làm gì đó được rồi gặp lỗi 403.
+      const chiXem = myReq.is_mine === false
       // Màu do trung tâm đặt cho buổi học; chưa đặt thì dùng hổ phách "đang chờ duyệt".
       // Người đăng ký không chọn màu được, chỉ xem.
       const tone = myReq.color ? colorClasses(myReq.color) : null
@@ -385,7 +389,7 @@ export default function HourGrid({
       return (
         <button
           type="button"
-          draggable={canDrag}
+          draggable={canDrag && !chiXem}
           onDragStart={(e) => {
             // Kéo cả buổi chứ không kéo một ô: dropEffect dùng 'move' để con trỏ
             // báo đúng là dời chỗ, không phải tạo thêm
@@ -404,6 +408,7 @@ export default function HourGrid({
             setDropHint(null)
           }}
           onClick={(e) => {
+            if (chiXem) return
             // Vừa nhấn giữ xong thì trình duyệt vẫn bắn click — bỏ qua, không
             // thì nhả tay ra là rút mất buổi học
             if (heldRef.current) {
@@ -428,7 +433,7 @@ export default function HourGrid({
             onRequestClick?.(myReq)
           }}
           // Chuột phải mở menu cho CẢ buổi, không riêng ô vừa bấm
-          onContextMenu={(e) => onRequestContextMenu?.(e, { request: myReq, title: label })}
+          onContextMenu={(e) => (chiXem ? e.preventDefault() : onRequestContextMenu?.(e, { request: myReq, title: label }))}
           onPointerDown={(e) => {
             if (e.pointerType !== 'touch') return
             const { clientX, clientY } = e
@@ -445,7 +450,9 @@ export default function HourGrid({
           onPointerUp={cancelHold}
           onPointerMove={cancelHold}
           onPointerCancel={cancelHold}
-          title={`${isAdmin ? 'Đã đăng ký' : 'Bạn đã đăng ký'} ${label}${
+          title={chiXem
+            ? `Giờ này đã có người học · ${DAY_SHORT[dow]} ${myReq.start_time}–${myReq.end_time}`
+            : `${isAdmin ? 'Đã đăng ký' : 'Bạn đã đăng ký'} ${label}${
             myReq.session_count > 1 ? ` · ${myReq.session_count} buổi` : ''
           }${myReq.is_bold ? ' · tô đậm' : ''}${myReq.is_marked ? ' · đã đánh dấu' : ''}${
             myReq.done_at ? ' · đã hoàn thành' : ''
@@ -457,16 +464,21 @@ export default function HourGrid({
                 : isAdmin
                   ? 'xem nguyện vọng'
                   : 'rút'
-          }, chuột phải để mở menu`}
+          }, chuột phải để mở menu`
+          }
           className={clsx(
             'relative z-10 flex w-full items-center justify-center gap-1 border-x font-semibold',
             cellH,
             // To hơn 40% so với 10/9px — tên học viên là thứ phải đọc được
             // từ xa, 10px trên nền màu nhạt thì phải ghé sát màn hình
             showLabel ? 'text-[14px]' : 'text-[13px]',
-            tone
-              ? clsx(tone.border, tone.bg, tone.text, 'hover:brightness-95')
-              : 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100',
+            // Buổi của người khác: xám, nhạt, không đổi gì khi rê chuột —
+            // trông phải khác hẳn buổi của mình để không ai bấm nhầm
+            chiXem
+              ? 'cursor-default border-slate-300 bg-slate-100 text-slate-400'
+              : tone
+                ? clsx(tone.border, tone.bg, tone.text, 'hover:brightness-95')
+                : 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100',
             // Ba dấu, ba kiểu khác nhau để phân biệt được khi chồng lên nhau:
             //   tô đậm   = chữ đậm + viền dày, nền đậm hơn
             //   đánh dấu = vòng hổ phách quanh khối + ngôi sao

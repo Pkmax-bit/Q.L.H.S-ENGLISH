@@ -397,13 +397,41 @@ const getPublicBoard = async (slug, registrantId = null, requestedWeek = null) =
       .eq('board_id', board.id)
       .in('status', ['pending', 'approved'])
       .order('session_date', { ascending: true });
-    if (!manager) q = q.eq('registrant_id', registrantId);
-
+    // Học viên cũng nhận buổi CỦA NGƯỜI KHÁC, nhưng đã bóc sạch danh tính —
+    // xem chỗ map bên dưới. Có vậy họ mới biết giờ nào giáo viên đã kín mà
+    // khỏi phải đăng ký vào rồi mới bị dời.
     const { data: reqs, error: reqErr } = await q;
     if (reqErr) throw reqErr;
 
     for (const r of reqs || []) {
+      const cuaMinh = r.registrant_id === registrantId;
+      // Buổi của người khác, nhìn bằng mắt học viên: chỉ còn NGÀY và GIỜ.
+      // Không tên, không số điện thoại, không ghi chú, không màu riêng — màu
+      // là của một người cụ thể, giữ lại là chỉ mặt được ai học giờ nào.
+      if (!manager && !cuaMinh) {
+        myRequests.push({
+          id: r.id,
+          registrant_id: null,
+          date: r.session_date,
+          start_time: String(r.start_time).slice(0, 5),
+          end_time: String(r.end_time).slice(0, 5),
+          status: r.status,
+          session_count: null,
+          color: 'slate',
+          note: null,
+          is_marked: false,
+          is_bold: false,
+          done_at: null,
+          amount: null,
+          price_per_session: null,
+          full_name: null,
+          phone: null,
+          is_mine: false,
+        });
+        continue;
+      }
       myRequests.push({
+        is_mine: true,
         id: r.id,
         registrant_id: r.registrant_id,
         date: r.session_date,

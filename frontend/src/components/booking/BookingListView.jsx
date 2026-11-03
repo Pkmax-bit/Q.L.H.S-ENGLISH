@@ -74,12 +74,16 @@ export default function BookingListView({
           <ul className="divide-y divide-slate-100">
             {list.map((r) => {
               const mau = colorClasses(r.color)
+              const chiXem = r.is_mine === false
               return (
                 <li key={r.id}>
                   <button
                     type="button"
-                    onClick={(e) => onOpen?.(r, e)}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-primary-50/50 sm:gap-3 sm:px-4"
+                    onClick={(e) => (chiXem ? undefined : onOpen?.(r, e))}
+                    className={clsx(
+                      'flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors sm:gap-3 sm:px-4',
+                      chiXem ? 'cursor-default text-slate-400' : 'hover:bg-primary-50/50'
+                    )}
                   >
                     <span className={clsx('h-8 w-1 shrink-0 rounded-full', mau.dot)} />
                     {/* Màn 375px: giờ và tên NẰM CHUNG một dòng chứ không phải
@@ -96,7 +100,9 @@ export default function BookingListView({
                             r.is_bold && 'font-bold'
                           )}
                         >
-                          {r.full_name || 'Buổi của bạn'}
+                          {/* Người khác đã bị bóc tên — in đúng cái mình biết,
+                              chứ mặc định "Buổi của bạn" là gán nhầm chủ */}
+                          {chiXem ? 'Giờ đã có người học' : r.full_name || 'Buổi của bạn'}
                         </span>
                       </span>
                       {r.note && (
