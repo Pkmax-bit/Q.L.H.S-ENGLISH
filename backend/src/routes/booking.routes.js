@@ -68,6 +68,7 @@ router.post('/public/messages/:messageId/close-poll', publicLimiter, bookingAuth
 router.delete('/public/messages/:messageId/poll', publicLimiter, bookingAuth, controller.deletePoll);
 router.delete('/public/messages/:messageId', publicLimiter, bookingAuth, controller.deleteMessage);
 router.post('/public/boards/:slug/sync-sheet', publicLimiter, bookingAuth, controller.syncSheet);
+router.patch('/public/boards/:slug/month', publicLimiter, bookingAuth, controller.setBoardMonth);
 
 // Khung giờ CÓ THỂ học (ràng buộc để xếp lịch), tách hẳn khỏi buổi học
 router.get('/public/boards/:slug/availability', publicLimiter, bookingAuth, controller.listAvailability);

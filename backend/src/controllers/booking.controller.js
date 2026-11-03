@@ -287,6 +287,12 @@ const autoArrange = handle(async (req, res) => {
   return response.success(res, result, tom);
 });
 
+const setBoardMonth = handle(async (req, res) => {
+  const result = await bookingService.setBoardMonth(req.params.slug, req.registrant.id, req.body || {});
+  const [nam, thang] = result.month.split('-');
+  return response.success(res, result, `Đã chuyển sang tháng ${Number(thang)}/${nam}`);
+});
+
 const syncSheet = handle(async (req, res) => {
   const result = await bookingService.syncSheetNow(req.params.slug, req.registrant.id);
   const tom = result.tabs.map((t) => `${t.nam} (${t.rows} buổi)`).join(', ');
@@ -392,6 +398,7 @@ module.exports = {
   deletePoll,
   deleteMessage,
   syncSheet,
+  setBoardMonth,
   listAvailability,
   createAvailability,
   deleteAvailability,

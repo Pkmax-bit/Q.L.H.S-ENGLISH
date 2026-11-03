@@ -664,6 +664,91 @@ const getRegistrantBrief = async (registrantId) => {
   return data || null;
 };
 
+/**
+ * Bảng đang phụ trách THÁNG NÀO.
+ *
+ * Không đọc thẳng week_start: cửa sổ bắt đầu từ thứ Hai TRƯỚC ngày mùng 1 để
+ * không bỏ sót mấy ngày đầu tháng, nên bảng tháng 11 có thể bắt đầu từ 26/10
+ * và tự nhận mình là tháng 10.
+ *
+ * Lấy ngày thứ 10 của cửa sổ: mùng 1 luôn rơi vào khoảng ngày 0–6, nên ngày
+ * 10 chắc chắn đã nằm trong tháng đích (ít nhất mùng 4, nhiều nhất mùng 10) —
+ * mà tháng ngắn nhất cũng 28 ngày nên không thể lố sang tháng sau.
+ */
+const thangCuaBang = (board) => addDays(board.week_start, 10).slice(0, 7);
+
+/** Tuần bắt đầu + số tuần để phủ trọn một tháng "YYYY-MM". */
+const khungCuaThang = (yyyymm) => {
+  const m = String(yyyymm || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) throw { statusCode: 400, message: 'Tháng không hợp lệ (cần YYYY-MM)' };
+  const nam = Number(m[1]);
+  const thang = Number(m[2]);
+  if (thang < 1 || thang > 12) throw { statusCode: 400, message: 'Tháng phải từ 01 đến 12' };
+
+  const ngayDau = `${m[1]}-${m[2]}-01`;
+  // Ngày 0 của tháng sau = ngày cuối của tháng này, khỏi phải nhớ tháng nào 30
+  // hay 31 ngày và năm nào nhuận
+  const ngayCuoi = new Date(Date.UTC(nam, thang, 0)).toISOString().slice(0, 10);
+
+  const weekStart = toMonday(ngayDau);
+  const soNgay = (Date.parse(`${ngayCuoi}T00:00:00Z`) - Date.parse(`${weekStart}T00:00:00Z`)) / 86400000 + 1;
+  return { week_start: weekStart, week_count: Math.min(MAX_WEEKS, Math.ceil(soNgay / 7)) };
+};
+
+/** "… tháng 11" → "… tháng 12". Tên do người ta tự đặt thì để nguyên. */
+const doiTenTheoThang = (title, yyyymm) => {
+  const thang = Number(yyyymm.slice(5, 7));
+  return /tháng\s+\d{1,2}\s*$/i.test(String(title || ''))
+    ? String(title).replace(/tháng\s+\d{1,2}\s*$/i, `tháng ${thang}`)
+    : title;
+};
+
+/**
+ * Dời cửa sổ của bảng sang tháng khác.
+ *
+ * Buổi học lưu theo NGÀY TUYỆT ĐỐI nên dời cửa sổ không mất gì: tháng cũ vẫn
+ * nằm nguyên trong database và trong sổ Sheet, quay lại là thấy. Cửa sổ chỉ
+ * quyết định đang nhìn vào đoạn nào.
+ *
+ * Vì sao không nới bảng ra cho chứa cả hai tháng: một tháng ăn tới 5-6 tuần,
+ * hai tháng là 10-11 tuần — quá giới hạn 6 tuần của bảng, mà thanh chọn tuần
+ * cũng dài tới mức phải cuộn mới thấy hết.
+ */
+const setBoardMonth = async (slug, registrantId, { month = null, delta = 0 } = {}) => {
+  if (!(await isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Chỉ trung tâm đổi được tháng của bảng' };
+  }
+  const board = await fetchBoardBySlug(slug);
+
+  let dich = month;
+  if (!dich) {
+    const [y, m] = thangCuaBang(board).split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + Number(delta || 0), 1));
+    dich = d.toISOString().slice(0, 7);
+  }
+
+  const khung = khungCuaThang(dich);
+  const { error } = await supabase
+    .from('booking_boards')
+    .update({
+      week_start: khung.week_start,
+      week_count: khung.week_count,
+      title: doiTenTheoThang(board.title, dich),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', board.id);
+  if (error) throw error;
+
+  logActivity({
+    boardId: board.id,
+    actor: await actorFromRegistrant(registrantId),
+    action: 'board.month',
+    detail: { tu: thangCuaBang(board), thanh: dich },
+  });
+  notifyBoard(board.id, 'board.month');
+  return { month: dich, ...khung };
+};
+
 const assertSessionDate = (value) => {
   const date = String(value || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -2191,6 +2276,8 @@ const getBoardDetail = async (id, requestedWeek = null) => {
     board: {
       ...board,
       week_end: weeks[weeks.length - 1].week_end,
+      // Tháng bảng đang phụ trách, để màn hình in "Tháng 11" trên nút chuyển
+      month: thangCuaBang(board),
       selected_week: selected.week_start,
       selected_week_end: selected.week_end,
       is_accepting: isAccepting(board),
@@ -2938,6 +3025,9 @@ module.exports = {
   deletePoll,
   deleteMessage,
   syncSheetNow,
+  setBoardMonth,
+  khungCuaThang,
+  thangCuaBang,
   createAvailability,
   deleteAvailability,
   listAvailabilityBySlug,

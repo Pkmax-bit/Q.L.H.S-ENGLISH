@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import clsx from 'clsx'
-import { BadgeCheck, Bold, CalendarClock, CalendarDays, Eraser, HelpCircle, History, LayoutGrid, List, Lock, LogOut, Move, RefreshCw, RotateCcw, Star, TriangleAlert, Users, Wand2 } from 'lucide-react'
+import { BadgeCheck, Bold, CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Eraser, HelpCircle, History, LayoutGrid, List, Lock, LogOut, Move, RefreshCw, RotateCcw, Star, TriangleAlert, Users, Wand2 } from 'lucide-react'
 import LoadingSpinner from '../components/common/LoadingSpinner'
 import Button from '../components/common/Button'
 import Modal from '../components/common/Modal'
@@ -80,6 +80,7 @@ export default function BookingBoardPage() {
   const [freeMinutes, setFreeMinutes] = useState(60)
   const [plan, setPlan] = useState(null) // bản đề xuất của sắp lịch tự động
   const [planning, setPlanning] = useState(false)
+  const [movingMonth, setMovingMonth] = useState(false)
 
   // Socket chung: lưới nghe 'booking:board_changed', hộp chat nghe 'booking:message'
   const { socket } = useBookingSocket({
@@ -159,6 +160,27 @@ export default function BookingBoardPage() {
       showFlash('error', err.response?.data?.message || 'Không ghi được sang Sheet')
     } finally {
       setSavingRequest(false)
+    }
+  }
+
+  /**
+   * Dời cửa sổ của bảng sang tháng khác.
+   *
+   * Buổi học lưu theo ngày tuyệt đối nên không mất gì: tháng cũ vẫn nằm trong
+   * database và trong sổ Sheet, bấm quay lại là thấy. Tuần đang xem đặt lại về
+   * null để server tự chọn tuần hợp lý trong tháng mới.
+   */
+  const moveMonth = async (delta) => {
+    setMovingMonth(true)
+    try {
+      const res = await bookingService.setBoardMonth(slug, { delta })
+      showFlash('success', res.data?.message || 'Đã đổi tháng')
+      await load({ silent: true, weekOverride: null })
+      if (boardMode === 'free') await loadAvailability()
+    } catch (err) {
+      showFlash('error', err.response?.data?.message || 'Không đổi được tháng')
+    } finally {
+      setMovingMonth(false)
     }
   }
 
@@ -898,9 +920,35 @@ export default function BookingBoardPage() {
         <div className="w-full px-3 py-2 sm:px-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="font-display text-lg font-semibold text-stone-900 sm:text-xl">
-                {board?.title}
-              </h1>
+              <div className="flex items-center gap-1.5">
+                <h1 className="font-display text-lg font-semibold text-stone-900 sm:text-xl">
+                  {board?.title}
+                </h1>
+                {/* Chuyển tháng ngay cạnh tên bảng — tên bảng CHÍNH LÀ tháng
+                    đang xem, để nút ở thanh công cụ thì hai thứ rời nhau. */}
+                {isManager && (
+                  <span className="flex shrink-0 items-center rounded-lg border border-slate-200 bg-white">
+                    <button
+                      type="button"
+                      disabled={movingMonth}
+                      onClick={() => moveMonth(-1)}
+                      title="Tháng trước"
+                      className="rounded-l-lg px-1.5 py-1 text-slate-500 hover:bg-primary-50 hover:text-primary-600 disabled:opacity-40"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={movingMonth}
+                      onClick={() => moveMonth(1)}
+                      title="Tháng sau"
+                      className="rounded-r-lg border-l border-slate-200 px-1.5 py-1 text-slate-500 hover:bg-primary-50 hover:text-primary-600 disabled:opacity-40"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </span>
+                )}
+              </div>
               <p className="mt-0.5 flex items-center gap-1.5 text-sm text-slate-500">
                 <CalendarDays className="h-4 w-4" />
                 {multiWeek

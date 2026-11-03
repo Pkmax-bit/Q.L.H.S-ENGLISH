@@ -96,6 +96,7 @@ const bookingService = {
   deletePoll: (messageId) => publicApi.delete(`/booking/public/messages/${messageId}/poll`),
   deleteBoardMessage: (messageId) => publicApi.delete(`/booking/public/messages/${messageId}`),
   syncSheet: (slug) => publicApi.post(`/booking/public/boards/${slug}/sync-sheet`),
+  setBoardMonth: (slug, body) => publicApi.patch(`/booking/public/boards/${slug}/month`, body),
   listAvailability: (slug) => publicApi.get(`/booking/public/boards/${slug}/availability`),
   createAvailability: (slug, cells, desiredMinutes) =>
     publicApi.post(`/booking/public/boards/${slug}/availability`, {
