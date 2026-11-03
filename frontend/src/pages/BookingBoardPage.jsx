@@ -46,7 +46,9 @@ export default function BookingBoardPage() {
   const [flash, setFlash] = useState(null) // { type, text }
   // 'hours' = thời khóa biểu 7h-23h, 'days' = danh sách theo ngày (dễ đọc trên điện thoại)
   const [view, setView] = useState('hours')
-  const [step, setStep] = useState(15)
+  // 30 phút là độ dài hay gặp nhất của một mốc, và ô cao gấp đôi bước 15 nên
+  // nhìn cả ngày không phải cuộn nhiều
+  const [step, setStep] = useState(30)
   const [selectedIds, setSelectedIds] = useState([])
   const [myRequests, setMyRequests] = useState([])
   const [selectedCells, setSelectedCells] = useState([])
