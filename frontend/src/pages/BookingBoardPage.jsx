@@ -71,6 +71,9 @@ export default function BookingBoardPage() {
   const [moneyOpen, setMoneyOpen] = useState(false)
   // Buổi đang chờ nhập tiền trước khi đóng dấu hoàn thành
   const [donePrompt, setDonePrompt] = useState(null) // { request, amount }
+  // Ai đang mở bảng. Người quản lý nhận danh sách tên, học viên chỉ nhận
+  // "trung tâm có trực không" + đếm đầu người — xem lý do ở tầng socket.
+  const [presence, setPresence] = useState({ people: [], center_online: false, count: 0 })
 
   // Socket chung: lưới nghe 'booking:board_changed', hộp chat nghe 'booking:message'
   const { socket } = useBookingSocket({
@@ -154,6 +157,9 @@ export default function BookingBoardPage() {
       send: (body, registrantId, replyTo, image) =>
         bookingService.sendBoardMessage(slug, body, registrantId, replyTo, image),
       react: (messageId, emoji) => bookingService.reactToBoardMessage(messageId, emoji),
+      createPoll: (data) => bookingService.createPoll(slug, data),
+      vote: (messageId, optionId) => bookingService.votePoll(messageId, optionId),
+      closePoll: (messageId) => bookingService.closePoll(messageId),
     }),
     [slug]
   )
@@ -241,6 +247,16 @@ export default function BookingBoardPage() {
     socket.on('booking:board_changed', onChanged)
     return () => socket.off('booking:board_changed', onChanged)
   }, [socket, load, isManager, reloadPool])
+
+  useEffect(() => {
+    if (!socket) return undefined
+    // Server phát hai mức chi tiết vào hai phòng khác nhau; gói nào tới sau
+    // thì đè lên, nên gộp chứ không thay cả cục — nếu không người quản lý vừa
+    // nhận danh sách tên đã bị gói rút gọn của phòng bảng xóa mất.
+    const onPresence = (data) => setPresence((cur) => ({ ...cur, ...data }))
+    socket.on('booking:presence', onPresence)
+    return () => socket.off('booking:presence', onPresence)
+  }, [socket])
 
   useEffect(() => {
     if (!isManager) {
@@ -802,6 +818,38 @@ export default function BookingBoardPage() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Chấm xanh = đang mở bảng lúc này. Người quản lý thấy tên để
+                  biết gọi ai được ngay; học viên chỉ cần biết trung tâm có
+                  đang trực hay không, tên người khác không phải việc của họ. */}
+              {(isManager ? presence.people.length > 0 : presence.count > 0) && (
+                <span
+                  title={
+                    isManager
+                      ? presence.people.map((x) => x.name).join(', ')
+                      : presence.center_online
+                        ? 'Trung tâm đang mở bảng'
+                        : 'Trung tâm chưa có mặt'
+                  }
+                  className={clsx(
+                    'hidden items-center gap-1.5 rounded-full border px-2 py-1 text-xs sm:flex',
+                    isManager || presence.center_online
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-slate-200 bg-slate-50 text-slate-500'
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      'h-1.5 w-1.5 rounded-full',
+                      isManager || presence.center_online ? 'bg-emerald-500' : 'bg-slate-300'
+                    )}
+                  />
+                  {isManager
+                    ? `${presence.people.length} đang xem`
+                    : presence.center_online
+                      ? 'Trung tâm đang trực'
+                      : 'Trung tâm offline'}
+                </span>
+              )}
               <div className="text-right">
                 <p className="text-sm font-medium text-stone-800">{registrant.full_name}</p>
                 <p className="text-xs text-slate-400">{registrant.phone}</p>

@@ -89,6 +89,10 @@ const bookingService = {
   reactToBoardMessage: (messageId, emoji) =>
     publicApi.post(`/booking/public/messages/${messageId}/reactions`, { emoji }),
   listBoardThreads: (slug) => publicApi.get(`/booking/public/boards/${slug}/threads`),
+  createPoll: (slug, data) => publicApi.post(`/booking/public/boards/${slug}/polls`, data),
+  votePoll: (messageId, optionId) =>
+    publicApi.post(`/booking/public/messages/${messageId}/vote`, { option_id: optionId }),
+  closePoll: (messageId) => publicApi.post(`/booking/public/messages/${messageId}/close-poll`),
   managerListPool: (slug) => publicApi.get(`/booking/public/boards/${slug}/pool`),
   managerDetachRequest: (requestId) => publicApi.post(`/booking/public/requests/${requestId}/detach`),
   managerRemoveFromPool: (itemId) => publicApi.delete(`/booking/public/pool/${itemId}`),

@@ -239,6 +239,25 @@ const setRegistrantColor = handle(async (req, res) => {
   return response.success(res, result, `Đã đổi màu của ${result.full_name}`);
 });
 
+const createPoll = handle(async (req, res) => {
+  const result = await bookingService.createPoll(req.params.slug, req.registrant.id, req.body || {});
+  return response.created(res, result, 'Đã gửi bình chọn');
+});
+
+const votePoll = handle(async (req, res) => {
+  const result = await bookingService.votePoll(
+    req.params.messageId,
+    (req.body || {}).option_id,
+    req.registrant.id
+  );
+  return response.success(res, result, result.added ? 'Đã bình chọn' : 'Đã bỏ chọn');
+});
+
+const closePoll = handle(async (req, res) => {
+  const result = await bookingService.closePoll(req.params.messageId, req.registrant.id);
+  return response.success(res, result, 'Đã khóa bình chọn');
+});
+
 const managerSetRegistrantPrice = handle(async (req, res) => {
   const result = await bookingService.managerSetRegistrantPrice(
     req.params.registrantId,
@@ -322,6 +341,9 @@ module.exports = {
   sendMessage,
   listThreads,
   toggleReaction,
+  createPoll,
+  votePoll,
+  closePoll,
   managerSetRegistrantColor,
   managerSetRegistrantPrice,
   adminCancelRequest,

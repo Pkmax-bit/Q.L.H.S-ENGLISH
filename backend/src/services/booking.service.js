@@ -646,6 +646,18 @@ const isManagerSession = async (registrantId) => {
   return Boolean(data?.is_manager);
 };
 
+/** Tên + cờ quản lý của một người, cho tầng socket in danh sách đang online. */
+const getRegistrantBrief = async (registrantId) => {
+  if (!registrantId) return null;
+  const { data, error } = await supabase
+    .from('booking_registrants')
+    .select('id, full_name, is_manager')
+    .eq('id', registrantId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+};
+
 const assertSessionDate = (value) => {
   const date = String(value || '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -1269,6 +1281,10 @@ const listActivityBySlug = async (slug, registrantId, query = {}) => {
 
 // ------------------------------------------------------------- chat
 
+// Supabase .in() với mảng rỗng trả về lỗi cú pháp chứ không trả 0 dòng, nên
+// luồng chưa có tin nào phải lọc bằng một id không bao giờ tồn tại
+const NO_ID = '00000000-0000-0000-0000-000000000000';
+
 /**
  * Luồng chat. Học viên chỉ đọc luồng của chính mình; người quản lý đọc luồng
  * của bất kỳ ai trên bảng (truyền registrant_id) — kiểm cờ ở đây, không tin client.
@@ -1294,17 +1310,76 @@ const listMessages = async (slug, registrantId, targetId = null) => {
   const { data: reactions, error: rErr } = await supabase
     .from('booking_message_reactions')
     .select('message_id, registrant_id, emoji')
-    .in('message_id', rows.length ? rows.map((m) => m.id) : ['00000000-0000-0000-0000-000000000000']);
+    .in('message_id', rows.length ? rows.map((m) => m.id) : [NO_ID]);
   if (rErr) throw rErr;
+
+  const ids = rows.length ? rows.map((m) => m.id) : [NO_ID];
+
+  // Bình chọn của luồng: hai lượt đọc cho cả luồng chứ không phải mỗi tin một lượt
+  const [{ data: polls, error: pErr }, { data: votes, error: vErr }] = await Promise.all([
+    supabase
+      .from('booking_message_polls')
+      .select('message_id, question, options, multi, closed_at')
+      .in('message_id', ids),
+    supabase.from('booking_poll_votes').select('message_id, registrant_id, option_id').in('message_id', ids),
+  ]);
+  if (pErr) throw pErr;
+  if (vErr) throw vErr;
+
+  // Tên của mọi người có mặt trong cảm xúc / phiếu bầu, tra một lần.
+  // Luồng chat chỉ có hai phía (học viên đó và trung tâm) nên hiện tên ở đây
+  // không lộ ai ra ngoài phạm vi người xem vốn đã thấy.
+  const nguoiIds = new Set([
+    ...(reactions || []).map((r) => r.registrant_id),
+    ...(votes || []).map((v) => v.registrant_id),
+  ]);
+  const tenCua = new Map();
+  if (nguoiIds.size > 0) {
+    const { data: people } = await supabase
+      .from('booking_registrants')
+      .select('id, full_name, is_manager')
+      .in('id', [...nguoiIds]);
+    for (const n of people || []) {
+      tenCua.set(n.id, n.is_manager ? 'Trung tâm' : n.full_name || 'Học viên');
+    }
+  }
 
   const byMessage = new Map();
   for (const r of reactions || []) {
     if (!byMessage.has(r.message_id)) byMessage.set(r.message_id, new Map());
     const perEmoji = byMessage.get(r.message_id);
-    if (!perEmoji.has(r.emoji)) perEmoji.set(r.emoji, { emoji: r.emoji, count: 0, mine: false });
+    if (!perEmoji.has(r.emoji)) {
+      perEmoji.set(r.emoji, { emoji: r.emoji, count: 0, mine: false, names: [] });
+    }
     const entry = perEmoji.get(r.emoji);
     entry.count += 1;
+    entry.names.push(r.registrant_id === registrantId ? 'Bạn' : tenCua.get(r.registrant_id) || 'Ai đó');
     if (r.registrant_id === registrantId) entry.mine = true;
+  }
+
+  // Gộp phiếu theo tin rồi theo phương án; giữ cả tên để hiện "ai chọn gì"
+  const pollOf = new Map();
+  for (const poll of polls || []) {
+    const perOption = new Map(
+      (poll.options || []).map((o) => [o.id, { id: o.id, text: o.text, count: 0, mine: false, names: [] }])
+    );
+    pollOf.set(poll.message_id, {
+      question: poll.question,
+      multi: Boolean(poll.multi),
+      closed_at: poll.closed_at || null,
+      options: perOption,
+      voters: new Set(),
+    });
+  }
+  for (const v of votes || []) {
+    const poll = pollOf.get(v.message_id);
+    if (!poll) continue;
+    poll.voters.add(v.registrant_id);
+    const opt = poll.options.get(v.option_id);
+    if (!opt) continue; // phương án đã bị gỡ khỏi câu hỏi
+    opt.count += 1;
+    opt.mine = opt.mine || v.registrant_id === registrantId;
+    opt.names.push(v.registrant_id === registrantId ? 'Bạn' : tenCua.get(v.registrant_id) || 'Ai đó');
   }
 
   // Mở luồng ra là coi như đã đọc phần của phía bên kia
@@ -1319,9 +1394,19 @@ const listMessages = async (slug, registrantId, targetId = null) => {
 
   const messages = rows.map((m) => {
     const quoted = m.reply_to ? byId.get(m.reply_to) : null;
+    const poll = pollOf.get(m.id);
     return {
       ...m,
       reactions: [...(byMessage.get(m.id)?.values() || [])],
+      poll: poll
+        ? {
+            question: poll.question,
+            multi: poll.multi,
+            closed_at: poll.closed_at,
+            options: [...poll.options.values()],
+            voter_count: poll.voters.size,
+          }
+        : null,
       // Trích dẫn kèm luôn trong tin, khỏi phải tra ngược ở client
       reply: quoted
         ? {
@@ -1463,6 +1548,147 @@ const sendMessage = async (slug, registrantId, { body, registrant_id: targetId, 
   emitNotification('booking:message', { board_id: board.id, thread_id: thread, message: data }, `booking_manager:${board.id}`);
 
   return data;
+};
+
+/**
+ * Tạo một bình chọn trong luồng chat.
+ *
+ * Bình chọn đi kèm MỘT tin nhắn thật: nó nằm đúng chỗ trong mạch hội thoại,
+ * thừa quyền xem của luồng, và báo động cho phía kia bằng chính đường tin
+ * nhắn đang có — không phải dựng thêm kênh thông báo riêng.
+ */
+const createPoll = async (slug, registrantId, { question, options, multi, target_id: targetId } = {}) => {
+  const board = await fetchBoardBySlug(slug);
+  const manager = await isManagerSession(registrantId);
+  const thread = targetId && manager ? targetId : registrantId;
+
+  const hoi = String(question || '').trim();
+  if (hoi.length < 1 || hoi.length > 300) {
+    throw { statusCode: 400, message: 'Câu hỏi phải từ 1 đến 300 ký tự' };
+  }
+
+  // Bỏ phương án trống và phương án trùng chữ — người gõ nhanh hay để lọt một
+  // ô rỗng, mà bình chọn hai phương án giống hệt nhau thì đếm xong không dùng được
+  const daCo = new Set();
+  const ds = [];
+  for (const raw of Array.isArray(options) ? options : []) {
+    const text = String(raw || '').trim().slice(0, 120);
+    if (!text || daCo.has(text.toLowerCase())) continue;
+    daCo.add(text.toLowerCase());
+    ds.push({ id: `o${ds.length + 1}`, text });
+  }
+  if (ds.length < 2) throw { statusCode: 400, message: 'Cần ít nhất 2 phương án khác nhau' };
+  if (ds.length > 10) throw { statusCode: 400, message: 'Tối đa 10 phương án' };
+
+  const sender = manager ? 'center' : 'student';
+  const { data: msg, error } = await supabase
+    .from('booking_messages')
+    .insert({ board_id: board.id, registrant_id: thread, sender, body: `[Bình chọn] ${hoi}` })
+    .select('id, sender, body, created_at, reply_to, image_url')
+    .single();
+  if (error) throw error;
+
+  const { error: pErr } = await supabase
+    .from('booking_message_polls')
+    .insert({ message_id: msg.id, question: hoi, options: ds, multi: Boolean(multi) });
+  if (pErr) {
+    // Tin đã chèn mà bình chọn hỏng thì phải dọn, không để lại một tin "[Bình
+    // chọn] ..." rỗng không bấm được gì
+    await supabase.from('booking_messages').delete().eq('id', msg.id);
+    throw pErr;
+  }
+
+  logActivity({
+    boardId: board.id,
+    actor: await actorFromRegistrant(registrantId),
+    action: 'poll.create',
+    targetId: msg.id,
+    detail: { cau_hoi: hoi, so_phuong_an: ds.length },
+  });
+
+  const payload = { board_id: board.id, thread_id: thread, message: msg };
+  emitNotification('booking:message', payload, `booking_thread:${thread}`);
+  emitNotification('booking:message', payload, `booking_manager:${board.id}`);
+  return { message_id: msg.id, question: hoi, options: ds };
+};
+
+/** Bỏ phiếu / đổi ý. Bấm lại đúng phương án đang chọn là rút phiếu. */
+const votePoll = async (messageId, optionId, registrantId) => {
+  const { data: poll, error } = await supabase
+    .from('booking_message_polls')
+    .select('message_id, options, multi, closed_at, message:booking_messages!booking_message_polls_message_id_fkey(board_id, registrant_id)')
+    .eq('message_id', messageId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!poll) throw { statusCode: 404, message: 'Không tìm thấy bình chọn này' };
+  if (poll.closed_at) throw { statusCode: 409, message: 'Bình chọn đã khóa' };
+
+  const manager = await isManagerSession(registrantId);
+  if (!manager && poll.message?.registrant_id !== registrantId) {
+    throw { statusCode: 403, message: 'Bạn không xem được bình chọn này' };
+  }
+  if (!(poll.options || []).some((o) => o.id === optionId)) {
+    throw { statusCode: 400, message: 'Phương án không hợp lệ' };
+  }
+
+  const { data: dangCo } = await supabase
+    .from('booking_poll_votes')
+    .select('option_id')
+    .eq('message_id', messageId)
+    .eq('registrant_id', registrantId);
+  const chon = new Set((dangCo || []).map((v) => v.option_id));
+
+  if (chon.has(optionId)) {
+    await supabase
+      .from('booking_poll_votes')
+      .delete()
+      .eq('message_id', messageId)
+      .eq('registrant_id', registrantId)
+      .eq('option_id', optionId);
+  } else {
+    // Bình chọn một lựa chọn: phiếu mới thay phiếu cũ, không cộng thêm
+    if (!poll.multi && chon.size > 0) {
+      await supabase
+        .from('booking_poll_votes')
+        .delete()
+        .eq('message_id', messageId)
+        .eq('registrant_id', registrantId);
+    }
+    const { error: insErr } = await supabase
+      .from('booking_poll_votes')
+      .insert({ message_id: messageId, registrant_id: registrantId, option_id: optionId });
+    if (insErr && insErr.code !== '23505') throw insErr;
+  }
+
+  const boardId = poll.message?.board_id;
+  const thread = poll.message?.registrant_id;
+  const payload = { board_id: boardId, thread_id: thread, poll: true };
+  emitNotification('booking:message', payload, `booking_thread:${thread}`);
+  if (boardId) emitNotification('booking:message', payload, `booking_manager:${boardId}`);
+  return { message_id: messageId, option_id: optionId, added: !chon.has(optionId) };
+};
+
+/** Khóa bình chọn. Chỉ trung tâm khóa được — khóa là chốt kết quả. */
+const closePoll = async (messageId, registrantId) => {
+  if (!(await isManagerSession(registrantId))) {
+    throw { statusCode: 403, message: 'Chỉ trung tâm khóa được bình chọn' };
+  }
+  const { data, error } = await supabase
+    .from('booking_message_polls')
+    .update({ closed_at: new Date().toISOString() })
+    .eq('message_id', messageId)
+    .is('closed_at', null)
+    .select('message_id, message:booking_messages!booking_message_polls_message_id_fkey(board_id, registrant_id)')
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw { statusCode: 404, message: 'Bình chọn không tồn tại hoặc đã khóa' };
+
+  const payload = { board_id: data.message?.board_id, thread_id: data.message?.registrant_id, poll: true };
+  emitNotification('booking:message', payload, `booking_thread:${data.message?.registrant_id}`);
+  if (data.message?.board_id) {
+    emitNotification('booking:message', payload, `booking_manager:${data.message.board_id}`);
+  }
+  return { message_id: messageId };
 };
 
 /** Danh sách luồng cho người quản lý: ai nhắn gì gần nhất, còn mấy tin chưa đọc. */
@@ -2360,6 +2586,7 @@ module.exports = {
   assertNoSelfOverlap,
   actorFromRegistrant,
   isManagerSession,
+  getRegistrantBrief,
   getBoardBySlugId: fetchBoardBySlug,
   listBoardStudents,
   listActivity,
@@ -2367,6 +2594,9 @@ module.exports = {
   listMessages,
   sendMessage,
   toggleReaction,
+  createPoll,
+  votePoll,
+  closePoll,
   listThreads,
   managerSetRegistrantColor,
   managerSetRegistrantPrice,

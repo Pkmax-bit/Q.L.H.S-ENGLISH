@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeft, CornerUpLeft, ImagePlus, MessageCircle, Send, SmilePlus, X } from 'lucide-react'
+import { ArrowLeft, BarChart3, Check, CheckCheck, CornerUpLeft, ImagePlus, Lock, MessageCircle, Plus, Send, SmilePlus, Trash2, X } from 'lucide-react'
 import clsx from 'clsx'
 import { colorClasses } from '../../lib/bookingUtils'
 import { useIsNarrow } from '../../hooks/useIsNarrow'
@@ -84,6 +84,8 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
   // Gợi ý @: bật khi người dùng vừa gõ @ và chưa gõ hết tên
   const [mentionQuery, setMentionQuery] = useState(null)
   const inputRef = useRef(null)
+  // Soạn bình chọn: null = đang đóng, object = đang mở
+  const [pollDraft, setPollDraft] = useState(null)
   const endRef = useRef(null)
 
   const loadThreads = useCallback(() => {
@@ -198,6 +200,95 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
 
   // Người quản lý đếm theo danh sách luồng (đã mở hộp thì có sẵn), học viên
   // lấy từ con số server trả kèm bảng — họ không được đọc danh sách luồng
+  // Tin cuối CỦA MÌNH đã được phía kia mở ra đọc, và tin cuối mình vừa gửi.
+  // Duyệt từ cuối lên nên gặp cái nào trước là cái đó.
+  const mineOf = (m) => (isManager ? m.sender === 'center' : m.sender === 'student')
+  let lastSeenId = null
+  let lastSentId = null
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i]
+    if (!mineOf(m)) continue
+    if (!lastSentId) lastSentId = m.id
+    if (m.read_at) {
+      lastSeenId = m.id
+      break
+    }
+  }
+  const tenPhiaKia = isManager
+    ? threads.find((t) => t.registrant_id === activeThread)?.full_name || 'Học viên'
+    : 'Trung tâm'
+
+  /**
+   * Bỏ phiếu: đổi ngay trên màn rồi mới gọi API, như cảm xúc. Một chạm mà
+   * phải chờ một giây mới thấy gì thì người dùng bấm lại lần nữa.
+   */
+  const vote = async (messageId, optionId) => {
+    const truoc = messages
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId || !m.poll) return m
+        const dangChon = m.poll.options.find((o) => o.id === optionId)?.mine
+        return {
+          ...m,
+          poll: {
+            ...m.poll,
+            options: m.poll.options.map((o) => {
+              if (o.id === optionId) {
+                return dangChon
+                  ? { ...o, mine: false, count: o.count - 1, names: o.names.filter((n) => n !== 'Bạn') }
+                  : { ...o, mine: true, count: o.count + 1, names: [...o.names, 'Bạn'] }
+              }
+              // Bình chọn một lựa chọn: chọn cái mới là bỏ cái cũ
+              if (!m.poll.multi && o.mine && !dangChon) {
+                return { ...o, mine: false, count: o.count - 1, names: o.names.filter((n) => n !== 'Bạn') }
+              }
+              return o
+            }),
+          },
+        }
+      })
+    )
+    try {
+      await api.vote(messageId, optionId)
+    } catch (err) {
+      setMessages(truoc)
+      setError(err.response?.data?.message || 'Không bình chọn được')
+    }
+  }
+
+  const closePoll = async (messageId) => {
+    try {
+      await api.closePoll(messageId)
+      await loadMessages()
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không khóa được bình chọn')
+    }
+  }
+
+  const sendPoll = async () => {
+    const options = pollDraft.options.map((o) => o.trim()).filter(Boolean)
+    if (!pollDraft.question.trim() || options.length < 2) {
+      setError('Cần câu hỏi và ít nhất 2 phương án')
+      return
+    }
+    setSending(true)
+    try {
+      await api.createPoll({
+        question: pollDraft.question,
+        options,
+        multi: pollDraft.multi,
+        target_id: isManager ? activeThread : null,
+      })
+      setPollDraft(null)
+      setError('')
+      await loadMessages()
+    } catch (err) {
+      setError(err.response?.data?.message || 'Không gửi được bình chọn')
+    } finally {
+      setSending(false)
+    }
+  }
+
   const unreadTotal = isManager
     ? Math.max(threads.reduce((n, t) => n + (t.unread || 0), 0), open ? 0 : unread)
     : unread
@@ -339,7 +430,7 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
                             />
                           </a>
                         )}
-                        {m.body && (
+                        {m.body && !m.poll && (
                           <p className="whitespace-pre-wrap break-words">
                             {/* Tách @Tên ra để tô đậm; tên có dấu cách nên bắt theo
                                 danh sách thật, không bắt bừa tới khoảng trắng */}
@@ -360,10 +451,93 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
                             )}
                           </p>
                         )}
+                        {m.poll && (
+                          <div
+                            className={clsx(
+                              'mt-1 rounded-xl p-2',
+                              mine ? 'bg-white/15' : 'bg-white'
+                            )}
+                          >
+                            <p className="mb-1.5 flex items-start gap-1.5 text-sm font-semibold">
+                              <BarChart3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                              <span className="min-w-0">{m.poll.question}</span>
+                            </p>
+                            {m.poll.options.map((o) => {
+                              // Thanh nền chạy theo TỶ LỆ trên tổng số phiếu;
+                              // chưa ai bầu thì để 0 chứ không chia cho 0
+                              const pct = m.poll.voter_count
+                                ? Math.round((o.count / m.poll.voter_count) * 100)
+                                : 0
+                              return (
+                                <button
+                                  key={o.id}
+                                  type="button"
+                                  disabled={Boolean(m.poll.closed_at)}
+                                  onClick={() => vote(m.id, o.id)}
+                                  title={o.names?.length ? o.names.join(', ') : 'Chưa ai chọn'}
+                                  className={clsx(
+                                    'relative mb-1 flex w-full items-center gap-1.5 overflow-hidden rounded-lg border px-2 py-1 text-left text-xs',
+                                    o.mine
+                                      ? 'border-primary-400 font-semibold'
+                                      : 'border-slate-200 hover:border-primary-300',
+                                    mine ? 'text-white' : 'text-stone-800',
+                                    m.poll.closed_at && 'cursor-default opacity-80'
+                                  )}
+                                >
+                                  <span
+                                    aria-hidden="true"
+                                    style={{ width: `${pct}%` }}
+                                    className={clsx(
+                                      'absolute inset-y-0 left-0',
+                                      mine ? 'bg-white/25' : 'bg-primary-100'
+                                    )}
+                                  />
+                                  <span className="relative min-w-0 flex-1 truncate">{o.text}</span>
+                                  {o.mine && <Check className="relative h-3 w-3 shrink-0" />}
+                                  <span className="relative shrink-0 tabular-nums">{o.count}</span>
+                                </button>
+                              )
+                            })}
+                            <p className={clsx('text-[10px]', mine ? 'text-white/70' : 'text-slate-400')}>
+                              {m.poll.voter_count} người đã chọn
+                              {m.poll.multi ? ' · chọn được nhiều ý' : ''}
+                              {m.poll.closed_at ? ' · đã khóa' : ''}
+                            </p>
+                            {isManager && !m.poll.closed_at && (
+                              <button
+                                type="button"
+                                onClick={() => closePoll(m.id)}
+                                className={clsx(
+                                  'mt-1 flex items-center gap-1 text-[10px] underline',
+                                  mine ? 'text-white/80' : 'text-slate-500'
+                                )}
+                              >
+                                <Lock className="h-3 w-3" />
+                                Khóa bình chọn
+                              </button>
+                            )}
+                          </div>
+                        )}
                         <p className={clsx('mt-0.5 text-[10px]', mine ? 'text-white/70' : 'text-slate-400')}>
                           {timeOf(m.created_at)}
                         </p>
                       </div>
+
+                      {/* Chỉ gắn vào TIN CUỐI CÙNG đã được xem: dán "đã xem"
+                          lên từng tin thì cột chữ xám chạy dọc cả luồng, mà
+                          thông tin thì vẫn chỉ có một — người kia đọc tới đâu. */}
+                      {mine && m.id === lastSeenId && (
+                        <p className="mt-0.5 flex items-center justify-end gap-1 text-[10px] text-slate-400">
+                          <CheckCheck className="h-3 w-3 text-primary-500" />
+                          {tenPhiaKia} đã xem · {timeOf(m.read_at)}
+                        </p>
+                      )}
+                      {mine && m.id === lastSentId && !lastSeenId && (
+                        <p className="mt-0.5 flex items-center justify-end gap-1 text-[10px] text-slate-400">
+                          <Check className="h-3 w-3" />
+                          Đã gửi
+                        </p>
+                      )}
 
                       {m.reactions?.length > 0 && (
                         <div className={clsx('mt-0.5 flex flex-wrap gap-1', mine && 'justify-end')}>
@@ -372,7 +546,12 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
                               key={r.emoji}
                               type="button"
                               onClick={() => react(m.id, r.emoji)}
-                              title={r.mine ? 'Bỏ cảm xúc' : 'Thả cảm xúc này'}
+                              // Ai thả hiện ngay trên tooltip của chip — một
+                              // luồng chỉ có hai phía nên chuỗi tên không bao
+                              // giờ dài, không cần mở hộp riêng để xem
+                              title={`${(r.names || []).join(', ')}${
+                                r.names?.length ? ' — ' : ''
+                              }${r.mine ? 'bấm để bỏ' : 'bấm để thả'}`}
                               className={clsx(
                                 'flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px]',
                                 r.mine
@@ -483,6 +662,87 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
             </div>
           )}
 
+          {pollDraft && (
+            <div className="space-y-1.5 border-t border-slate-100 bg-slate-50 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-3.5 w-3.5 shrink-0 text-primary-600" />
+                <span className="flex-1 text-xs font-semibold text-slate-700">Tạo bình chọn</span>
+                <button
+                  type="button"
+                  onClick={() => setPollDraft(null)}
+                  className="rounded p-0.5 text-slate-400 hover:text-red-500"
+                  title="Bỏ bình chọn"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <input
+                value={pollDraft.question}
+                onChange={(e) => setPollDraft((d) => ({ ...d, question: e.target.value }))}
+                placeholder="Câu hỏi, ví dụ: Buổi bù vào giờ nào tiện?"
+                className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-primary-400 focus:outline-none"
+              />
+              {pollDraft.options.map((o, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <input
+                    value={o}
+                    onChange={(e) =>
+                      setPollDraft((d) => ({
+                        ...d,
+                        options: d.options.map((x, j) => (j === i ? e.target.value : x)),
+                      }))
+                    }
+                    placeholder={`Phương án ${i + 1}`}
+                    className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-sm focus:border-primary-400 focus:outline-none"
+                  />
+                  {/* Giữ lại tối thiểu hai ô: bớt xuống một thì không còn là
+                      bình chọn, mà server cũng từ chối */}
+                  {pollDraft.options.length > 2 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPollDraft((d) => ({ ...d, options: d.options.filter((_, j) => j !== i) }))
+                      }
+                      className="shrink-0 rounded p-1 text-slate-400 hover:text-red-500"
+                      title="Bỏ phương án"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <div className="flex flex-wrap items-center gap-2">
+                {pollDraft.options.length < 10 && (
+                  <button
+                    type="button"
+                    onClick={() => setPollDraft((d) => ({ ...d, options: [...d.options, ''] }))}
+                    className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:border-primary-300"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Thêm phương án
+                  </button>
+                )}
+                <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={pollDraft.multi}
+                    onChange={(e) => setPollDraft((d) => ({ ...d, multi: e.target.checked }))}
+                  />
+                  Cho chọn nhiều ý
+                </label>
+                <button
+                  type="button"
+                  disabled={sending}
+                  onClick={sendPoll}
+                  className="ml-auto flex items-center gap-1 rounded-lg bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-40"
+                >
+                  <Send className="h-3 w-3" />
+                  Gửi bình chọn
+                </button>
+              </div>
+            </div>
+          )}
+
           {preview && (
             <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50 px-3 py-2">
               <img src={preview} alt="Ảnh sắp gửi" className="h-12 w-12 rounded-lg object-cover" />
@@ -526,6 +786,19 @@ export default function ChatDock({ isManager = false, api, socket, unread = 0, m
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-primary-600"
             >
               <ImagePlus className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setPollDraft((d) => (d ? null : { question: '', options: ['', ''], multi: false }))
+              }
+              title="Tạo bình chọn"
+              className={clsx(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl hover:bg-slate-100',
+                pollDraft ? 'text-primary-600' : 'text-slate-400 hover:text-primary-600'
+              )}
+            >
+              <BarChart3 className="h-4 w-4" />
             </button>
             <textarea
               rows={1}
