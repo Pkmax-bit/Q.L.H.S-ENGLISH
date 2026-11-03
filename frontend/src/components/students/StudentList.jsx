@@ -80,7 +80,7 @@ export default function StudentList() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" icon={Download} onClick={handleExport}>Xuất Excel</Button>
-          <Button icon={Plus} onClick={() => { setSelected(null); setShowForm(true) }}>Thêm học sinh</Button>
+          <Button icon={Plus} data-tour="students-add" onClick={() => { setSelected(null); setShowForm(true) }}>Thêm học sinh</Button>
         </div>
       </div>
 

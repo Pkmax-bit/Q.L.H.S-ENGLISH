@@ -114,6 +114,12 @@ const STYLES = `
     border-radius: 8px; margin: 10px 0;
     border: none;
   }
+  .rich-content-viewer video {
+    width: 100%;
+    border-radius: 12px;
+    background: #000;
+    margin: 8px 0;
+  }
 
   /* ===== QUILL ALIGNMENT ===== */
   .rich-content-viewer .ql-align-center { text-align: center; }

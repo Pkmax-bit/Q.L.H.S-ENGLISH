@@ -1,18 +1,22 @@
 import { useState, useContext, useCallback } from 'react'
-import { Plus, Download, BookCopy } from 'lucide-react'
+import { Plus, Download, BookCopy, Eye, EyeOff, Pencil, Trash2 } from 'lucide-react'
 import Table from '../common/Table'
 import Button from '../common/Button'
 import StatusBadge from '../common/StatusBadge'
 import ConfirmDialog from '../common/ConfirmDialog'
+import LoadingSpinner from '../common/LoadingSpinner'
 import LessonForm from './LessonForm'
 import LessonDetail from './LessonDetail'
+import LessonUnitSections from './LessonUnitSections'
 import { useFetch } from '../../hooks/useFetch'
 import { useExcelExport } from '../../hooks/useExcelExport'
 import { useAuth } from '../../hooks/useAuth'
 import { ToastContext } from '../../context/ToastContext'
 import lessonsService from '../../services/lessons.service'
+import lessonProgressService from '../../services/lessonProgress.service'
 import templatesService from '../../services/templates.service'
 import { formatDate } from '../../utils/formatDate'
+import { hasTcoCurriculum } from '../../utils/lessonCurriculum'
 
 const contentTypeMap = {
   text: 'Văn bản',
@@ -34,10 +38,20 @@ export default function LessonList() {
   const isAdmin = user?.role === 'admin'
   const isTeacher = user?.role === 'teacher'
 
-  const fetchLessons = useCallback(() => lessonsService.getAll(), [])
+  const fetchLessons = useCallback(
+    () => lessonsService.getAll({ limit: 300, sortBy: 'order_index', sortOrder: 'ASC' }),
+    []
+  )
   const { data: lessons, loading, execute: reload } = useFetch(fetchLessons)
+  const fetchProgress = useCallback(() => lessonProgressService.getMine(), [])
+  const { data: progressData } = useFetch(fetchProgress)
 
   const lessonList = Array.isArray(lessons) ? lessons : lessons?.lessons || []
+  const progressList = Array.isArray(progressData) ? progressData : []
+  const progressMap = progressList.reduce((map, row) => {
+    map[row.lesson_id] = row
+    return map
+  }, {})
 
   const columns = [
     { key: 'title', label: 'Tiêu đề' },
@@ -129,36 +143,94 @@ export default function LessonList() {
           <Button variant="outline" icon={Download} onClick={handleExport}>
             Xuất Excel
           </Button>
-          <Button icon={Plus} onClick={() => { setSelected(null); setShowForm(true) }}>
+          <Button icon={Plus} data-tour="lessons-add" onClick={() => { setSelected(null); setShowForm(true) }}>
             Thêm bài học
           </Button>
         </div>
       </div>
 
-      <Table
-        columns={columns}
-        data={lessonList}
-        loading={loading}
-        onEdit={handleEdit}
-        onDelete={isAdmin ? handleDelete : undefined}
-        onView={handleView}
-        actions={isAdmin ? (row) => (
-          <button
-            onClick={() => toggleTemplate(row)}
-            disabled={toggling}
-            className={`p-1 rounded-lg transition-colors ${
-              row.is_template
-                ? 'text-amber-700 hover:bg-amber-50'
-                : 'text-gray-400 hover:bg-gray-100 hover:text-amber-600'
-            }`}
-            title={row.is_template ? 'Bỏ đánh dấu mẫu' : 'Đánh dấu làm mẫu'}
-          >
-            <BookCopy className="h-4 w-4" />
-          </button>
-        ) : undefined}
-        searchPlaceholder="Tìm bài học..."
-        emptyMessage="Chưa có bài học nào"
-      />
+      {loading ? (
+        <LoadingSpinner />
+      ) : hasTcoCurriculum(lessonList) ? (
+        <LessonUnitSections
+          lessons={lessonList}
+          showClassName
+          progressMap={progressMap}
+          onItemClick={handleView}
+          renderActions={(lesson) => (
+            <>
+              {lesson.is_published ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
+                  <Eye className="h-3 w-3" />
+                  Đã xuất bản
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
+                  <EyeOff className="h-3 w-3" />
+                  Nháp
+                </span>
+              )}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => toggleTemplate(lesson)}
+                  disabled={toggling}
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    lesson.is_template
+                      ? 'text-amber-700 hover:bg-amber-50'
+                      : 'text-gray-400 hover:bg-gray-100 hover:text-amber-600'
+                  }`}
+                  title={lesson.is_template ? 'Bỏ đánh dấu mẫu' : 'Đánh dấu làm mẫu'}
+                >
+                  <BookCopy className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => handleEdit(lesson)}
+                className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-600 transition-colors"
+                title="Chỉnh sửa"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(lesson)}
+                  className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors"
+                  title="Xóa"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </>
+          )}
+        />
+      ) : (
+        <Table
+          columns={columns}
+          data={lessonList}
+          onEdit={handleEdit}
+          onDelete={isAdmin ? handleDelete : undefined}
+          onView={handleView}
+          actions={isAdmin ? (row) => (
+            <button
+              onClick={() => toggleTemplate(row)}
+              disabled={toggling}
+              className={`p-1 rounded-lg transition-colors ${
+                row.is_template
+                  ? 'text-amber-700 hover:bg-amber-50'
+                  : 'text-gray-400 hover:bg-gray-100 hover:text-amber-600'
+              }`}
+              title={row.is_template ? 'Bỏ đánh dấu mẫu' : 'Đánh dấu làm mẫu'}
+            >
+              <BookCopy className="h-4 w-4" />
+            </button>
+          ) : undefined}
+          searchPlaceholder="Tìm bài học..."
+          emptyMessage="Chưa có bài học nào"
+        />
+      )}
 
       <LessonForm
         isOpen={showForm}

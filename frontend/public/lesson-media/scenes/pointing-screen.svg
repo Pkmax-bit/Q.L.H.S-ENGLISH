@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Người phụ nữ đang chỉ màn hình">
+  <rect width="800" height="500" fill="#ecfdf5"/>
+  
+    <rect width="800" height="210" fill="#d1fae5"/>
+    <rect y="210" width="800" height="290" fill="#ecfdf5"/>
+    <rect x="430" y="150" width="220" height="150" rx="8" fill="#115e59"/>
+    <rect x="446" y="166" width="188" height="118" fill="#5eead4"/>
+    <circle cx="280" cy="220" r="22" fill="#f4c7a1"/>
+    <ellipse cx="280" cy="206" rx="22" ry="12" fill="#431407"/>
+    <rect x="256" y="242" width="50" height="64" rx="12" fill="#059669"/>
+    <rect x="250" y="304" width="18" height="46" rx="5" fill="#1e3a5f"/>
+    <rect x="292" y="304" width="18" height="46" rx="5" fill="#1e3a5f"/>
+    <rect x="306" y="250" width="90" height="10" rx="4" fill="#f4c7a1" transform="rotate(-18 351 255)"/>
+  
+  <text x="400" y="486" text-anchor="middle" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="13">Người phụ nữ đang chỉ màn hình · Q.L.H.S English</text>
+</svg>

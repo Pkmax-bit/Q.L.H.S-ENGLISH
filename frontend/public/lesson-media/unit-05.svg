@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" role="img" aria-label="Part 2 Yes / No">
+  <rect width="800" height="450" rx="28" fill="#fff7ed"/>
+  <rect x="24" y="24" width="752" height="402" rx="22" fill="#ffffff" stroke="#4f46e5" stroke-width="3"/>
+  <rect x="24" y="24" width="752" height="86" rx="22" fill="#4f46e5"/>
+  <rect x="24" y="70" width="752" height="40" fill="#4f46e5"/>
+  <text x="56" y="78" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Unit 05 · Part 2</text>
+  <text x="400" y="210" text-anchor="middle" fill="#4f46e5" font-family="Segoe UI, Arial, sans-serif" font-size="32" font-weight="700">Yes / No</text>
+  
+  <circle cx="250" cy="300" r="28" fill="#4f46e5" opacity="0.9"/>
+  <rect x="228" y="332" width="44" height="52" rx="14" fill="#4f46e5" opacity="0.75"/>
+  <circle cx="400" cy="292" r="32" fill="#4f46e5"/>
+  <rect x="374" y="328" width="52" height="58" rx="16" fill="#4f46e5" opacity="0.85"/>
+  <circle cx="550" cy="304" r="26" fill="#4f46e5" opacity="0.8"/>
+  <rect x="530" y="334" width="40" height="50" rx="12" fill="#4f46e5" opacity="0.7"/>
+  
+  <text x="400" y="400" text-anchor="middle" fill="#78716c" font-family="Segoe UI, Arial, sans-serif" font-size="14">Học liệu minh họa · Q.L.H.S English</text>
+</svg>

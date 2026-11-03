@@ -1,23 +1,18 @@
 import { useState, useCallback, useMemo } from 'react'
 import {
   ArrowLeft, BookOpen, ClipboardList, Clock, AlertTriangle,
-  Sparkles, FileText, Youtube, FolderOpen, Link, ExternalLink,
-  ChevronLeft, ChevronRight, Calendar, CheckCircle, CheckCircle2, Timer, Trophy
+  Sparkles, ChevronLeft, ChevronRight, CheckCircle2, Timer, Trophy
 } from 'lucide-react'
 import Button from '../common/Button'
 import LoadingSpinner from '../common/LoadingSpinner'
-import RichContentViewer from '../common/RichContentViewer'
+import LessonUnitSections from '../lessons/LessonUnitSections'
+import LessonStudyPanel from '../lessons/LessonStudyPanel'
 import { useFetch } from '../../hooks/useFetch'
 import lessonsService from '../../services/lessons.service'
+import lessonProgressService from '../../services/lessonProgress.service'
 import assignmentsService from '../../services/assignments.service'
 import submissionsService from '../../services/submissions.service'
 import { formatDate } from '../../utils/formatDate'
-
-function extractYoutubeId(url) {
-  if (!url) return null
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?\s]+)/)
-  return match ? match[1] : null
-}
 
 function getDaysUntil(dateStr) {
   if (!dateStr) return null
@@ -43,7 +38,7 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
   const [activeTab, setActiveTab] = useState('lessons')
 
   const fetchLessons = useCallback(
-    () => lessonsService.getAll({ class_id: classData.id, is_published: 'true', limit: 100 }),
+    () => lessonsService.getAll({ class_id: classData.id, is_published: 'true', limit: 300, sortBy: 'order_index', sortOrder: 'ASC' }),
     [classData.id]
   )
   const fetchAssignments = useCallback(
@@ -54,14 +49,25 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
     () => submissionsService.getMy({ class_id: classData.id, limit: 100 }),
     [classData.id]
   )
+  const fetchProgress = useCallback(
+    () => lessonProgressService.getMine({ class_id: classData.id }),
+    [classData.id]
+  )
 
   const { data: lessonsData, loading: lessonsLoading } = useFetch(fetchLessons)
   const { data: assignmentsData, loading: assignmentsLoading } = useFetch(fetchAssignments)
   const { data: submissionsData } = useFetch(fetchMySubmissions)
+  const { data: progressData, execute: reloadProgress } = useFetch(fetchProgress)
 
   const lessons = Array.isArray(lessonsData) ? lessonsData : lessonsData?.lessons || []
   const assignments = Array.isArray(assignmentsData) ? assignmentsData : assignmentsData?.assignments || []
   const mySubmissions = Array.isArray(submissionsData) ? submissionsData : submissionsData?.submissions || []
+  const progressList = Array.isArray(progressData) ? progressData : progressData?.progress || []
+  const progressMap = useMemo(() => {
+    const map = {}
+    progressList.forEach((row) => { map[row.lesson_id] = row })
+    return map
+  }, [progressList])
 
   // Build submission status map: assignmentId -> submission
   const submissionMap = useMemo(() => {
@@ -143,6 +149,11 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
         allLessons={sortedLessons}
         currentIndex={sortedLessons.findIndex(l => l.id === selectedLesson.id)}
         onNavigate={(lesson) => setSelectedLesson(lesson)}
+        progress={progressMap[selectedLesson.id]}
+        onSaveProgress={async (payload) => {
+          await lessonProgressService.save(selectedLesson.id, payload)
+          reloadProgress()
+        }}
       />
     )
   }
@@ -314,85 +325,35 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
 
           {/* Lessons tab */}
           {activeTab === 'lessons' && (
-            <div className="space-y-3">
-              {sortedLessons.length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
-                  <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500">Chưa có bài học nào</p>
-                </div>
-              ) : (
-                sortedLessons.map((lesson, idx) => {
-                  const linked = getLinkedAssignments(lesson.id)
-                  return (
-                    <button
-                      key={lesson.id}
-                      onClick={() => setSelectedLesson(lesson)}
-                      className="w-full text-left bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md hover:border-amber-200 transition-all group"
-                    >
-                      <div className="flex items-start gap-4">
-                        {/* Lesson number */}
-                        <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-800 font-bold text-sm flex-shrink-0 group-hover:bg-blue-200 transition-colors">
-                          {lesson.order_index ?? idx + 1}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <h3 className="text-base font-semibold text-gray-900 group-hover:text-amber-800 transition-colors">
-                                {lesson.title}
-                              </h3>
-                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                                {lesson.content_type === 'video' && (
-                                  <span className="flex items-center gap-1">
-                                    <Youtube className="h-3.5 w-3.5 text-red-500" /> Video
-                                  </span>
-                                )}
-                                {lesson.content_type === 'text' && (
-                                  <span className="flex items-center gap-1">
-                                    <FileText className="h-3.5 w-3.5 text-amber-600" /> Văn bản
-                                  </span>
-                                )}
-                                {lesson.content_type === 'file' && (
-                                  <span className="flex items-center gap-1">
-                                    <FolderOpen className="h-3.5 w-3.5 text-amber-500" /> Tệp tin
-                                  </span>
-                                )}
-                                <span className="flex items-center gap-1">
-                                  <Calendar className="h-3.5 w-3.5" />
-                                  {formatDate(lesson.created_at)}
-                                </span>
-                              </div>
-                            </div>
-                            <ChevronRight className="h-5 w-5 text-gray-300 group-hover:text-amber-600 flex-shrink-0 transition-colors" />
-                          </div>
-
-                          {/* Linked assignments */}
-                          {linked.length > 0 && (
-                            <div className="mt-2.5 flex flex-wrap gap-2">
-                              {linked.map(a => {
-                                const label = getDueDateLabel(a.due_date)
-                                return (
-                                  <span
-                                    key={a.id}
-                                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${
-                                      label ? label.bg : 'bg-green-50 border-green-200'
-                                    }`}
-                                  >
-                                    <ClipboardList className="h-3 w-3" />
-                                    {a.title}
-                                    {label && <span className={`ml-0.5 ${label.color}`}>• {label.text}</span>}
-                                  </span>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })
-              )}
-            </div>
+            <LessonUnitSections
+              lessons={sortedLessons}
+              progressMap={progressMap}
+              emptyMessage="Chưa có bài học nào"
+              onItemClick={setSelectedLesson}
+              renderExtra={(lesson) => {
+                const linked = getLinkedAssignments(lesson.id)
+                if (linked.length === 0) return null
+                return (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {linked.map((a) => {
+                      const label = getDueDateLabel(a.due_date)
+                      return (
+                        <span
+                          key={a.id}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                            label ? label.bg : 'bg-green-50 border-green-200'
+                          }`}
+                        >
+                          <ClipboardList className="h-3 w-3" />
+                          {a.title}
+                          {label && <span className={`ml-0.5 ${label.color}`}>• {label.text}</span>}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )
+              }}
+            />
           )}
 
           {/* Assignments tab */}
@@ -509,15 +470,24 @@ export default function StudentClassroom({ classData, onBack, onTakeAssignment, 
   )
 }
 
-/* ========== LESSON VIEWER ========== */
-function LessonViewer({ lesson, linkedAssignments = [], submissionMap = {}, onBack, onTakeAssignment, onViewResult, allLessons = [], currentIndex = 0, onNavigate }) {
-  const ytId = extractYoutubeId(lesson.youtube_url)
+function LessonViewer({
+  lesson,
+  linkedAssignments = [],
+  submissionMap = {},
+  onBack,
+  onTakeAssignment,
+  onViewResult,
+  allLessons = [],
+  currentIndex = 0,
+  onNavigate,
+  progress,
+  onSaveProgress,
+}) {
   const hasPrev = currentIndex > 0
   const hasNext = currentIndex < allLessons.length - 1
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Header */}
       <button
         onClick={onBack}
         className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4 transition-colors"
@@ -527,192 +497,90 @@ function LessonViewer({ lesson, linkedAssignments = [], submissionMap = {}, onBa
       </button>
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        {/* Title bar */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 px-6 py-5">
-          <div className="flex items-center gap-2 text-blue-200 text-xs mb-2">
+        <div className="bg-gradient-to-r from-amber-500 to-amber-700 px-6 py-5">
+          <div className="flex items-center gap-2 text-amber-100 text-xs mb-2">
             <BookOpen className="h-4 w-4" />
-            <span>Bài học</span>
+            <span>Học từng bài</span>
             {lesson.order_index != null && <span>• Thứ tự: {lesson.order_index}</span>}
           </div>
           <h1 className="text-xl font-bold text-white">{lesson.title}</h1>
-          <p className="text-blue-200 text-sm mt-1">
-            {formatDate(lesson.created_at)}
-          </p>
+          <p className="text-amber-100 text-sm mt-1">{formatDate(lesson.created_at)}</p>
         </div>
 
         <div className="p-6 space-y-6">
-          {/* YouTube embed */}
-          {ytId && (
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <Youtube className="h-5 w-5 text-red-500" /> Video bài giảng
-              </p>
-              <div className="relative w-full rounded-xl overflow-hidden bg-black" style={{ aspectRatio: '16/9' }}>
-                <iframe
-                  src={`https://www.youtube.com/embed/${ytId}`}
-                  title={lesson.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  className="absolute inset-0 w-full h-full"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* YouTube link fallback */}
-          {lesson.youtube_url && !ytId && (
-            <a
-              href={lesson.youtube_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-800"
-            >
-              <Youtube className="h-4 w-4" /> Xem video bài giảng
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          )}
-
-          {/* Content */}
-          {lesson.content && (
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-3">📝 Nội dung bài học</p>
-              <div className="bg-gray-50 rounded-xl border border-gray-200 p-5">
-                <RichContentViewer content={lesson.content} />
-              </div>
-            </div>
-          )}
-
-          {/* Resource links */}
-          {(lesson.file_url || lesson.drive_url) && (
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-3">📎 Tài liệu đính kèm</p>
-              <div className="flex flex-wrap gap-3">
-                {lesson.drive_url && (
-                  <a
-                    href={lesson.drive_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800 hover:bg-yellow-100 transition-colors"
-                  >
-                    <FolderOpen className="h-4 w-4" />
-                    Google Drive
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-                {lesson.file_url && (
-                  <a
-                    href={lesson.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900 hover:bg-amber-100 transition-colors"
-                  >
-                    <Link className="h-4 w-4" />
-                    Tệp đính kèm
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Linked assignments */}
-          {linkedAssignments.length > 0 && (
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-3">📋 Bài tập liên quan</p>
-              <div className="space-y-2">
-                {linkedAssignments.map(a => {
-                  const label = getDueDateLabel(a.due_date)
-                  const sub = submissionMap[a.id]
-                  const isDone = sub && (sub.status === 'graded' || sub.status === 'submitted')
-
-                  return (
-                    <div
-                      key={a.id}
-                      className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl"
-                    >
-                      <div className="flex-1">
-                        <h4 className="text-sm font-semibold text-gray-900">{a.title}</h4>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                          {a.total_points && <span>🏆 {a.total_points} điểm</span>}
-                          {a.question_count > 0 && <span>❓ {a.question_count} câu</span>}
-                          {label && <span className={label.color}>{label.text}</span>}
-                        </div>
-                      </div>
-                      {isDone ? (
-                        <button
-                          onClick={() => onViewResult?.(sub.id)}
-                          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            sub.status === 'graded'
-                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                          }`}
-                        >
-                          {sub.status === 'graded' ? (
-                            <><CheckCircle className="h-4 w-4" /> {sub.score ?? '—'}/{a.total_points}</>
-                          ) : (
-                            <><Clock className="h-4 w-4" /> Chờ chấm</>
-                          )}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => onTakeAssignment?.(a.id)}
-                          className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors cursor-pointer"
-                        >
-                          <ClipboardList className="h-4 w-4" />
-                          Làm bài
-                        </button>
-                      )}
+          <LessonStudyPanel
+            lesson={lesson}
+            progress={progress}
+            onSave={onSaveProgress}
+            footer={(
+              <>
+                {linkedAssignments.length > 0 && (
+                  <div className="pt-4">
+                    <p className="text-sm font-semibold text-gray-700 mb-3">Bài tập giáo viên giao thêm</p>
+                    <div className="space-y-2">
+                      {linkedAssignments.map((a) => {
+                        const label = getDueDateLabel(a.due_date)
+                        const sub = submissionMap[a.id]
+                        const isDone = sub && (sub.status === 'graded' || sub.status === 'submitted')
+                        return (
+                          <div key={a.id} className="flex items-center justify-between p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                            <div>
+                              <h4 className="text-sm font-semibold text-gray-900">{a.title}</h4>
+                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                                {a.total_points && <span>{a.total_points} điểm</span>}
+                                {label && <span className={label.color}>{label.text}</span>}
+                              </div>
+                            </div>
+                            {isDone ? (
+                              <button
+                                onClick={() => onViewResult?.(sub.id)}
+                                className="px-4 py-2 rounded-lg text-sm font-medium bg-green-100 text-green-700"
+                              >
+                                {sub.status === 'graded' ? `${sub.score ?? '—'}/${a.total_points}` : 'Chờ chấm'}
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => onTakeAssignment?.(a.id)}
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium"
+                              >
+                                Làm bài
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+                  </div>
+                )}
 
-          {/* Completion marker + Navigation */}
-          <div className="pt-4 border-t border-gray-200 space-y-4">
-            <div className="flex items-center justify-center">
-              <div className="flex items-center gap-2 text-green-600 bg-green-50 px-4 py-2 rounded-full text-sm font-medium">
-                <CheckCircle className="h-4 w-4" />
-                Đã xem bài học
-              </div>
-            </div>
-
-            {/* Lesson navigation */}
-            {allLessons.length > 1 && (
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={() => hasPrev && onNavigate?.(allLessons[currentIndex - 1])}
-                  disabled={!hasPrev}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    hasPrev
-                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      : 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                  }`}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Bài trước
-                </button>
-
-                <span className="text-xs text-gray-400 font-medium">
-                  Bài {currentIndex + 1} / {allLessons.length}
-                </span>
-
-                <button
-                  onClick={() => hasNext && onNavigate?.(allLessons[currentIndex + 1])}
-                  disabled={!hasNext}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    hasNext
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                  }`}
-                >
-                  Bài tiếp theo
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
+                {allLessons.length > 1 && (
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                    <button
+                      onClick={() => hasPrev && onNavigate?.(allLessons[currentIndex - 1])}
+                      disabled={!hasPrev}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium ${
+                        hasPrev ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                      }`}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Bài trước
+                    </button>
+                    <span className="text-xs text-gray-400 font-medium">Bài {currentIndex + 1} / {allLessons.length}</span>
+                    <button
+                      onClick={() => hasNext && onNavigate?.(allLessons[currentIndex + 1])}
+                      disabled={!hasNext}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium ${
+                        hasNext ? 'bg-amber-500 text-white hover:bg-amber-600' : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                      }`}
+                    >
+                      Bài tiếp theo
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
-          </div>
+          />
         </div>
       </div>
     </div>

@@ -122,7 +122,35 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
   const checklist = data.setup_checklist || []
   const periods = data.billing_periods || []
   const students = data.students || []
-  const doneCount = checklist.filter((s) => s.done).length
+  const requiredSteps = checklist.filter((s) => !s.optional)
+  const doneCount = requiredSteps.filter((s) => s.done).length
+  const requiredTotal = requiredSteps.length || checklist.length
+  const hasInvoices = !!(data.has_invoices || (summary.invoice_count ?? data.invoice_count) > 0)
+  const openFeeEditor = () => {
+    if (!isAdmin) return
+    setEditingFee(true)
+    requestAnimationFrame(() => {
+      document.getElementById('class-fee-config')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
+  const expectedSub = (() => {
+    if (data.fee_policy === 'monthly') {
+      const n = summary.student_count ?? data.enrolled_count ?? 0
+      return n > 0 ? `Dự kiến · ${n} HS × đơn giá tháng` : 'Dự kiến theo đơn giá tháng'
+    }
+    if (data.fee_policy === 'per_session') {
+      return `${schedule.total_sessions_course ?? 0} buổi học (dự kiến)`
+    }
+    if (data.fee_policy === 'per_class') {
+      return 'Dự kiến trọn gói cả khóa'
+    }
+    return 'Cấu hình phí để xem dự kiến'
+  })()
+
+  const debtSub = !hasInvoices
+    ? 'Chưa có hóa đơn — chưa tính công nợ'
+    : `${(data.collection_stats?.unpaid_count ?? 0) + (data.collection_stats?.partial_count ?? 0)} HS chưa đủ`
 
   return (
     <div className="space-y-5">
@@ -130,16 +158,27 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-semibold text-gray-900">Thiết lập học phí</h3>
-          <span className="text-xs text-gray-500">{doneCount}/{checklist.length} bước xong</span>
+          <span className="text-xs text-gray-500">{doneCount}/{requiredTotal} bước bắt buộc xong</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {checklist.map((step) => (
-            <SetupStep key={step.key} step={step} classId={classInfo.id} navigate={navigate} />
+            <SetupStep
+              key={step.key}
+              step={step}
+              classId={classInfo.id}
+              navigate={navigate}
+              onOpenFee={openFeeEditor}
+            />
           ))}
         </div>
         {!data.setup_complete && (
           <p className="text-xs text-amber-700 mt-3 bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
-            Hoàn thành các bước trên để hệ thống tính đúng số buổi và lịch đóng phí.
+            Hoàn thành các bước bắt buộc để thu học phí. Bước lịch học chỉ bắt buộc khi tính theo buổi.
+          </p>
+        )}
+        {data.setup_complete && !hasInvoices && isAdmin && (
+          <p className="text-xs text-indigo-700 mt-3 bg-indigo-50 rounded-lg px-3 py-2 border border-indigo-100">
+            Đã sẵn sàng: bấm <strong>Sinh hóa đơn</strong> bên dưới rồi mới <strong>Thu tiền</strong>.
           </p>
         )}
       </div>
@@ -147,34 +186,41 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
       {/* 3 con số chính */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <SummaryCard
-          label="Phải thu cả khóa"
+          label="Phải thu cả khóa (dự kiến)"
           value={formatCurrency(summary.expected_course ?? data.expected_total_course)}
-          sub={schedule.total_sessions_course != null ? `${schedule.total_sessions_course} buổi học` : null}
+          sub={expectedSub}
           tone="slate"
         />
         <SummaryCard
-          label="Đã thu"
+          label="Đã thu (theo hóa đơn)"
           value={formatCurrency(summary.collected ?? data.collected_total)}
-          sub={`${data.collection_stats?.paid_count ?? 0} HS đóng đủ`}
+          sub={
+            hasInvoices
+              ? `${data.collection_stats?.paid_count ?? 0} HS đóng đủ`
+              : 'Chưa có hóa đơn'
+          }
           tone="emerald"
         />
         <SummaryCard
-          label="Còn nợ"
-          value={formatCurrency(summary.outstanding ?? data.outstanding_total)}
-          sub={`${(data.collection_stats?.unpaid_count ?? 0) + (data.collection_stats?.partial_count ?? 0)} HS chưa đủ`}
+          label="Còn nợ (theo hóa đơn)"
+          value={hasInvoices ? formatCurrency(summary.outstanding ?? data.outstanding_total) : '—'}
+          sub={debtSub}
           tone="rose"
         />
       </div>
+      <p className="text-[11px] text-gray-500 -mt-2">
+        Dự kiến = theo lịch &amp; giá lớp · Đã thu / Còn nợ = chỉ tính sau khi đã sinh hóa đơn.
+      </p>
 
       {/* Cấu hình học phí */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div id="class-fee-config" className="bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-emerald-600" />
             Cách tính phí
           </h3>
           {isAdmin && !editingFee && (
-            <Button variant="ghost" size="sm" icon={Edit2} onClick={() => setEditingFee(true)}>
+            <Button variant="ghost" size="sm" icon={Edit2} data-tour="tuition-fee-edit" onClick={openFeeEditor}>
               Sửa
             </Button>
           )}
@@ -185,7 +231,7 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
             <InfoChip label="Hình thức" value={POLICY_LABELS[data.fee_policy] || 'Chưa cấu hình'} />
             <InfoChip label="Đơn giá" value={formatCurrency(data.fee_amount)} />
             {data.fee_policy === 'monthly' && (
-              <InfoChip label="Chốt sổ" value={`Ngày ${data.billing_day || 1} hàng tháng`} />
+              <InfoChip label="Hạn đóng phí" value={`Ngày ${data.billing_day || 1} hàng tháng`} />
             )}
             {schedule.has_schedule && (
               <InfoChip
@@ -202,6 +248,7 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
               onChange={(e) => setFeeForm((f) => ({ ...f, fee_policy: e.target.value }))}
               options={POLICY_OPTIONS}
               placeholder="Chọn hình thức"
+              dataTour="tuition-fee-policy"
             />
             <Input
               label={feeForm.fee_policy === 'per_session' ? 'Giá mỗi buổi (VNĐ)' : 'Giá (VNĐ)'}
@@ -209,20 +256,22 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
               min={0}
               value={feeForm.fee_amount}
               onChange={(e) => setFeeForm((f) => ({ ...f, fee_amount: e.target.value }))}
+              dataTour="tuition-fee-amount"
             />
             {feeForm.fee_policy === 'monthly' && (
               <Input
-                label="Ngày chốt sổ hàng tháng (1–28)"
+                label="Ngày hạn đóng phí hàng tháng (1–28)"
                 type="number"
                 min={1}
                 max={28}
                 value={feeForm.billing_day}
                 onChange={(e) => setFeeForm((f) => ({ ...f, billing_day: e.target.value }))}
+                helperText="Nếu ngày này đã qua trong tháng, hóa đơn mới sẽ hạn đến cuối tháng"
               />
             )}
             {feeForm.fee_policy === 'per_session' && !schedule.has_schedule && (
               <Input
-                label="Số buổi / tháng (dự phòng khi chưa có TKB)"
+                label="Số buổi / tháng (dùng khi chưa có lịch học)"
                 type="number"
                 min={0}
                 value={feeForm.sessions_per_period}
@@ -233,7 +282,7 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
               <Button variant="outline" size="sm" onClick={() => setEditingFee(false)} disabled={savingFee}>
                 Hủy
               </Button>
-              <Button size="sm" icon={Save} onClick={handleSaveFee} loading={savingFee}>
+              <Button size="sm" icon={Save} data-tour="tuition-fee-save" onClick={handleSaveFee} loading={savingFee}>
                 Lưu
               </Button>
             </div>
@@ -242,7 +291,7 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
       </div>
 
       {/* Lịch đóng phí */}
-      {periods.length > 0 && (
+      {(periods.length > 0 || (isAdmin && data.fee_policy)) && (
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
@@ -251,16 +300,28 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
             </h3>
             {isAdmin && data.fee_policy && (
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" icon={Receipt} onClick={() => setShowGenerate(true)}>
+                <Button size="sm" variant="outline" icon={Receipt} data-tour="tuition-generate" onClick={() => setShowGenerate(true)}>
                   Sinh hóa đơn
                 </Button>
-                <Button size="sm" icon={Wallet} onClick={() => navigate('/finances?tab=tuition_payment')}>
+                <Button
+                  size="sm"
+                  icon={Wallet}
+                  data-tour="tuition-collect"
+                  onClick={() =>
+                    navigate(`/finances?tab=tuition_payment&class_id=${classInfo.id}`)
+                  }
+                >
                   Thu tiền
                 </Button>
               </div>
             )}
           </div>
 
+          {periods.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              Chưa có kỳ thu dự kiến. Kiểm tra ngày bắt đầu / kết thúc lớp rồi sinh hóa đơn cho tháng cần thu.
+            </p>
+          ) : (
           <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-600 text-xs">
@@ -294,8 +355,9 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
               </tbody>
             </table>
           </div>
+          )}
           <p className="text-[11px] text-gray-500 mt-2">
-            Phải thu = tính theo lịch &amp; giá · Đã thu / Còn nợ = theo hóa đơn thực tế
+            Phải thu theo kỳ = dự kiến · Đã thu / Còn nợ = theo hóa đơn đã sinh
           </p>
         </div>
       )}
@@ -361,7 +423,7 @@ export default function ClassTuitionPanel({ classInfo, studentCount = 0, onUpdat
   )
 }
 
-function SetupStep({ step, classId, navigate }) {
+function SetupStep({ step, classId, navigate, onOpenFee }) {
   const icons = {
     dates: CalendarDays,
     schedule: CalendarDays,
@@ -369,8 +431,15 @@ function SetupStep({ step, classId, navigate }) {
     students: Users,
   }
   const Icon = icons[step.key] || FileText
+  const canClick =
+    step.key === 'fee' ||
+    (!step.done && (step.key === 'schedule' || step.key === 'students'))
 
   const handleClick = () => {
+    if (step.key === 'fee') {
+      onOpenFee?.()
+      return
+    }
     if (step.done) return
     if (step.key === 'schedule') navigate(`/schedules?class_id=${classId}`)
     else if (step.key === 'students') navigate(`/classes/${classId}?tab=students`)
@@ -380,11 +449,15 @@ function SetupStep({ step, classId, navigate }) {
     <div
       className={`rounded-lg border p-3 text-sm ${
         step.done
-          ? 'border-emerald-200 bg-emerald-50/50'
-          : 'border-gray-200 bg-gray-50 cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30'
-      }`}
-      onClick={handleClick}
-      role={step.done ? undefined : 'button'}
+          ? step.optional
+            ? 'border-emerald-100 bg-emerald-50/30'
+            : 'border-emerald-200 bg-emerald-50/50'
+          : canClick
+            ? 'border-gray-200 bg-gray-50 cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30'
+            : 'border-gray-200 bg-gray-50'
+      } ${step.done && step.key === 'fee' ? 'cursor-pointer hover:border-emerald-300' : ''}`}
+      onClick={canClick ? handleClick : undefined}
+      role={canClick ? 'button' : undefined}
     >
       <div className="flex items-start gap-2">
         {step.done ? (
@@ -438,7 +511,7 @@ function StatusPill({ status }) {
     paid: { cls: 'bg-emerald-100 text-emerald-800', label: 'Đủ' },
     partial: { cls: 'bg-amber-100 text-amber-800', label: 'Thiếu' },
     unpaid: { cls: 'bg-rose-100 text-rose-800', label: 'Chưa thu' },
-    no_invoice: { cls: 'bg-slate-100 text-slate-600', label: 'Chưa HĐ' },
+    no_invoice: { cls: 'bg-slate-100 text-slate-600', label: 'Chưa có hóa đơn' },
     none: { cls: 'bg-gray-100 text-gray-500', label: '—' },
   }
   const s = map[status] || map.none

@@ -146,28 +146,34 @@ export default function Table({
                         {onView && (
                           <button
                             onClick={() => onView(item)}
-                            className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-600 transition-colors"
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-amber-100 text-amber-700 text-xs font-medium transition-colors"
                             title="Xem chi tiết"
+                            aria-label="Xem chi tiết"
                           >
                             <Eye className="h-4 w-4" />
+                            <span className="hidden sm:inline">Xem</span>
                           </button>
                         )}
                         {onEdit && (
                           <button
                             onClick={() => onEdit(item)}
-                            className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-500 transition-colors"
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-amber-100 text-amber-600 text-xs font-medium transition-colors"
                             title="Chỉnh sửa"
+                            aria-label="Chỉnh sửa"
                           >
                             <Edit className="h-4 w-4" />
+                            <span className="hidden sm:inline">Sửa</span>
                           </button>
                         )}
                         {onDelete && (
                           <button
                             onClick={() => onDelete(item)}
-                            className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors"
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-red-100 text-red-600 text-xs font-medium transition-colors"
                             title="Xóa"
+                            aria-label="Xóa"
                           >
                             <Trash2 className="h-4 w-4" />
+                            <span className="hidden sm:inline">Xóa</span>
                           </button>
                         )}
                         {actions && actions(item)}

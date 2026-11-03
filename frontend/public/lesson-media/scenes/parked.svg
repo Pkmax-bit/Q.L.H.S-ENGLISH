@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Xe đỗ thành hàng trước tòa nhà">
+  <rect width="800" height="500" fill="#e0f2fe"/>
+  
+    <rect width="800" height="220" fill="#bae6fd"/>
+    <rect y="220" width="800" height="280" fill="#86efac"/>
+    <rect x="80" y="90" width="280" height="160" fill="#64748b"/>
+    <rect x="110" y="120" width="50" height="70" fill="#e0f2fe"/>
+    <rect x="180" y="120" width="50" height="70" fill="#e0f2fe"/>
+    <rect x="250" y="120" width="50" height="70" fill="#e0f2fe"/>
+    <rect x="200" y="300" width="110" height="46" rx="10" fill="#1d4ed8"/>
+    <circle cx="220" cy="348" r="10" fill="#1e293b"/>
+    <circle cx="290" cy="348" r="10" fill="#1e293b"/>
+    <rect x="340" y="300" width="110" height="46" rx="10" fill="#dc2626"/>
+    <circle cx="360" cy="348" r="10" fill="#1e293b"/>
+    <circle cx="430" cy="348" r="10" fill="#1e293b"/>
+    <rect x="480" y="300" width="110" height="46" rx="10" fill="#ca8a04"/>
+    <circle cx="500" cy="348" r="10" fill="#1e293b"/>
+    <circle cx="570" cy="348" r="10" fill="#1e293b"/>
+  
+  <text x="400" y="486" text-anchor="middle" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="13">Xe đỗ thành hàng trước tòa nhà · Q.L.H.S English</text>
+</svg>

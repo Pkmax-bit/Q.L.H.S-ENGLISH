@@ -80,12 +80,13 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
       onClose={onClose}
       title={isEdit ? 'Chỉnh sửa giáo viên' : 'Thêm giáo viên mới'}
       size="lg"
+      dataTour="teacher-form"
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>
             Hủy
           </Button>
-          <Button onClick={handleSubmit} loading={loading}>
+          <Button data-tour="teacher-form-save" onClick={handleSubmit} loading={loading}>
             {isEdit ? 'Cập nhật' : 'Thêm mới'}
           </Button>
         </>
@@ -108,6 +109,7 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
             error={errors.full_name}
             placeholder="Nguyễn Văn A"
             required
+            dataTour="teacher-field-name"
           />
           <Input
             label="Email"
@@ -118,6 +120,7 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
             error={errors.email}
             placeholder="example@email.com"
             required
+            dataTour="teacher-field-email"
           />
           <Input
             label="Số điện thoại"
@@ -126,6 +129,7 @@ export default function TeacherForm({ isOpen, onClose, teacher, onSuccess }) {
             onChange={handleChange}
             error={errors.phone}
             placeholder="0901234567"
+            dataTour="teacher-field-phone"
           />
         </div>
         <div className="flex items-center gap-2">

@@ -12,7 +12,7 @@ const sizeClasses = {
   full: 'max-w-[95vw]',
 }
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md', footer }) {
+export default function Modal({ isOpen, onClose, title, children, size = 'md', footer, dataTour }) {
   const overlayRef = useRef(null)
 
   useEffect(() => {
@@ -40,6 +40,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
       }}
     >
       <div
+        data-tour={dataTour || undefined}
         className={clsx(
           'bg-white/95 backdrop-blur-sm rounded-2xl border border-amber-200/55 shadow-xl shadow-amber-100/30 w-full transform transition-all',
           sizeClasses[size]

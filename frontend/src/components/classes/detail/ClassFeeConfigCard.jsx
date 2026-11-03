@@ -67,14 +67,14 @@ export default function ClassFeeConfigCard({ classInfo, onUpdated }) {
           <Row label="Chế độ tính phí" value={POLICY_LABELS[classInfo.fee_policy] || 'Chưa cấu hình'} />
           <Row label="Đơn giá" value={formatCurrency(classInfo.fee_amount || 0)} />
           {classInfo.fee_policy === 'monthly' && (
-            <Row label="Ngày chốt sổ" value={`Ngày ${classInfo.billing_day || 1} hàng tháng`} />
+            <Row label="Hạn đóng phí" value={`Ngày ${classInfo.billing_day || 1} hàng tháng`} />
           )}
           {classInfo.fee_policy === 'per_session' && (
             <>
               <Row
                 label="Số buổi / kỳ"
                 value={classInfo.sessions_per_period || 0}
-                sub="Dùng khi chưa có TKB; nếu đã có lịch thì hệ thống tính buổi tự động"
+                sub="Dùng khi chưa có lịch học; nếu đã có lịch thì hệ thống tính buổi tự động"
               />
             </>
           )}
@@ -105,7 +105,7 @@ export default function ClassFeeConfigCard({ classInfo, onUpdated }) {
           />
           {form.fee_policy === 'monthly' && (
             <Input
-              label="Ngày chốt sổ (1-28)"
+              label="Ngày hạn đóng phí (1-28)"
               type="number"
               min={1}
               max={28}

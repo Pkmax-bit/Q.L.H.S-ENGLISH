@@ -15,3 +15,8 @@ backend/src/migrations/_exec_*.sql
 backend/src/migrations/_payload_*.json
 backend/src/migrations/_all_migrations.sql
 backend/src/migrations/ALL_*.sql
+
+# Khóa service account Google (TUYỆT ĐỐI không commit — mở được cả Google project)
+backend/credentials/
+*service-account*.json
+*-gcp-key.json

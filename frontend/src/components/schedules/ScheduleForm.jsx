@@ -81,8 +81,14 @@ export default function ScheduleForm({
   const { data: classesData } = useFetch(fetchClasses)
   const { data: facilitiesData } = useFetch(fetchFacilities)
 
-  const classes = Array.isArray(classesData) ? classesData : classesData?.classes || []
-  const facilities = Array.isArray(facilitiesData) ? facilitiesData : facilitiesData?.facilities || []
+  const classes = useMemo(
+    () => (Array.isArray(classesData) ? classesData : classesData?.classes || []),
+    [classesData],
+  )
+  const facilities = useMemo(
+    () => (Array.isArray(facilitiesData) ? facilitiesData : facilitiesData?.facilities || []),
+    [facilitiesData],
+  )
 
   const buildings = facilities.filter(f => f.type === 'building' || (!f.parent_id && f.type !== 'classroom' && f.type !== 'lab'))
   const allRooms = facilities.filter(f => f.parent_id || f.type === 'classroom' || f.type === 'lab')
@@ -103,9 +109,10 @@ export default function ScheduleForm({
 
   // Fetch conflict preview when day/time changes
   useEffect(() => {
+    if (!isOpen) return
     const days = mode === 'single' ? (form.day_of_week !== '' ? [Number(form.day_of_week)] : []) : form.days_of_week
     if (days.length === 0 || !form.start_time || !form.end_time || form.end_time <= form.start_time) {
-      setConflictData([])
+      setConflictData((prev) => (prev.length === 0 ? prev : []))
       return
     }
     let cancelled = false
@@ -131,9 +138,10 @@ export default function ScheduleForm({
     }
     const timer = setTimeout(fetchConflicts, 300)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [mode, form.day_of_week, form.days_of_week, form.start_time, form.end_time])
+  }, [isOpen, mode, form.day_of_week, form.days_of_week, form.start_time, form.end_time])
 
   useEffect(() => {
+    if (!isOpen) return
     if (schedule) {
       setMode('single')
       const roomId = schedule.room_id || ''
@@ -260,12 +268,13 @@ export default function ScheduleForm({
       isOpen={isOpen} onClose={onClose}
       title={isEdit ? 'Chỉnh sửa lịch học' : mode === 'bulk' ? 'Tạo lịch học lặp lại' : 'Thêm lịch học mới'}
       size="2xl"
+      dataTour="schedule-form"
       footer={<>
         {isEdit && (
           <Button variant="danger" onClick={handleDelete} loading={deleteLoading} className="mr-auto">Xóa</Button>
         )}
         <Button variant="outline" onClick={onClose} disabled={loading}>Hủy</Button>
-        <Button onClick={handleSubmit} loading={loading} icon={mode === 'bulk' ? Repeat : CalendarPlus}>
+        <Button data-tour="schedule-form-save" onClick={handleSubmit} loading={loading} icon={mode === 'bulk' ? Repeat : CalendarPlus}>
           {isEdit ? 'Cập nhật' : mode === 'bulk' ? `Tạo lịch (${form.days_of_week.length} ngày/tuần)` : 'Thêm mới'}
         </Button>
       </>}
@@ -275,7 +284,7 @@ export default function ScheduleForm({
         <form onSubmit={handleSubmit} className="lg:col-span-3 space-y-4">
           {/* Mode toggle */}
           {!isEdit && (
-            <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+            <div className="flex gap-2 p-1 bg-gray-100 rounded-lg" data-tour="schedule-mode-bulk">
               <button type="button" onClick={() => setMode('single')}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-md text-sm font-medium transition-all ${
                   mode === 'single' ? 'bg-white text-amber-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
@@ -291,7 +300,7 @@ export default function ScheduleForm({
 
           {/* Class */}
           <Select label="Lớp học" name="class_id" value={form.class_id} onChange={handleChange}
-            options={classOptions} placeholder="Chọn lớp học" error={errors.class_id} required />
+            options={classOptions} placeholder="Chọn lớp học" error={errors.class_id} required dataTour="schedule-field-class" />
           {teacherConflict && (
             <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 -mt-2">
               <AlertTriangle className="h-4 w-4 flex-shrink-0" />
@@ -301,10 +310,12 @@ export default function ScheduleForm({
 
           {/* Day selection */}
           {mode === 'single' ? (
+            <div data-tour="schedule-field-days">
             <Select label="Ngày trong tuần" name="day_of_week" value={form.day_of_week} onChange={handleChange}
               options={DAY_OPTIONS_SINGLE} placeholder="Chọn ngày" error={errors.day_of_week} required />
+            </div>
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5" data-tour="schedule-field-days">
               <label className="block text-sm font-medium text-gray-700">
                 Chọn các ngày học trong tuần <span className="text-red-500">*</span>
               </label>
@@ -330,7 +341,7 @@ export default function ScheduleForm({
           )}
 
           {/* Time */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4" data-tour="schedule-field-time">
             <Select label="Giờ bắt đầu" name="start_time" value={form.start_time} onChange={handleChange}
               options={TIME_OPTIONS} placeholder="Chọn giờ" error={errors.start_time} required />
             <Select label="Giờ kết thúc" name="end_time" value={form.end_time} onChange={handleChange}

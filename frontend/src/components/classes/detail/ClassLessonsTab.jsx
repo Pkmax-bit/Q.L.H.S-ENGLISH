@@ -1,23 +1,16 @@
 import { useState, useContext, useCallback } from 'react'
-import { BookOpen, FileText, Youtube, HardDrive, Eye, EyeOff, Plus, Pencil, Trash2, ExternalLink, Copy } from 'lucide-react'
+import { BookOpen, Eye, EyeOff, Plus, Pencil, Trash2, Copy } from 'lucide-react'
 import Button from '../../common/Button'
 import ConfirmDialog from '../../common/ConfirmDialog'
 import LessonDetail from '../../lessons/LessonDetail'
 import LessonForm from '../../lessons/LessonForm'
+import LessonUnitSections from '../../lessons/LessonUnitSections'
 import ApplyTemplatesModal from '../ApplyTemplatesModal'
 import { ToastContext } from '../../../context/ToastContext'
 import { useAuth } from '../../../hooks/useAuth'
 import { useFetch } from '../../../hooks/useFetch'
 import lessonsService from '../../../services/lessons.service'
-import { formatDate } from '../../../utils/formatDate'
-
-const CONTENT_ICONS = {
-  text: FileText,
-  file: HardDrive,
-  video: Youtube,
-  youtube: Youtube,
-  drive: HardDrive,
-}
+import lessonProgressService from '../../../services/lessonProgress.service'
 
 export default function ClassLessonsTab({ lessons: initialLessons, classId, onReload }) {
   const [showForm, setShowForm] = useState(false)
@@ -34,9 +27,21 @@ export default function ClassLessonsTab({ lessons: initialLessons, classId, onRe
   const canManage = isAdmin || isTeacher
 
   // Fetch lessons for this class (live data)
-  const fetchLessons = useCallback(() => lessonsService.getAll({ class_id: classId, limit: 200 }), [classId])
+  const fetchLessons = useCallback(
+    () => lessonsService.getAll({ class_id: classId, limit: 300, sortBy: 'order_index', sortOrder: 'ASC' }),
+    [classId]
+  )
   const { data: lessonsData, loading, execute: reloadLessons } = useFetch(fetchLessons)
+  const fetchProgress = useCallback(
+    () => lessonProgressService.getMine({ class_id: classId }),
+    [classId]
+  )
+  const { data: progressData } = useFetch(fetchProgress)
   const lessons = Array.isArray(lessonsData) ? lessonsData : lessonsData?.lessons || initialLessons || []
+  const progressMap = (Array.isArray(progressData) ? progressData : []).reduce((map, row) => {
+    map[row.lesson_id] = row
+    return map
+  }, {})
 
   const handleAdd = () => {
     setSelected(null)
@@ -112,7 +117,6 @@ export default function ClassLessonsTab({ lessons: initialLessons, classId, onRe
         </div>
       )}
 
-      {/* Lessons list */}
       {lessons.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-3" />
@@ -122,76 +126,48 @@ export default function ClassLessonsTab({ lessons: initialLessons, classId, onRe
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-          {lessons.map((lesson, idx) => {
-            const Icon = CONTENT_ICONS[lesson.content_type] || FileText
-            return (
-              <div
-                key={lesson.id}
-                className="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition-colors group"
-              >
-                <div
-                  className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer"
-                  onClick={() => handleView(lesson)}
-                >
-                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center text-sm font-bold text-green-700 flex-shrink-0">
-                    {lesson.order_index ?? idx + 1}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-medium text-gray-800 hover:text-amber-700 transition-colors truncate">
-                        {lesson.title}
-                      </p>
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-500">
-                        <Icon className="h-3 w-3" />
-                        {lesson.content_type}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-400">
-                      <span>Tạo: {formatDate(lesson.created_at)}</span>
-                      {lesson.created_by_name && <span>bởi {lesson.created_by_name}</span>}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {lesson.is_published ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
-                      <Eye className="h-3 w-3" />
-                      Đã xuất bản
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
-                      <EyeOff className="h-3 w-3" />
-                      Nháp
-                    </span>
+        <LessonUnitSections
+          lessons={lessons}
+          progressMap={progressMap}
+          onItemClick={handleView}
+          renderActions={(lesson) => (
+            <>
+              {lesson.is_published ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
+                  <Eye className="h-3 w-3" />
+                  Đã xuất bản
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
+                  <EyeOff className="h-3 w-3" />
+                  Nháp
+                </span>
+              )}
+              {canManage && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleEdit(lesson)}
+                    className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-600 transition-colors"
+                    title="Chỉnh sửa"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteClick(lesson)}
+                      className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors"
+                      title="Xóa"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   )}
-
-                  {canManage && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleEdit(lesson) }}
-                        className="p-1.5 rounded-lg hover:bg-amber-100 text-amber-600 transition-colors"
-                        title="Chỉnh sửa"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      {isAdmin && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteClick(lesson) }}
-                          className="p-1.5 rounded-lg hover:bg-red-100 text-red-500 transition-colors"
-                          title="Xóa"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+                </>
+              )}
+            </>
+          )}
+        />
       )}
 
       {/* Lesson Form Modal */}

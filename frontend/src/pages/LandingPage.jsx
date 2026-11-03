@@ -361,6 +361,15 @@ export default function LandingPage() {
             <span className="text-sm font-medium">Cuộn để khám phá</span>
             <ChevronDown className="h-5 w-5 animate-bounce" />
           </button>
+          <div className="mt-6 landing-fade-banner landing-fade-banner--4 sm:hidden">
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-700 text-white text-sm font-semibold shadow-md"
+            >
+              Đăng nhập hệ thống
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -393,7 +402,7 @@ export default function LandingPage() {
             <p className="text-primary-600 text-sm font-semibold uppercase tracking-widest mb-3">Hoạt động</p>
             <h2 className="font-display text-3xl sm:text-4xl font-semibold text-stone-900">Điểm nổi bật tại trung tâm</h2>
             <p className="mt-4 text-stone-600">
-              Xen kẽ trái–phải; cuộn lên hoặc xuống đều có animation đối chiều.
+              Lớp học nhỏ, luyện thi sát thực tế và theo dõi tiến độ rõ ràng cho phụ huynh.
             </p>
           </SlideIn>
 

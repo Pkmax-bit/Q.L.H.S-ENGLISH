@@ -47,6 +47,8 @@ export default function Header({ onMenuClick }) {
     >
       <div className="flex items-center justify-between h-16">
         <button
+          type="button"
+          data-tour="mobile-menu"
           onClick={onMenuClick}
           className="p-2 rounded-lg hover:bg-white/40 lg:hidden transition-colors"
         >

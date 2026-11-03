@@ -106,16 +106,15 @@ function KanbanDraggableCard({ slot, color, onClick, draggable }) {
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined
 
   const dragHandle = draggable ? (
-    <button
-      type="button"
+    <span
       className="absolute left-1.5 top-2 p-0.5 rounded text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing touch-none"
       {...listeners}
-      {...attributes}
       onClick={(e) => e.stopPropagation()}
       title="Kéo sang thứ khác"
+      aria-hidden="true"
     >
       <GripVertical className="h-4 w-4" />
-    </button>
+    </span>
   ) : null
 
   return (
@@ -124,7 +123,8 @@ function KanbanDraggableCard({ slot, color, onClick, draggable }) {
         type="button"
         onClick={() => onClick?.(slot)}
         disabled={!onClick}
-        className={`w-full ${onClick ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5' : 'cursor-default'} transition-all`}
+        className={`w-full text-left ${onClick ? 'cursor-pointer hover:shadow-md hover:-translate-y-0.5' : 'cursor-default'} transition-all`}
+        {...attributes}
       >
         <SlotCardContent slot={slot} color={color} dragHandle={dragHandle} />
       </button>

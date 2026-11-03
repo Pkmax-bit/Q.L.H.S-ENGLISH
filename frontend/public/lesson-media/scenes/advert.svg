@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Tờ quảng cáo giảm giá">
+  <rect width="800" height="500" fill="#ffedd5"/>
+  
+    <rect width="800" height="500" fill="#fff7ed"/>
+    <rect x="90" y="50" width="620" height="380" rx="16" fill="#9a3412"/>
+    <text x="400" y="140" text-anchor="middle" fill="#fef3c7" font-family="Segoe UI, Arial, sans-serif" font-size="48" font-weight="700">20% OFF</text>
+    <text x="400" y="200" text-anchor="middle" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="28">All jackets until Sunday</text>
+    <text x="400" y="270" text-anchor="middle" fill="#fed7aa" font-family="Segoe UI, Arial, sans-serif" font-size="20">While supplies last</text>
+    <rect x="260" y="310" width="280" height="56" rx="10" fill="#facc15"/>
+    <text x="400" y="348" text-anchor="middle" fill="#7c2d12" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700">Shop now</text>
+  
+  <text x="400" y="486" text-anchor="middle" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="13">Tờ quảng cáo giảm giá · Q.L.H.S English</text>
+</svg>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Hai người đang xem tài liệu">
+  <rect width="800" height="500" fill="#f1f5f9"/>
+  
+    <rect width="800" height="200" fill="#e2e8f0"/>
+    <rect y="200" width="800" height="300" fill="#f8fafc"/>
+    <rect x="250" y="240" width="300" height="170" rx="8" fill="#94a3b8"/>
+    <circle cx="320" cy="200" r="20" fill="#f4c7a1"/>
+    <ellipse cx="320" cy="188" rx="20" ry="10" fill="#1c1917"/>
+    <rect x="300" y="220" width="40" height="50" rx="10" fill="#0369a1"/>
+    <circle cx="470" cy="198" r="20" fill="#f2c2a0"/>
+    <ellipse cx="470" cy="186" rx="20" ry="10" fill="#7c2d12"/>
+    <rect x="450" y="218" width="40" height="50" rx="10" fill="#db2777"/>
+    <rect x="360" y="250" width="70" height="50" rx="3" fill="#fff" stroke="#94a3b8"/>
+    <rect x="372" y="262" width="46" height="4" fill="#cbd5e1"/>
+    <rect x="372" y="272" width="36" height="4" fill="#cbd5e1"/>
+    <rect x="372" y="282" width="42" height="4" fill="#cbd5e1"/>
+  
+  <text x="400" y="486" text-anchor="middle" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="13">Hai người đang xem tài liệu · Q.L.H.S English</text>
+</svg>

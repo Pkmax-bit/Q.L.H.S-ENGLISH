@@ -2,7 +2,13 @@ const { supabase } = require('../config/database');
 const { parsePagination, buildPaginationResponse } = require('../utils/pagination');
 
 const getAll = async (queryParams) => {
-  const { page, limit, offset, sortBy, sortOrder, search } = parsePagination(queryParams);
+  const parsed = parsePagination(queryParams);
+  const requested = parseInt(queryParams.limit, 10);
+  const limit = Number.isFinite(requested)
+    ? Math.min(500, Math.max(1, requested))
+    : parsed.limit;
+  const { page, sortBy, sortOrder, search } = parsed;
+  const offset = (page - 1) * limit;
   const allowedSort = ['title', 'order_index', 'created_at'];
   const sort = allowedSort.includes(sortBy) ? sortBy : 'created_at';
   const classId = queryParams.class_id || null;
@@ -106,7 +112,7 @@ const create = async (data) => {
       file_url,
       youtube_url,
       drive_url,
-      order_index: order_index || 0,
+      order_index: order_index ?? 0,
       is_published: is_published || false,
       is_template: is_template || false,
       created_by,

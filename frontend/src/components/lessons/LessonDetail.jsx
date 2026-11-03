@@ -1,8 +1,10 @@
+import { useCallback, useEffect, useState } from 'react'
 import Modal from '../common/Modal'
 import StatusBadge from '../common/StatusBadge'
-import RichContentViewer from '../common/RichContentViewer'
+import LessonStudyPanel from './LessonStudyPanel'
 import { formatDate } from '../../utils/formatDate'
-import { BookOpen, Calendar, Hash, FileText, Link, Youtube, FolderOpen, ExternalLink } from 'lucide-react'
+import { BookOpen, Calendar, Hash, FileText } from 'lucide-react'
+import lessonProgressService from '../../services/lessonProgress.service'
 
 const contentTypeMap = {
   text: 'Văn bản',
@@ -10,22 +12,29 @@ const contentTypeMap = {
   file: 'Tệp tin',
 }
 
-function extractYoutubeId(url) {
-  if (!url) return null
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?\s]+)/)
-  return match ? match[1] : null
-}
-
 export default function LessonDetail({ isOpen, onClose, lesson }) {
+  const [progress, setProgress] = useState(null)
+
+  const loadProgress = useCallback(async () => {
+    if (!lesson?.id) return
+    try {
+      const res = await lessonProgressService.getOne(lesson.id)
+      setProgress(res.data?.data ?? res.data ?? null)
+    } catch {
+      setProgress(null)
+    }
+  }, [lesson?.id])
+
+  useEffect(() => {
+    if (isOpen) loadProgress()
+  }, [isOpen, loadProgress])
+
   if (!lesson) return null
 
-  const ytId = extractYoutubeId(lesson.youtube_url)
-
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Chi tiết bài học" size="2xl">
-      <div className="space-y-5">
-        {/* Title */}
-        <div className="flex items-center justify-between">
+    <Modal isOpen={isOpen} onClose={onClose} title="Học bài" size="full">
+      <div className="space-y-5 max-h-[80vh] overflow-y-auto pr-1">
+        <div className="flex items-center justify-between gap-3">
           <h3 className="text-xl font-bold text-gray-900">{lesson.title}</h3>
           <StatusBadge
             status={lesson.is_published ? 'active' : 'inactive'}
@@ -33,11 +42,10 @@ export default function LessonDetail({ isOpen, onClose, lesson }) {
           />
         </div>
 
-        {/* Meta info */}
         <div className="flex flex-wrap gap-4 text-sm text-gray-600">
           <div className="flex items-center gap-1.5">
             <BookOpen className="h-4 w-4 text-gray-400" />
-            <span>Lớp: {lesson.class?.name || '—'}</span>
+            <span>Lớp: {lesson.class?.name || lesson.class_name || '—'}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <FileText className="h-4 w-4 text-gray-400" />
@@ -53,81 +61,15 @@ export default function LessonDetail({ isOpen, onClose, lesson }) {
           </div>
         </div>
 
-        {/* YouTube embed */}
-        {ytId && (
-          <div className="pt-3 border-t border-gray-100">
-            <p className="text-sm font-medium text-gray-600 mb-2 flex items-center gap-2">
-              <Youtube className="h-4 w-4 text-red-500" /> Video bài giảng
-            </p>
-            <div className="relative w-full rounded-xl overflow-hidden bg-black" style={{ aspectRatio: '16/9' }}>
-              <iframe
-                src={`https://www.youtube.com/embed/${ytId}`}
-                title={lesson.title}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="absolute inset-0 w-full h-full"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* YouTube link (if no embed possible) */}
-        {lesson.youtube_url && !ytId && (
-          <div className="pt-3 border-t border-gray-100">
-            <a
-              href={lesson.youtube_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-sm text-red-600 hover:text-red-800"
-            >
-              <Youtube className="h-4 w-4" /> Xem video bài giảng
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          </div>
-        )}
-
-        {/* Content */}
-        {lesson.content && (
-          <div className="pt-3 border-t border-gray-100">
-            <p className="text-sm font-medium text-gray-600 mb-2">📝 Nội dung</p>
-            <div className="bg-white rounded-lg border border-gray-200 p-5 max-h-[500px] overflow-y-auto">
-              <RichContentViewer content={lesson.content} />
-            </div>
-          </div>
-        )}
-
-        {/* Resource links */}
-        {(lesson.file_url || lesson.drive_url) && (
-          <div className="pt-3 border-t border-gray-100">
-            <p className="text-sm font-medium text-gray-600 mb-3">📎 Tài liệu đính kèm</p>
-            <div className="flex flex-wrap gap-3">
-              {lesson.drive_url && (
-                <a
-                  href={lesson.drive_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800 hover:bg-yellow-100 transition-colors"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                  Google Drive
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-              {lesson.file_url && (
-                <a
-                  href={lesson.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900 hover:bg-amber-100 transition-colors"
-                >
-                  <Link className="h-4 w-4" />
-                  Tệp đính kèm
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-          </div>
-        )}
+        <LessonStudyPanel
+          lesson={lesson}
+          progress={progress}
+          onSave={async (payload) => {
+            const res = await lessonProgressService.save(lesson.id, payload)
+            const row = res.data?.data ?? res.data
+            setProgress(row)
+          }}
+        />
       </div>
     </Modal>
   )

@@ -287,12 +287,17 @@ const generateInvoicesForClass = async (classId, yearMonth, createdBy) => {
   const { period_start, period_end } = monthRange(yearMonth);
   const schedules = await fetchClassSchedules(classId);
 
-  // Determine due date
+  // Hạn đóng: ngày hạn trong tháng kỳ; nếu đã qua thì lấy cuối kỳ
+  // (tránh HĐ tháng hiện tại vừa sinh đã bị gắn «quá hạn»).
   let dueDate = period_start;
   if (cls.billing_day) {
     const [y, m] = yearMonth.split('-').map(Number);
     const day = Math.min(cls.billing_day, 28);
     dueDate = new Date(Date.UTC(y, m - 1, day)).toISOString().slice(0, 10);
+  }
+  const todayForDue = todayDateStr();
+  if (dueDate < todayForDue && period_end >= todayForDue) {
+    dueDate = period_end;
   }
 
   const { data: enrollments, error: enrollError } = await supabase
@@ -1195,12 +1200,15 @@ const getClassFeeProjection = async (classId, currentUser) => {
     return '';
   })();
 
+  // Lịch tuần chỉ bắt buộc khi tính theo buổi; phí tháng / trọn gói không chặn checklist.
+  const scheduleRequired = cls.fee_policy === 'per_session';
   const setupSteps = [
     {
       step: 1,
       key: 'dates',
       label: 'Đặt thời gian lớp',
       done: !!(cls.start_date && cls.end_date),
+      optional: false,
       hint: cls.start_date && cls.end_date
         ? `${String(cls.start_date).slice(0, 10)} → ${String(cls.end_date).slice(0, 10)}`
         : 'Cần ngày bắt đầu và kết thúc',
@@ -1208,17 +1216,21 @@ const getClassFeeProjection = async (classId, currentUser) => {
     {
       step: 2,
       key: 'schedule',
-      label: 'Tạo lịch học (TKB)',
-      done: schedules.length > 0,
+      label: scheduleRequired ? 'Tạo lịch học trong tuần' : 'Tạo lịch học trong tuần (tuỳ chọn)',
+      done: schedules.length > 0 || !scheduleRequired,
+      optional: !scheduleRequired,
       hint: schedules.length > 0
         ? `${schedules.length} ca · ${totalSessionsCourse} buổi cả khóa`
-        : 'Vào Lịch học để thêm ca học trong tuần',
+        : scheduleRequired
+          ? 'Vào mục Thời khóa biểu để thêm các buổi học trong tuần'
+          : 'Không bắt buộc với phí theo tháng / trọn gói',
     },
     {
       step: 3,
       key: 'fee',
       label: 'Cấu hình học phí',
       done: !!(cls.fee_policy && Number(cls.fee_amount) > 0),
+      optional: false,
       hint: cls.fee_policy
         ? `${cls.fee_policy === 'monthly' ? 'Theo tháng' : cls.fee_policy === 'per_session' ? 'Theo buổi' : 'Trọn gói'} · ${Number(cls.fee_amount || 0).toLocaleString('vi-VN')}đ`
         : 'Chọn cách tính phí và đơn giá',
@@ -1228,9 +1240,12 @@ const getClassFeeProjection = async (classId, currentUser) => {
       key: 'students',
       label: 'Thêm học sinh',
       done: enrollments.length > 0,
+      optional: false,
       hint: enrollments.length > 0 ? `${enrollments.length} học sinh` : 'Thêm học sinh vào lớp',
     },
   ];
+
+  const invoiceCount = (invoices || []).length;
 
   return {
     class_id: cls.id,
@@ -1247,12 +1262,15 @@ const getClassFeeProjection = async (classId, currentUser) => {
     projected_without_official_end: !cls.end_date,
     setup_checklist: setupSteps,
     setup_complete: setupSteps.every((s) => s.done),
+    invoice_count: invoiceCount,
+    has_invoices: invoiceCount > 0,
     simple_summary: {
       total_sessions: totalSessionsCourse,
       expected_course: Math.round(expectedCourse * 100) / 100,
       collected: Math.round(collectedSum * 100) / 100,
       outstanding: Math.round(outstandingSum * 100) / 100,
       student_count: enrollments.length,
+      invoice_count: invoiceCount,
     },
     schedule_summary: {
       schedule_count: schedules.length,

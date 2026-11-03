@@ -141,12 +141,13 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
       onClose={onClose}
       title={isEdit ? 'Chỉnh sửa lớp học' : 'Thêm lớp học mới'}
       size={isEdit ? '3xl' : 'lg'}
+      dataTour="class-form"
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>
             Hủy
           </Button>
-          <Button onClick={handleSubmit} loading={loading}>
+          <Button data-tour="class-form-save" onClick={handleSubmit} loading={loading}>
             {isEdit ? 'Cập nhật' : 'Thêm mới'}
           </Button>
         </>
@@ -154,8 +155,13 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         {!isEdit && (
-          <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 text-xs text-blue-900 leading-relaxed">
-            <strong>3 bước sau khi tạo lớp:</strong> (1) Thêm lịch học ở menu Lịch học → (2) Tab Học phí → cấu hình giá → (3) Thêm học sinh và sinh hóa đơn.
+          <div className="rounded-lg bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-950 leading-relaxed">
+            <strong>Sau khi tạo lớp, làm tiếp 3 bước để thu được học phí:</strong>
+            <ol className="mt-2 list-decimal list-inside space-y-1 text-xs sm:text-sm">
+              <li>Vào <strong>Thời khóa biểu</strong> — thêm các buổi học trong tuần</li>
+              <li>Vào chi tiết lớp → tab <strong>Học phí</strong> — chọn cách tính và đơn giá</li>
+              <li>Thêm học sinh → bấm <strong>Sinh hóa đơn</strong> → <strong>Thu tiền</strong></li>
+            </ol>
           </div>
         )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -165,8 +171,9 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             value={form.name}
             onChange={handleChange}
             error={errors.name}
-            placeholder="Lớp Toán A1"
+            placeholder="VD: TOEIC 550+ ca tối"
             required
+            dataTour="class-field-name"
           />
           <Select
             label="Môn học"
@@ -175,6 +182,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             onChange={handleChange}
             options={subjectOptions}
             placeholder="Chọn môn học"
+            dataTour="class-field-subject"
           />
           <Select
             label="Giáo viên"
@@ -183,6 +191,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             onChange={handleChange}
             options={teacherOptions}
             placeholder="Chọn giáo viên"
+            dataTour="class-field-teacher"
           />
           <Input
             label="Sĩ số tối đa"
@@ -192,6 +201,8 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             onChange={handleChange}
             error={errors.max_students}
             placeholder="30"
+            required
+            dataTour="class-field-max"
           />
           <Select
             label="Trạng thái"
@@ -212,6 +223,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             onChange={handleChange}
             error={errors.start_date}
             required
+            dataTour="class-field-start"
           />
           <Input
             label="Ngày kết thúc"
@@ -223,6 +235,7 @@ export default function ClassForm({ isOpen, onClose, classData, onSuccess }) {
             required
             helperText="Bắt buộc — dùng để tính số buổi và lịch đóng học phí"
             min={form.start_date || undefined}
+            dataTour="class-field-end"
           />
         </div>
         <Input

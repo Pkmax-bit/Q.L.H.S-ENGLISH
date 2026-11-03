@@ -34,7 +34,7 @@ export default function TuitionInvoiceList() {
     () => tuitionService.getInvoices({ limit: 100, ...stripEmpty(filters) }),
     [filters]
   )
-  const { data, loading, execute: reload } = useFetch(fetchInvoices, [filters])
+  const { data, loading, error, execute: reload } = useFetch(fetchInvoices, [filters])
 
   const invoices = Array.isArray(data) ? data : data?.data || data?.invoices || []
 
@@ -179,6 +179,12 @@ export default function TuitionInvoiceList() {
         </div>
       )}
 
+      {error && (
+        <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+          Không tải được hóa đơn: {error}
+        </div>
+      )}
+
       <Table
         columns={columns}
         data={invoices}
@@ -186,7 +192,7 @@ export default function TuitionInvoiceList() {
         onView={(r) => setSelectedId(r.id)}
         onDelete={isAdmin ? handleDelete : undefined}
         searchPlaceholder="Tìm số hóa đơn, học sinh, lớp..."
-        emptyMessage="Chưa có hóa đơn nào"
+        emptyMessage={error ? 'Không tải được danh sách hóa đơn' : 'Chưa có hóa đơn nào — hãy bấm «Sinh hóa đơn»'}
         emptyIcon={FileText}
       />
 

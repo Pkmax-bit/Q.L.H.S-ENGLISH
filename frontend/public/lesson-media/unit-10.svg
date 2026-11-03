@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" role="img" aria-label="Part 4 Announcements">
+  <rect width="800" height="450" rx="28" fill="#fff7ed"/>
+  <rect x="24" y="24" width="752" height="402" rx="22" fill="#ffffff" stroke="#f97316" stroke-width="3"/>
+  <rect x="24" y="24" width="752" height="86" rx="22" fill="#f97316"/>
+  <rect x="24" y="70" width="752" height="40" fill="#f97316"/>
+  <text x="56" y="78" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="28" font-weight="700">Unit 10 · Part 4</text>
+  <text x="400" y="210" text-anchor="middle" fill="#f97316" font-family="Segoe UI, Arial, sans-serif" font-size="32" font-weight="700">Announcements</text>
+  
+  <rect x="180" y="260" width="180" height="110" rx="16" fill="#f97316" opacity="0.18"/>
+  <rect x="390" y="250" width="230" height="120" rx="16" fill="#f97316" opacity="0.28"/>
+  <rect x="220" y="280" width="120" height="14" rx="7" fill="#f97316" opacity="0.55"/>
+  <rect x="220" y="306" width="90" height="14" rx="7" fill="#f97316" opacity="0.4"/>
+  <rect x="420" y="278" width="170" height="14" rx="7" fill="#f97316" opacity="0.6"/>
+  <rect x="420" y="304" width="140" height="14" rx="7" fill="#f97316" opacity="0.4"/>
+  <rect x="420" y="330" width="110" height="14" rx="7" fill="#f97316" opacity="0.3"/>
+  
+  <text x="400" y="400" text-anchor="middle" fill="#78716c" font-family="Segoe UI, Arial, sans-serif" font-size="14">Học liệu minh họa · Q.L.H.S English</text>
+</svg>

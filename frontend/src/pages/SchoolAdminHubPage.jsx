@@ -450,7 +450,17 @@ function ClassOperationsPanel({
 
   const handleEndClass = async () => {
     if (!selectedClassId) return
-    if (!window.confirm('Gán ngày kết thúc lớp là hôm nay và đánh dấu lớp đã hoàn thành?'))
+    if (
+      !window.confirm(
+        'Bạn sắp kết thúc lớp. Ngày kết thúc sẽ là hôm nay và lớp chuyển sang «Đã hoàn thành». Tiếp tục?'
+      )
+    )
+      return
+    if (
+      !window.confirm(
+        'Xác nhận lần 2: thao tác này ảnh hưởng tính học phí và trạng thái lớp. Bạn chắc chắn muốn kết thúc?'
+      )
+    )
       return
     setEndingClass(true)
     try {
@@ -464,6 +474,16 @@ function ClassOperationsPanel({
       setEndingClass(false)
     }
   }
+
+  const studentCount = overview?.students?.length ?? overview?.stats?.student_count ?? 0
+  const startPassed =
+    classInfo?.start_date &&
+    String(classInfo.start_date).slice(0, 10) <= new Date().toISOString().slice(0, 10)
+  const canEndClass =
+    has &&
+    classInfo?.status === 'active' &&
+    studentCount > 0 &&
+    startPassed
 
   return (
     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-amber-200 p-4 sm:p-5 space-y-4">
@@ -509,7 +529,7 @@ function ClassOperationsPanel({
             size="sm"
             variant="outline"
             icon={Flag}
-            disabled={!has || classInfo?.status === 'completed'}
+            disabled={!canEndClass}
             loading={endingClass}
             onClick={handleEndClass}
             className="border-amber-300 text-amber-800 hover:bg-amber-50"

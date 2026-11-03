@@ -15,7 +15,7 @@ import { AuthContext } from '../context/AuthContext'
 export default function FinancesPage() {
   const { user } = useContext(AuthContext) || {}
   const isAdmin = user?.role === 'admin'
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const tabFromUrl = searchParams.get('tab')
 
   const [activeTab, setActiveTab] = useState(() => {
@@ -26,6 +26,14 @@ export default function FinancesPage() {
   useEffect(() => {
     if (tabFromUrl) setActiveTab(tabFromUrl)
   }, [tabFromUrl])
+
+  const selectTab = (key) => {
+    setActiveTab(key)
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', key)
+    // giữ class_id khi đang thu tiền
+    setSearchParams(next, { replace: true })
+  }
 
   const tabs = [
     ...(isAdmin
@@ -58,10 +66,10 @@ export default function FinancesPage() {
           {tabs.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => selectTab(tab.key)}
               className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors ${
                 activeTab === tab.key
-                  ? 'border-blue-600 text-amber-700'
+                  ? 'border-amber-600 text-amber-800'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >

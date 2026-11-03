@@ -6,3 +6,7 @@ uploads/*
 dist/
 .DS_Store
 coverage/
+
+# Khóa service account Google (TUYỆT ĐỐI không commit)
+credentials/
+*service-account*.json

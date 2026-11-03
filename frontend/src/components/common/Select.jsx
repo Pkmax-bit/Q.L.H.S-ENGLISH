@@ -2,11 +2,11 @@ import { forwardRef } from 'react'
 import clsx from 'clsx'
 
 const Select = forwardRef(function Select(
-  { label, error, options = [], placeholder, className = '', required = false, ...props },
+  { label, error, options = [], placeholder, className = '', required = false, dataTour, ...props },
   ref
 ) {
   return (
-    <div className="w-full">
+    <div className="w-full" data-tour={dataTour || undefined}>
       {label && (
         <label className="block text-sm font-medium text-gray-700 mb-1">
           {label}

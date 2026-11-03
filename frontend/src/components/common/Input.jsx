@@ -2,11 +2,11 @@ import { forwardRef } from 'react'
 import clsx from 'clsx'
 
 const Input = forwardRef(function Input(
-  { label, error, helperText, className = '', type = 'text', required = false, ...props },
+  { label, error, helperText, className = '', type = 'text', required = false, dataTour, ...props },
   ref
 ) {
   return (
-    <div className="w-full">
+    <div className="w-full" data-tour={dataTour || undefined}>
       {label && (
         <label className="block text-sm font-medium text-stone-700 mb-1">
           {label}

@@ -70,6 +70,16 @@ export default function RecordPaymentForm({ isOpen, invoice, onClose, onSuccess 
     setForm((f) => ({ ...f, amount: v }))
   }
 
+  const amountDisplay =
+    form.amount === '' || form.amount == null
+      ? ''
+      : Number(form.amount).toLocaleString('vi-VN')
+
+  const handleAmountChange = (e) => {
+    const raw = e.target.value.replace(/[^\d]/g, '')
+    setForm((f) => ({ ...f, amount: raw === '' ? '' : Number(raw) }))
+  }
+
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -134,10 +144,12 @@ export default function RecordPaymentForm({ isOpen, invoice, onClose, onSuccess 
         <div>
           <Input
             label="Số tiền thu"
-            type="number"
-            value={form.amount}
-            onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+            type="text"
+            inputMode="numeric"
+            value={amountDisplay}
+            onChange={handleAmountChange}
             required
+            helperText={form.amount ? `= ${formatCurrency(Number(form.amount))}` : undefined}
           />
           <div className="flex gap-2 mt-2">
             <button type="button" className="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200" onClick={() => setQuick(0.5)}>50%</button>

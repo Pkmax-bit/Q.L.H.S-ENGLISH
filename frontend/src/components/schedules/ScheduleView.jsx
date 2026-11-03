@@ -412,7 +412,7 @@ export default function ScheduleView() {
           <p className="text-sm text-gray-500 mt-1">{roleDescriptions[user?.role] || 'Lịch học'}</p>
         </div>
         {canEdit && (
-          <Button icon={Plus} onClick={() => { setSelectedSlot(null); setSelectedDay(null); setSelectedHour(null); setShowForm(true) }}>
+          <Button icon={Plus} data-tour="schedules-add" onClick={() => { setSelectedSlot(null); setSelectedDay(null); setSelectedHour(null); setShowForm(true) }}>
             Thêm lịch học
           </Button>
         )}

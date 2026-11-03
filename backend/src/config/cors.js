@@ -23,7 +23,9 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  // X-Booking-Token: phiên của người đăng ký lịch học ở trang công khai /dk/<slug>.
+  // Thiếu header này trong whitelist thì trình duyệt chặn ngay ở bước preflight.
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Booking-Token'],
 };
 
 module.exports = corsOptions;

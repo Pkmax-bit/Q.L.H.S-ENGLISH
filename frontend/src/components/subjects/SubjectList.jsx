@@ -57,7 +57,7 @@ export default function SubjectList() {
           <h1 className="text-2xl font-bold text-gray-900">Môn học</h1>
           <p className="text-sm text-gray-500 mt-1">Quản lý danh sách môn học</p>
         </div>
-        <Button icon={Plus} onClick={() => { setSelected(null); setShowForm(true) }}>Thêm môn học</Button>
+        <Button icon={Plus} data-tour="subjects-add" onClick={() => { setSelected(null); setShowForm(true) }}>Thêm môn học</Button>
       </div>
 
       <Table

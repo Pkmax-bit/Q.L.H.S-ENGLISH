@@ -273,7 +273,7 @@ export default function ClassStudentManager({ classId, students = [], loading, o
   const allStudentsSelected = filteredStudents.length > 0 && selectedToRemove.size === filteredStudents.length
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tour="class-students-panel">
       {/* Hướng dẫn nhanh */}
       {!readOnly && (isAdmin || isTeacher) && (
         <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
@@ -310,6 +310,7 @@ export default function ClassStudentManager({ classId, students = [], loading, o
             <Button
               size="sm"
               icon={UserPlus}
+              data-tour="class-students-add"
               onClick={() => { setSearchMode(!searchMode); setSelectedToAdd(new Set()) }}
               variant={searchMode ? 'secondary' : 'primary'}
             >

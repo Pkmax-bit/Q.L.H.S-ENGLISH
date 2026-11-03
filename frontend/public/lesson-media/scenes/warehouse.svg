@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Kho hàng và lối vào">
+  <rect width="800" height="500" fill="#fefce8"/>
+  
+    <rect width="800" height="500" fill="#fefce8"/>
+    <rect y="300" width="800" height="200" fill="#e7e5e4"/>
+    <rect x="80" y="80" width="640" height="240" fill="#a8a29e"/>
+    <rect x="120" y="120" width="80" height="160" fill="#facc15"/>
+    <rect x="220" y="120" width="80" height="160" fill="#f59e0b"/>
+    <rect x="500" y="120" width="80" height="160" fill="#eab308"/>
+    <rect x="600" y="120" width="80" height="160" fill="#ca8a04"/>
+    <rect x="340" y="180" width="120" height="140" fill="#44403c"/>
+  
+  <text x="400" y="486" text-anchor="middle" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="13">Kho hàng và lối vào · Q.L.H.S English</text>
+</svg>

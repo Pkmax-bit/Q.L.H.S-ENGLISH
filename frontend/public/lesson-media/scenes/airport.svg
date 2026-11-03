@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Thông báo sân bay">
+  <rect width="800" height="500" fill="#020617"/>
+  
+    <rect width="800" height="500" fill="#0f172a"/>
+    <rect x="80" y="70" width="640" height="320" rx="12" fill="#1e293b"/>
+    <text x="400" y="130" text-anchor="middle" fill="#38bdf8" font-family="Segoe UI, Arial, sans-serif" font-size="22">FLIGHT 208  ·  OSAKA</text>
+    <text x="400" y="200" text-anchor="middle" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="700">GATE B4</text>
+    <text x="400" y="260" text-anchor="middle" fill="#facc15" font-family="Segoe UI, Arial, sans-serif" font-size="24">Boarding in 20 minutes</text>
+    <text x="400" y="320" text-anchor="middle" fill="#94a3b8" font-family="Segoe UI, Arial, sans-serif" font-size="18">Please proceed to the gate</text>
+  
+  <text x="400" y="486" text-anchor="middle" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="13">Thông báo sân bay · Q.L.H.S English</text>
+</svg>

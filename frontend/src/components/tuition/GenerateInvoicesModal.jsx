@@ -29,7 +29,7 @@ export default function GenerateInvoicesModal({
 
   const handleSubmit = async () => {
     if (!form.year_month) {
-      showError('Vui lòng nhập kỳ (YYYY-MM)')
+      showError('Vui lòng chọn tháng cần thu học phí')
       return
     }
     if (form.mode === 'class' && !form.class_id) {
@@ -103,15 +103,16 @@ export default function GenerateInvoicesModal({
         )}
 
         <Input
-          label="Kỳ (YYYY-MM)"
+          label="Tháng thu học phí"
           type="month"
           value={form.year_month}
           onChange={(e) => setForm((f) => ({ ...f, year_month: e.target.value }))}
           required
+          helperText="Chọn tháng cần lập hóa đơn (ví dụ tháng hiện tại)."
         />
 
-        <div className="text-sm text-gray-500 bg-amber-50 border border-blue-100 rounded-lg p-3">
-          Hệ thống sẽ tự bỏ qua những hóa đơn đã tồn tại cho cùng học sinh + lớp + kỳ.
+        <div className="text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg p-3">
+          Hệ thống tự bỏ qua học sinh đã có hóa đơn cho tháng này — không tạo trùng.
         </div>
       </div>
     </Modal>

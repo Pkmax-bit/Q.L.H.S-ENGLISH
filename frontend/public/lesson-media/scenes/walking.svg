@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Người đang đi trong hành lang">
+  <rect width="800" height="500" fill="#f1f5f9"/>
+  
+    <rect width="800" height="500" fill="#e2e8f0"/>
+    <rect x="80" y="0" width="160" height="500" fill="#cbd5e1"/>
+    <rect x="560" y="0" width="160" height="500" fill="#cbd5e1"/>
+    <rect x="240" y="360" width="320" height="20" fill="#94a3b8"/>
+    <circle cx="400" cy="220" r="20" fill="#f4c7a1"/>
+    <ellipse cx="400" cy="208" rx="20" ry="10" fill="#1e293b"/>
+    <rect x="380" y="242" width="40" height="56" rx="10" fill="#2563eb"/>
+    <rect x="372" y="296" width="16" height="48" rx="5" fill="#1e3a5f" transform="rotate(-12 380 320)"/>
+    <rect x="412" y="296" width="16" height="48" rx="5" fill="#1e3a5f" transform="rotate(14 420 320)"/>
+    <rect x="356" y="250" width="14" height="40" rx="5" fill="#f4c7a1" transform="rotate(20 363 270)"/>
+    <rect x="430" y="250" width="14" height="40" rx="5" fill="#f4c7a1" transform="rotate(-16 437 270)"/>
+  
+  <text x="400" y="486" text-anchor="middle" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="13">Người đang đi trong hành lang · Q.L.H.S English</text>
+</svg>

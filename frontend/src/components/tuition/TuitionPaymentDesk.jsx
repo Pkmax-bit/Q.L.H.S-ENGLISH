@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Search, DollarSign, AlertTriangle } from 'lucide-react'
-import Button from '../common/Button'
 import StudentTuitionLedger from './StudentTuitionLedger'
 import InvoiceDetailModal from './InvoiceDetailModal'
 import RecordPaymentForm from './RecordPaymentForm'
@@ -8,33 +8,62 @@ import LoadingSpinner from '../common/LoadingSpinner'
 import { ToastContext } from '../../context/ToastContext'
 import studentsService from '../../services/students.service'
 import tuitionService from '../../services/tuition.service'
+import classesService from '../../services/classes.service'
 import { formatCurrency } from '../../utils/formatCurrency'
 
 export default function TuitionPaymentDesk() {
   const { error: showError } = useContext(ToastContext)
+  const [searchParams] = useSearchParams()
+  const classIdFromUrl = searchParams.get('class_id') || ''
+
   const [search, setSearch] = useState('')
   const [students, setStudents] = useState([])
   const [studentsLoading, setStudentsLoading] = useState(false)
   const [debtors, setDebtors] = useState([])
   const [debtorsLoading, setDebtorsLoading] = useState(true)
+  const [debtorsError, setDebtorsError] = useState(null)
+  const [classFilter, setClassFilter] = useState(classIdFromUrl)
+  const [className, setClassName] = useState('')
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [ledger, setLedger] = useState(null)
   const [ledgerLoading, setLedgerLoading] = useState(false)
   const [payTarget, setPayTarget] = useState(null)
   const [detailId, setDetailId] = useState(null)
 
+  useEffect(() => {
+    setClassFilter(classIdFromUrl)
+  }, [classIdFromUrl])
+
+  useEffect(() => {
+    if (!classFilter) {
+      setClassName('')
+      return
+    }
+    classesService
+      .getById(classFilter)
+      .then((res) => {
+        const c = res.data?.data || res.data
+        setClassName(c?.name || '')
+      })
+      .catch(() => setClassName(''))
+  }, [classFilter])
+
   const loadDebtors = useCallback(async () => {
     setDebtorsLoading(true)
+    setDebtorsError(null)
     try {
-      const res = await tuitionService.getStudentsReceivables({})
+      const params = {}
+      if (classFilter) params.class_id = classFilter
+      const res = await tuitionService.getStudentsReceivables(params)
       const payload = res.data?.data || res.data
-      setDebtors((payload?.rows || []).slice(0, 15))
-    } catch {
+      setDebtors(payload?.rows || [])
+    } catch (err) {
       setDebtors([])
+      setDebtorsError(err.response?.data?.message || 'Không tải được danh sách học sinh nợ')
     } finally {
       setDebtorsLoading(false)
     }
-  }, [])
+  }, [classFilter])
 
   useEffect(() => {
     loadDebtors()
@@ -99,6 +128,20 @@ export default function TuitionPaymentDesk() {
 
   return (
     <div className="space-y-4">
+      {className && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Đang thu học phí lớp <strong>{className}</strong>
+          {' · '}
+          <button
+            type="button"
+            className="underline font-medium"
+            onClick={() => setClassFilter('')}
+          >
+            Xem tất cả lớp
+          </button>
+        </div>
+      )}
+
       <div className="app-card p-4">
         <label className="block text-sm font-medium text-stone-700 mb-2">
           Tìm học sinh để thu học phí
@@ -152,8 +195,18 @@ export default function TuitionPaymentDesk() {
           </div>
           {debtorsLoading ? (
             <LoadingSpinner message="Đang tải..." />
+          ) : debtorsError ? (
+            <p className="text-sm text-rose-600 flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              {debtorsError}
+            </p>
           ) : debtors.length === 0 ? (
-            <p className="text-sm text-stone-500">Không có học sinh nợ học phí.</p>
+            <div className="text-sm text-stone-500 space-y-1">
+              <p>Không có học sinh nợ học phí{className ? ' trong lớp này' : ''}.</p>
+              <p className="text-xs">
+                Nếu vừa cấu hình phí: vào lớp → tab Học phí → <strong>Sinh hóa đơn</strong> trước khi thu tiền.
+              </p>
+            </div>
           ) : (
             <div className="space-y-1 max-h-72 overflow-y-auto">
               {debtors.map((d) => (

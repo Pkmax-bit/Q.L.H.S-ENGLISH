@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" role="img" aria-label="Mọi người chờ ở lối vào">
+  <rect width="800" height="500" fill="#f0f9ff"/>
+  
+    <rect width="800" height="240" fill="#e0f2fe"/>
+    <rect y="240" width="800" height="260" fill="#f1f5f9"/>
+    <rect x="220" y="60" width="360" height="200" fill="#475569"/>
+    <rect x="300" y="110" width="200" height="150" fill="#7dd3fc"/>
+    <circle cx="300" cy="300" r="18" fill="#f4c7a1"/>
+    <rect x="282" y="318" width="36" height="44" rx="8" fill="#0284c7"/>
+    <circle cx="400" cy="296" r="18" fill="#f2c2a0"/>
+    <rect x="382" y="314" width="36" height="44" rx="8" fill="#db2777"/>
+    <circle cx="500" cy="302" r="18" fill="#f4c7a1"/>
+    <rect x="482" y="320" width="36" height="44" rx="8" fill="#059669"/>
+  
+  <text x="400" y="486" text-anchor="middle" fill="#64748b" font-family="Segoe UI, Arial, sans-serif" font-size="13">Mọi người chờ ở lối vào · Q.L.H.S English</text>
+</svg>

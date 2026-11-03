@@ -36,6 +36,7 @@ const lessonBundlesRoutes = require('./routes/lessonBundles.routes');
 const messengerRoutes = require('./routes/messenger.routes');
 const socialRoutes = require('./routes/social.routes');
 const shopRoutes = require('./routes/shop.routes');
+const bookingRoutes = require('./routes/booking.routes');
 
 const app = express();
 
@@ -128,6 +129,7 @@ app.use('/api/lesson-bundles', lessonBundlesRoutes);
 app.use('/api/messenger', messengerRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/shop', shopRoutes);
+app.use('/api/booking', bookingRoutes);
 
 // Serve frontend static files in production
 const frontendDist = path.join(__dirname, '..', '..', 'frontend', 'dist');

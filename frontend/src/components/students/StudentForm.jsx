@@ -79,18 +79,19 @@ export default function StudentForm({ isOpen, onClose, student, onSuccess }) {
       onClose={onClose}
       title={isEdit ? 'Chỉnh sửa học sinh' : 'Thêm học sinh mới'}
       size="lg"
+      dataTour="student-form"
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>Hủy</Button>
-          <Button onClick={handleSubmit} loading={loading}>{isEdit ? 'Cập nhật' : 'Thêm mới'}</Button>
+          <Button data-tour="student-form-save" onClick={handleSubmit} loading={loading}>{isEdit ? 'Cập nhật' : 'Thêm mới'}</Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input label="Họ tên" name="full_name" value={form.full_name} onChange={handleChange} error={errors.full_name} placeholder="Nguyễn Văn A" required />
-          <Input label="Email" name="email" type="email" value={form.email} onChange={handleChange} error={errors.email} placeholder="example@email.com" />
-          <Input label="Số điện thoại" name="phone" value={form.phone} onChange={handleChange} error={errors.phone} placeholder="0901234567" />
+          <Input label="Họ tên" name="full_name" value={form.full_name} onChange={handleChange} error={errors.full_name} placeholder="Nguyễn Văn A" required dataTour="student-field-name" />
+          <Input label="Email" name="email" type="email" value={form.email} onChange={handleChange} error={errors.email} placeholder="example@email.com" dataTour="student-field-email" />
+          <Input label="Số điện thoại" name="phone" value={form.phone} onChange={handleChange} error={errors.phone} placeholder="0901234567" dataTour="student-field-phone" />
           <Input label="Ảnh đại diện (URL)" name="avatar_url" value={form.avatar_url} onChange={handleChange} placeholder="https://example.com/avatar.jpg" />
         </div>
         <div className="flex items-center gap-2">

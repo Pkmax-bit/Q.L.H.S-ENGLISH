@@ -99,7 +99,7 @@ export default function TeacherList() {
           <Button variant="outline" icon={Download} onClick={handleExport}>
             Xuất Excel
           </Button>
-          <Button icon={Plus} onClick={() => { setSelected(null); setShowForm(true) }}>
+          <Button icon={Plus} data-tour="teachers-add" onClick={() => { setSelected(null); setShowForm(true) }}>
             Thêm giáo viên
           </Button>
         </div>

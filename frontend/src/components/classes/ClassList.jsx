@@ -82,7 +82,7 @@ export default function ClassList() {
   }
 
   return (
-    <div>
+    <div data-tour="classes-page">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Lớp học</h1>
@@ -93,7 +93,7 @@ export default function ClassList() {
             <Button variant="outline" icon={Download} onClick={handleExport}>Xuất Excel</Button>
           )}
           {isAdmin && (
-            <Button icon={Plus} onClick={() => { setSelected(null); setShowForm(true) }}>Thêm lớp học</Button>
+            <Button icon={Plus} data-tour="classes-add" onClick={() => { setSelected(null); setShowForm(true) }}>Thêm lớp học</Button>
           )}
         </div>
       </div>

@@ -70,7 +70,13 @@ export default function ClassDetailPage() {
   const handleEndClass = async () => {
     if (
       !window.confirm(
-        'Gán ngày kết thúc lớp là hôm nay và đánh dấu lớp đã hoàn thành? (Phục vụ tính học phí đến cuối khóa.)'
+        'Bạn sắp kết thúc lớp. Ngày kết thúc sẽ là hôm nay và lớp chuyển sang «Đã hoàn thành». Tiếp tục?'
+      )
+    )
+      return
+    if (
+      !window.confirm(
+        'Xác nhận lần 2: thao tác này ảnh hưởng tính học phí và trạng thái lớp. Bạn chắc chắn muốn kết thúc?'
       )
     )
       return
@@ -101,9 +107,15 @@ export default function ClassDetailPage() {
 
   const { classInfo, students, lessons, assignments, gradeMatrix, stats } = overview
 
+  const studentCount = students?.length ?? 0
+  const startPassed =
+    classInfo.start_date &&
+    String(classInfo.start_date).slice(0, 10) <= new Date().toISOString().slice(0, 10)
   const canEndClass =
     !isStudent &&
-    classInfo.status !== 'completed' &&
+    classInfo.status === 'active' &&
+    studentCount > 0 &&
+    startPassed &&
     (user?.role === 'admin' ||
       (user?.role === 'teacher' && user?.id && user.id === classInfo.teacher_id))
 
@@ -204,6 +216,8 @@ export default function ClassDetailPage() {
             return (
               <button
                 key={tab.key}
+                type="button"
+                data-tour={`class-tab-${tab.key}`}
                 onClick={() => selectTab(tab.key)}
                 className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                   isActive
